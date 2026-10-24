@@ -274,6 +274,24 @@ INTERPRETER=my_module:MyInterpreter
 - 민감정보 입력값은 AI 미전달
 - ARS 가 입력값을 다시 읽어 주는 문장은 숫자 마스킹 후 전달
 
+### Gemini 해석기 (`gemini_interpreter.py`)
+
+```
+INTERPRETER=gemini_interpreter:GeminiInterpreter
+GEMINI_API_KEY=...            # https://aistudio.google.com/apikey
+GEMINI_MODEL=gemini-3.5-flash-lite
+```
+
+- 한국어로 말한 번호(`삼 번`, `별표`, `우물정자`)를 `3`·`*`·`#` 로 바꾼 뒤 판단 (`이번 달` 등은 제외)
+- 안내에 실제로 나온 번호만 선택지로 인정 (번호 추측 금지)
+- 재질문 답변의 번호(`삼 번이요`)·대명사(`그거`)는 직전 메뉴 선택지와 지나온 경로로 해석
+- 확인 질문의 명확한 `네`/`아니요` 답변은 LLM 없이 규칙으로 처리 (중요 선택 제외)
+- Gemini 실패·시간 초과 시 1회 재시도, 이후 번호를 고르지 않음 (`classify` 는 규칙 기반 분류, `score` 는 0.40 → 재질문)
+- 민감정보 요청은 모델이 놓쳐도 규칙으로 한 번 더 확인
+- 시험: `python -m pytest -q test_gemini_interpreter.py` (Gemini 호출 없음)
+- `.env` 에서 Gemini 해석기를 켠 상태로 `test_flows.py` 를 돌리면 목 데이터 기준 시험이 실패하므로 `INTERPRETER=interpreter:MockInterpreter python -m pytest -q test_flows.py` 로 실행
+- 건강보험증 발급 평가 10건(`feat/ai-evaluation`) × 2회: 정답 20/20, 위험 자동입력 0건, 메뉴 판단 p50 약 3.3초 (무료 키, 2026-10-24)
+
 ## 주의
 
 - `.env` 는 ClawOps API 키 포함, 커밋 금지 (`.gitignore` 처리)
