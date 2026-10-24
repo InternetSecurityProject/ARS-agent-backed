@@ -1,0 +1,17 @@
+# 비밀 값 (ClawOps API 키 등)
+.env
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Windows 전용 실행 스크립트 (각자 PC 에만 둔다)
+*.bat
+
+# 로그·임시 (api_check.py --audio 의 WAV 포함)
+*.log
+*.wav
+_to_delete/

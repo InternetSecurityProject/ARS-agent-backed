@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARS 도우미 시험 앱</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --ink:#16191d; --sub:#646b75; --line:#e2e5ea; --accent:#1f5eff; --accent-ink:#fff;
+          --ok:#0a7d55; --warn:#b45309; --bad:#c62828; --soft:#eef2ff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1114; --card:#181b20; --ink:#e7e9ec; --sub:#9aa1ab; --line:#2a2f37;
+          --accent:#6b95ff; --accent-ink:#0b0d10; --ok:#34c38f; --warn:#f0a63a; --bad:#ff6b6b; --soft:#1c2333; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; }
+  main { max-width:480px; margin:0 auto; padding:16px 16px 48px; }
+  h1 { font-size:19px; margin:4px 0 12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; }
+  label { display:block; font-size:13px; color:var(--sub); margin:8px 0 4px; }
+  input { width:100%; padding:11px 12px; font-size:16px; border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--ink); }
+  button { font:inherit; border:0; border-radius:10px; padding:11px 14px; cursor:pointer; background:var(--soft); color:var(--ink); }
+  button.primary { background:var(--accent); color:var(--accent-ink); font-weight:600; }
+  button.danger { background:var(--bad); color:#fff; font-weight:600; }
+  button:disabled { opacity:.45; cursor:default; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .row > * { flex:1; }
+  .hint { font-size:13px; color:var(--sub); }
+  .status { font-size:20px; font-weight:700; }
+  .badge { display:inline-block; font-size:12px; padding:2px 8px; border-radius:99px; background:var(--soft); color:var(--sub); margin-left:6px; vertical-align:middle; }
+  .badge.on { background:var(--ok); color:#fff; }
+  .keypad { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:8px; }
+  .keypad button { font-size:22px; padding:12px 0; font-weight:600; transition:background .15s; }
+  .keypad button.hit { background:var(--accent); color:var(--accent-ink); }
+  .press { margin-top:8px; padding:8px 10px; border-radius:10px; background:var(--soft); font-weight:600; }
+  .list { max-height:220px; overflow:auto; font-size:14px; }
+  .list div { padding:6px 0; border-bottom:1px solid var(--line); }
+  .list .who { font-size:12px; color:var(--sub); }
+  .req { border:2px solid var(--warn); }
+  .req .msg { font-weight:600; margin-bottom:8px; }
+  .opts { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0; }
+  .summary { border:2px solid var(--ok); }
+  .hidden { display:none !important; }
+  .step { font-size:13px; font-weight:700; color:var(--accent); }
+  .ask { font-size:18px; font-weight:700; margin:2px 0 10px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .chips button { font-size:13px; padding:6px 10px; border-radius:99px; }
+  details.card summary { cursor:pointer; color:var(--sub); font-size:14px; }
+  #log { font:12px/1.4 ui-monospace,monospace; max-height:160px; overflow:auto; white-space:pre-wrap; color:var(--sub); }
+</style>
+</head>
+<body>
+<main>
+  <h1>ARS 도우미 시험 앱</h1>
+
+  <!-- 발신: 앱과 같이 목적을 먼저 정한 뒤 전화를 건다 -->
+  <section id="dialView">
+    <div class="card">
+      <div class="step">① 원하는 업무</div>
+      <div class="ask">어떤 업무로 전화하시나요?</div>
+      <div class="row"><input id="goal" list="goalList" placeholder="예: 통장 잔액 알고 싶어" autocomplete="off"><button id="micGoal" style="flex:0 0 auto" title="음성 입력">🎤</button></div>
+      <div id="mockNote" class="hidden">
+        <div class="hint" style="margin-top:10px">예시 (AI 자리가 목 데이터라 아래 문장만 처리합니다. 누르면 입력됩니다)</div>
+        <div id="goalChips" class="chips"></div>
+      </div>
+      <div class="hint" style="margin-top:8px">AI 도우미 사용과 목적은 전화를 걸 때 정합니다. 첫 번호를 누르기 전까지는 다시 말할 수 있습니다.</div>
+    </div>
+    <div class="card">
+      <div class="step">② 받는 번호</div>
+      <input id="phone" inputmode="tel" value="1588-9999" style="margin-top:6px">
+      <button id="dial" class="primary" style="width:100%;margin-top:12px" disabled>목적을 입력하세요</button>
+      <div id="dialMsg" class="hint" style="margin-top:8px"></div>
+    </div>
+    <details class="card">
+      <summary>개발 설정</summary>
+      <label for="appKey">앱 키 (X-App-Key)</label>
+      <input id="appKey" value="dev-app-key">
+      <div class="hint" style="margin-top:4px">우리 앱이 보낸 요청인지 서버가 확인하는 값입니다 (명세 2.2). 서버 .env 의 APP_KEY 와 같아야 하며 기본값은 dev-app-key 입니다. ClawOps API 키가 아니며, ClawOps API 키는 실통화 서버(.env)만 사용합니다.</div>
+      <label class="row" style="margin-top:10px;color:var(--ink)"><input type="checkbox" id="useAudio" style="width:auto;flex:0"> 처음부터 ARS 소리 켜기 (통화 중에도 켜고 끌 수 있음) [검증 필요]</label>
+    </details>
+    <datalist id="goalList"></datalist>
+  </section>
+
+  <!-- 통화 -->
+  <section id="callView" class="hidden">
+    <div class="card">
+      <div class="status"><span id="status">-</span></div>
+      <div id="statusMsg" class="hint"></div>
+      <div id="pressMsg" class="press hidden"></div>
+      <div class="row" style="margin-top:10px">
+        <button id="soundBtn">ARS 소리 켜기</button>
+        <button id="hangup" class="danger">통화 종료</button>
+      </div>
+    </div>
+
+    <div id="agentBox" class="card">
+      <div class="hint">목적을 이해했어요</div>
+      <div id="goalSummary" style="font-weight:600;margin:4px 0 8px"></div>
+      <div id="regoalRow">
+        <div class="row"><input id="regoal" list="goalList" placeholder="다시 말하기"><button id="regoalSend" style="flex:0 0 auto">보내기</button></div>
+        <div class="hint" style="margin-top:6px">첫 번호를 누르기 전까지 다시 말할 수 있습니다. "직접 통화하기"는 통화를 끝내고 일반 전화로 다시 거는 것으로 처리합니다.</div>
+      </div>
+    </div>
+
+    <div id="reqBox" class="card req hidden">
+      <div id="reqMsg" class="msg"></div>
+      <div id="reqArs" class="hint"></div>
+      <div id="reqOpts" class="opts"></div>
+      <div id="reqAnswer" class="row"><input id="answerText" placeholder="말로 답하기 (글로 입력)"><button id="answerSend" style="flex:0 0 auto">보내기</button></div>
+      <div id="reqSecure" class="hidden">
+        <input id="secureDigits" inputmode="numeric" autocomplete="off" type="password" placeholder="숫자 입력 (저장되지 않음)">
+        <button id="secureSend" class="primary" style="width:100%;margin-top:8px">입력 완료</button>
+      </div>
+    </div>
+
+    <div id="sumBox" class="card summary hidden">
+      <div class="hint">결과</div>
+      <div id="sumText" style="font-weight:600"></div>
+      <table id="keyInfo" style="width:100%;margin-top:8px;font-size:14px;border-collapse:collapse"></table>
+      <div id="handoff" class="hint" style="margin-top:6px"></div>
+    </div>
+
+    <div class="card">
+      <div class="hint">키패드 (직접 선택: 누르면 AI 가 10초 보류)</div>
+      <div class="keypad" id="keypad"></div>
+    </div>
+
+    <div class="card"><div class="hint">ARS 안내 (단계별)</div><div id="captions" class="list"></div></div>
+    <div class="card"><div class="hint">이동한 경로</div><div id="path" class="list"></div></div>
+  </section>
+
+  <div class="card"><div class="hint">이벤트 기록</div><div id="log"></div></div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const show = (id, on) => $(id).classList.toggle("hidden", !on);
+const store = { get(k){ try { return localStorage.getItem(k) || ""; } catch { return ""; } }, set(k,v){ try { localStorage.setItem(k,v); } catch {} } };
+if (store.get("appKey")) $("appKey").value = store.get("appKey");
+if (store.get("phone")) $("phone").value = store.get("phone");
+
+let S = null;   // { id, token }
+fetch("/v1/health").then(r => r.json()).then(h => {
+  (h.mock_goals || []).forEach(g => { const o = document.createElement("option"); o.value = g; $("goalList").append(o); });
+  if ((h.interpreter || "").includes("Mock")) {
+    (h.mock_goals || []).forEach(g => { const b = document.createElement("button"); b.textContent = g;
+      b.onclick = () => { $("goal").value = g; updateDial(); }; $("goalChips").append(b); });
+    show("mockNote", true);
+  }
+}).catch(() => {});
+let ws = null, pending = null;
+const STATUS = { agent_done:"업무 완료", dialing:"연결 중", listening:"안내 듣는 중", selecting:"번호 고르는 중",
+  awaiting_user:"확인 필요", listening_result:"결과 듣는 중", waiting_agent:"상담원 대기", connected_to_agent:"상담원 연결됨", ended:"종료" };
+
+function log(t) { const el = $("log"); el.textContent = `[${new Date().toLocaleTimeString()}] ${t}\n` + el.textContent; }
+
+async function api(path, body, method = "POST") {
+  const headers = { "Content-Type": "application/json" };
+  if (S) headers["Authorization"] = "Bearer " + S.token; else headers["X-App-Key"] = $("appKey").value;
+  const r = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) { const m = data.error ? `${data.error.code}: ${data.error.message}` : r.status; log("오류 " + m); throw new Error(m); }
+  return data;
+}
+const act = (body) => api(`/v1/sessions/${S.id}/actions`, body);
+
+// 음성 입력 (브라우저 지원 시) ------------------------------------------------
+function dictate(targetId) {
+  const R = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!R) { alert("이 브라우저는 음성 입력을 지원하지 않습니다. 글로 입력하세요."); return; }
+  const r = new R(); r.lang = "ko-KR";
+  r.onresult = (e) => { $(targetId).value = e.results[0][0].transcript; $(targetId).dispatchEvent(new Event("input")); }; r.start();
+}
+$("micGoal").onclick = () => dictate("goal");
+
+// 목적을 입력해야 전화 걸기 버튼이 켜진다 (Enter 로도 걸 수 있음)
+function updateDial() {
+  const ok = !!$("goal").value.trim();
+  $("dial").disabled = !ok; $("dial").textContent = ok ? "ARS Agent 로 전화 걸기" : "목적을 입력하세요";
+}
+$("goal").addEventListener("input", updateDial);
+$("goal").addEventListener("keydown", (e) => { if (e.key === "Enter" && !$("dial").disabled) $("dial").click(); });
+updateDial();
+
+// 발신 ----------------------------------------------------------------------
+$("dial").onclick = async () => {
+  store.set("appKey", $("appKey").value); store.set("phone", $("phone").value);
+  S = null;
+  try {
+    const goal = $("goal").value.trim();
+    if (!goal) { $("dialMsg").textContent = "원하는 업무를 입력하세요."; return; }
+    const out = await api("/v1/sessions", { phone_number: $("phone").value, goal: goal || undefined });
+    S = { id: out.session_id, token: out.session_token };
+    log(`세션 ${S.id} 생성 (${out.status})`);
+    openEvents(); if ($("useAudio").checked) openAudio();
+    show("dialView", false);
+    if (out.goal_summary) $("goalSummary").textContent = out.goal_summary;
+    show("callView", true);
+  } catch (e) { $("dialMsg").textContent = "발신 실패: " + e.message; }
+};
+
+// 이벤트 --------------------------------------------------------------------
+function openEvents() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/v1/sessions/${S.id}/events?token=${S.token}`);
+  ws.onmessage = (m) => handle(JSON.parse(m.data));
+  ws.onclose = () => log("이벤트 채널 종료");
+}
+
+function setStatus(st, msg) {
+  $("status").textContent = STATUS[st] || st; $("statusMsg").textContent = msg || "";
+  if (st === "ended" || st === "connected_to_agent") show("agentBox", false);
+}
+
+function addCaption(c) { const d = document.createElement("div"); d.innerHTML = `<span class="who">${c.step}단계</span> `; d.append(c.text); $("captions").prepend(d); }
+function addPath(p) { const d = document.createElement("div"); const c = p.selected.confidence;
+  d.innerHTML = `<span class="who">${p.step}. ${p.actor === "ai" ? "AI" : "사용자"}${c != null ? " · 신뢰도 " + Math.round(c * 100) + "%" : ""}</span> `;
+  d.append(p.text); $("path").prepend(d); }
+
+function showRequest(r) {
+  pending = r; show("reqBox", !!r);
+  if (!r) return;
+  $("reqMsg").textContent = r.message; $("reqArs").textContent = r.ars_prompt ? `ARS: ${r.ars_prompt}` : "";
+  const secure = r.kind === "secure_input";
+  show("reqSecure", secure); show("reqAnswer", !secure && r.reason !== "critical_action");
+  $("reqOpts").innerHTML = "";
+  (r.options || []).forEach(o => { const b = document.createElement("button"); b.textContent = `${o.key}. ${o.label}` + (o.confidence != null ? ` (신뢰도 ${Math.round(o.confidence * 100)}%)` : "");
+    b.onclick = () => act({ type: "select", request_id: r.request_id, key: o.key }).then(() => showRequest(null)); $("reqOpts").append(b); });
+  if (secure) { $("secureDigits").value = ""; $("secureDigits").focus(); }
+  if ("speechSynthesis" in window) { const u = new SpeechSynthesisUtterance(r.message); u.lang = "ko-KR"; speechSynthesis.speak(u); }
+}
+
+function handle(m) {
+  const d = m.data || {};
+  if (m.event !== "caption") log(`${m.event} ${JSON.stringify(d).slice(0, 160)}`);
+  switch (m.event) {
+    case "snapshot":
+      setStatus(d.status, d.message); $("captions").innerHTML = ""; $("path").innerHTML = "";
+      d.captions.forEach(addCaption); d.path.forEach(addPath); showRequest(d.pending_request);
+      show("regoalRow", d.path.length === 0);
+      if (d.goal_summary) $("goalSummary").textContent = d.goal_summary;
+      if (d.summary) handle({ event: "summary", data: d.summary }); break;
+    case "status_changed": setStatus(d.status, d.message);
+      if (d.status !== "awaiting_user" && pending && pending.kind === "clarification") showRequest(null); break;
+    case "caption": addCaption(d); break;
+    case "path_updated": addPath(d); show("regoalRow", false); showPress(d); playDtmf(d.selected && d.selected.key); break;
+    case "request": showRequest(d); break;
+    case "input_rejected": $("statusMsg").textContent = d.message; break;
+    case "summary": show("sumBox", true); $("sumText").textContent = d.summary;
+      $("keyInfo").innerHTML = ""; (d.key_info || []).forEach(k => { const tr = document.createElement("tr");
+        tr.innerHTML = `<td class="hint" style="padding:4px 0"></td><td style="text-align:right;font-weight:600"></td>`;
+        tr.children[0].textContent = k.label; tr.children[1].textContent = k.value; $("keyInfo").append(tr); });
+      $("handoff").textContent = d.handoff_script ? `상담사에게: ${d.handoff_script}` : ""; break;
+    case "ended": setStatus("ended", d.message); showRequest(null); stopAudio(); break;
+  }
+}
+
+// 조작 ----------------------------------------------------------------------
+"123456789*0#".split("").forEach(k => { const b = document.createElement("button"); b.textContent = k; b.dataset.key = k;
+  b.onclick = () => act({ type: "key", key: k }).catch(() => {}); $("keypad").append(b); });
+$("hangup").onclick = () => act({ type: "cancel" }).catch(() => {});
+$("regoalSend").onclick = async () => { const t = $("regoal").value.trim(); if (!t) return;
+  try { const r = await act({ type: "revise_goal", text: t }); $("goalSummary").textContent = r.goal_summary; $("regoal").value = ""; }
+  catch (e) { $("statusMsg").textContent = e.message; show("regoalRow", false); } };
+$("soundBtn").onclick = () => { if (aws) stopAudio(); else openAudio(); };
+$("answerSend").onclick = () => { const t = $("answerText").value.trim(); if (!t || !pending) return;
+  act({ type: "answer", request_id: pending.request_id, text: t }).then(() => { $("answerText").value = ""; showRequest(null); }); };
+$("secureSend").onclick = () => { const v = $("secureDigits").value.replace(/[^0-9*#]/g, ""); if (!v || !pending) return;
+  $("secureDigits").value = ""; act({ type: "secure_input", request_id: pending.request_id, digits: v }).then(() => showRequest(null)); };
+
+// 오디오 채널 (μ-law 8kHz, 20ms) ----------------------------------------------
+let actx = null, aws = null, nextT = 0, micNode = null, micStream = null;
+const DEC = new Float32Array(256);
+for (let i = 0; i < 256; i++) { let u = ~i & 0xff, s = u & 0x80, e = (u >> 4) & 7, mt = u & 15;
+  let x = (((mt << 3) + 0x84) << e) - 0x84; DEC[i] = (s ? -x : x) / 32768; }
+function enc(f) { let x = Math.max(-1, Math.min(1, f)) * 32767 | 0, sign = x < 0 ? 0x80 : 0; if (x < 0) x = -x;
+  x = Math.min(x, 32635) + 0x84; let e = 7; for (let m = 0x4000; (x & m) === 0 && e > 0; m >>= 1) e--;
+  return ~(sign | (e << 4) | ((x >> (e + 3)) & 15)) & 0xff; }
+
+async function openAudio() {
+  try { actx = new AudioContext({ sampleRate: 8000 }); } catch { actx = new AudioContext(); log("8kHz 오디오 미지원: 재생 품질이 떨어질 수 있음"); }
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  aws = new WebSocket(`${proto}://${location.host}/v1/sessions/${S.id}/audio?token=${S.token}`);
+  $("soundBtn").textContent = "ARS 소리 끄기";
+  aws.binaryType = "arraybuffer";
+  aws.onmessage = (m) => {
+    const u = new Uint8Array(m.data), buf = actx.createBuffer(1, u.length, 8000), ch = buf.getChannelData(0);
+    for (let i = 0; i < u.length; i++) ch[i] = DEC[u[i]];
+    const src = actx.createBufferSource(); src.buffer = buf; src.connect(actx.destination);
+    nextT = Math.max(nextT, actx.currentTime + 0.08); src.start(nextT); nextT += u.length / 8000;
+  };
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    const src = actx.createMediaStreamSource(micStream);
+    micNode = actx.createScriptProcessor(1024, 1, 1);
+    let acc = []; const ratio = actx.sampleRate / 8000;
+    micNode.onaudioprocess = (e) => {
+      const x = e.inputBuffer.getChannelData(0);
+      for (let i = 0; i < x.length; i += ratio) acc.push(enc(x[Math.floor(i)]));
+      while (acc.length >= 160) { const f = Uint8Array.from(acc.splice(0, 160)); if (aws.readyState === 1) aws.send(f); }
+    };
+    src.connect(micNode); micNode.connect(actx.destination);
+    log("오디오 채널 연결 (마이크 사용)");
+  } catch (e) { log("마이크 사용 불가: 듣기만 합니다"); }
+}
+// 번호가 눌리면(path_updated) 그 번호의 DTMF 톤을 ARS 소리와 같은 재생 위치에 섞어 들려준다 (소리를 켠 경우)
+const DTMF = { "1":[697,1209], "2":[697,1336], "3":[697,1477], "4":[770,1209], "5":[770,1336], "6":[770,1477],
+  "7":[852,1209], "8":[852,1336], "9":[852,1477], "*":[941,1209], "0":[941,1336], "#":[941,1477] };
+function playDtmf(keys) {
+  if (!actx || !keys) return;
+  let t = Math.max(actx.currentTime, nextT);
+  for (const ch of String(keys)) {
+    const f = DTMF[ch]; if (!f) continue;
+    const g = actx.createGain(); g.connect(actx.destination);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.12, t + 0.005);
+    g.gain.setValueAtTime(0.12, t + 0.115); g.gain.linearRampToValueAtTime(0, t + 0.12);
+    for (const hz of f) { const o = actx.createOscillator(); o.frequency.value = hz; o.connect(g); o.start(t); o.stop(t + 0.12); }
+    t += 0.2;
+  }
+}
+// 번호가 눌리면 상태 카드에 누른 번호를 표시하고, 키패드의 같은 버튼에 잠시 불을 켠다
+function showPress(p) {
+  const sel = p.selected || {}, c = sel.confidence, who = p.actor === "ai" ? "AI" : "사용자";
+  $("pressMsg").textContent = `${who}가 [${sel.key}] 누름 · ${sel.label}` + (c != null ? ` · 신뢰도 ${Math.round(c * 100)}%` : "");
+  show("pressMsg", true);
+  String(sel.key || "").split("").forEach((k, i) => {
+    const b = document.querySelector(`#keypad button[data-key="${CSS.escape(k)}"]`); if (!b) return;
+    setTimeout(() => { b.classList.add("hit"); setTimeout(() => b.classList.remove("hit"), 450); }, i * 200);
+  });
+}
+function stopAudio() {
+  try { micNode && micNode.disconnect(); micStream && micStream.getTracks().forEach(t => t.stop()); aws && aws.close(); actx && actx.close(); } catch {}
+  aws = null; micNode = null; micStream = null; actx = null; nextT = 0;
+  $("soundBtn").textContent = "ARS 소리 켜기";
+}
+</script>
+</body>
+</html>

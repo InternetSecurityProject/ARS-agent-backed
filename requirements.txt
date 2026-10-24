@@ -1,0 +1,10 @@
+clawops[agent]>=0.65.0
+fastapi>=0.110
+uvicorn[standard]>=0.29
+faster-whisper>=1.0
+numpy
+certifi
+pytest
+httpx
+websockets
+sounddevice

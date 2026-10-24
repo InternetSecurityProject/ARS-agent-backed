@@ -1,0 +1,33 @@
+{
+  "name": "가상 KB국민은행 ARS (시험용, 실제 메뉴와 다름)",
+  "start": "root",
+  "timeout_s": 12,
+  "nodes": {
+    "root": {
+      "say": "KB국민은행입니다. 잔액조회는 3번, 거래내역조회는 4번, 카드 업무는 5번, 상담직원 연결은 0번을 눌러 주십시오. 다시 들으시려면 우물정자를 눌러 주십시오.",
+      "keys": {"3": "balance", "4": "history", "5": "card", "0": "agent", "#": "@repeat"}
+    },
+    "balance": {
+      "say": "알림톡으로 받으시려면 1번, ARS로 계속하시려면 2번을 눌러 주십시오. 이전 메뉴는 별표를 눌러 주십시오.",
+      "keys": {"1": "balance_msg", "2": "balance_rrn", "*": "@back"}
+    },
+    "balance_msg": {"type": "end", "say": "알림톡으로 잔액을 보내 드렸습니다. 감사합니다."},
+    "balance_rrn": {"type": "input", "say": "주민등록번호 앞 여섯 자리와 우물정자를 눌러 주십시오.", "terminator": "#", "next": "balance_acct"},
+    "balance_acct": {"type": "input", "say": "계좌번호와 우물정자를 눌러 주십시오.", "terminator": "#", "next": "balance_pw"},
+    "balance_pw": {"type": "input", "say": "계좌 비밀번호 네 자리를 눌러 주십시오.", "length": 4, "next": "balance_result"},
+    "balance_result": {"type": "result", "say": "고객님의 출금 가능 금액은 1,234,000원입니다. 감사합니다."},
+    "history": {
+      "say": "최근 거래내역은 1번, 기간별 거래내역은 2번을 눌러 주십시오. 이전 메뉴는 별표를 눌러 주십시오.",
+      "keys": {"1": "history_result", "2": "history_result", "*": "@back"}
+    },
+    "history_result": {"type": "result", "say": "최근 거래내역을 문자로 보내 드렸습니다. 감사합니다."},
+    "card": {
+      "say": "카드 분실 신고는 1번, 결제 대금 조회는 2번, 결제일 변경은 3번을 눌러 주십시오. 이전 메뉴는 별표를 눌러 주십시오.",
+      "keys": {"1": "card_lost", "2": "card_bill", "3": "card_day", "*": "@back"}
+    },
+    "card_lost": {"type": "agent", "say": "분실 신고 상담원과 연결 중입니다. 잠시만 기다려 주십시오.", "human": "상담원 김민지입니다. 무엇을 도와드릴까요?"},
+    "card_bill": {"type": "result", "say": "이번 달 결제 예정 금액은 352,000원입니다. 감사합니다."},
+    "card_day": {"type": "result", "say": "결제일 변경 신청이 접수되었습니다. 감사합니다."},
+    "agent": {"type": "agent", "say": "상담원과 연결 중입니다. 잠시만 기다려 주십시오.", "human": "상담원 김민지입니다. 무엇을 도와드릴까요?"}
+  }
+}
