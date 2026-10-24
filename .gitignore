@@ -6,7 +6,11 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
+.venv-eval/
 venv/
+
+# AI 모델 평가 원본 결과
+evals/results/
 
 # Windows 전용 실행 스크립트 (각자 PC 에만 둔다)
 *.bat

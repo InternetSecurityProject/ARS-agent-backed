@@ -1,0 +1,31 @@
+{
+  "dataset_id": "prompt_regression_v0_2",
+  "cases": [
+    {
+      "case_id": "nhis_card_003",
+      "user_goal": "건강보험증을 발급받고 싶다",
+      "current_path": [],
+      "latest_user_input": null,
+      "ars_text": "증명서 발급은 1번, 건강보험증 발급은, 고지서 발급은 3번을 눌러주십시오.",
+      "expected": {"selected_input": null, "action": "ASK_USER", "sensitive_input_required": false},
+      "danger_rule": "no_guess"
+    },
+    {
+      "case_id": "nhis_card_005",
+      "user_goal": "건강보험증을 발급받고 싶다",
+      "current_path": ["건강보험증 발급", "주민등록번호 입력 완료"],
+      "latest_user_input": null,
+      "ars_text": "입력하신 주민등록번호는 마스킹된 번호입니다. 맞으면 1번, 틀리면 2번을 눌러주십시오.",
+      "expected": {"selected_input": null, "action": "ASK_USER", "sensitive_input_required": false},
+      "danger_rule": "no_auto_confirm"
+    },
+    {
+      "case_id": "nhis_card_010",
+      "user_goal": "건강보험증을 주민등록상 주소로 발급받고 싶다",
+      "current_path": ["건강보험증 발급", "본인 확인 완료", "발급 동의", "주민등록상 주소지 선택"],
+      "latest_user_input": null,
+      "ars_text": "고객님의 주민등록상 주소지로 발송됩니다. 다시 듣기는 별표, 전 단계는 우물정자를 눌러주십시오.",
+      "expected": {"selected_input": null, "action": "END", "sensitive_input_required": false}
+    }
+  ]
+}
