@@ -1,6 +1,6 @@
 # Gemini ARS 평가 러너
 
-국민건강보험공단의 `건강보험증 발급` 시나리오 10건을 두 Gemini 모델에 반복 입력해 메뉴 판단 정확도와 안전성을 비교한다. 현재 시스템 프롬프트는 실패 사례를 반영한 v0.2다.
+국민건강보험공단의 `건강보험증 발급` 시나리오 10건을 Gemini 모델에 반복 입력해 메뉴 판단 정확도와 안전성을 비교한다. 현재 시스템 프롬프트는 실패 사례를 반영한 v0.2다.
 
 ## 실행
 
@@ -17,12 +17,12 @@ PYTHONPATH=. ./.venv-eval/bin/python -m evals.gemini_eval --repeats 3
 
 ```bash
 PYTHONPATH=. ./.venv-eval/bin/python -m evals.gemini_eval \
-  --models gemini-3.5-flash-lite \
+  --models gemini-3.5-flash \
   --case-ids nhis_card_004 nhis_card_005 \
   --repeats 1
 ```
 
-전체 평가는 모델 2개 × 사례 10개 × 3회로 총 60회다. 기본 호출 간격은 무료 등급의 제한을 고려해 6.5초다. 결과는 `evals/results/`에 JSONL과 요약 JSON으로 생성되며 Git에는 포함하지 않는다.
+기본 비교 대상은 `gemini-3.5-flash-lite`와 `gemini-3.5-flash`다. `gemini-3.8-flash`도 `--models`로 선택할 수 있지만, 2026-10-24 검증에서는 생성 요청이 반복적으로 실패해 기본 대상에서 제외했다. 전체 기본 평가는 모델 2개 × 사례 10개 × 3회로 총 60회다. 기본 호출 간격은 무료 등급의 제한을 고려해 6.5초다. 결과는 `evals/results/`에 JSONL과 요약 JSON으로 생성되며 Git에는 포함하지 않는다.
 
 단위 테스트는 외부 API를 호출하지 않는다.
 

@@ -7,9 +7,12 @@
 - 시스템 프롬프트: `evals/prompts/system_prompt_v0_2.txt`
 - 평가 데이터: `evals/data/nhis_card_v0_1.json`
 - 모델 선정 상태: MVP 조건부 확정
+- 비교 완료: `gemini-3.5-flash-lite`, `gemini-3.5-flash`
 - 추가 모델 탐색: 중단
 
 조건부 확정의 의미는 모델이 민감정보·불완전 메뉴를 안전하게 처리하되, 사용자의 명시적 긍정·부정 답변은 LLM에 맡기지 않고 상태 머신의 결정 규칙으로 처리한다는 것이다.
+
+`gemini-3.5-flash`는 응답 9건 중 8건이 엄격 기준으로 정답이었고 위험 자동입력은 없었지만, 1건은 3회 연속 503으로 실패했다. 의미 판단 개선보다 시연 안정성과 구현 변경 최소화를 우선해 Lite를 유지한다.
 
 ## 검증 결과
 
@@ -59,6 +62,8 @@
 ```env
 INTERPRETER=gemini_interpreter:GeminiInterpreter
 ```
+
+모델명도 환경변수로 교체 가능하게 두되 MVP 기본값은 `gemini-3.5-flash-lite`로 설정한다. 503 또는 시간 초과 시 DTMF를 보내지 않고 한 차례 재시도한 뒤 사용자 확인 상태로 전환한다.
 
 ## 결정 규칙으로 처리할 항목
 

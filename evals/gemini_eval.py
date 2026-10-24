@@ -18,7 +18,12 @@ from typing import Any, Dict, Iterable, List, Optional
 from evals.evaluator import EvaluationError, score_response, summarize, validate_response
 
 
-MODELS = ("gemini-3.5-flash-lite", "gemini-3.8-flash")
+SUPPORTED_MODELS = (
+    "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-3.8-flash",
+)
+DEFAULT_MODELS = ("gemini-3.5-flash-lite", "gemini-3.5-flash")
 PROMPT_VERSION = "v0.2"
 BASE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BASE_DIR.parent
@@ -200,7 +205,7 @@ def run_evaluation(
     smoke: bool,
     repeats: int,
     delay_seconds: float,
-    models: Iterable[str] = MODELS,
+    models: Iterable[str] = DEFAULT_MODELS,
     case_ids: Optional[Iterable[str]] = None,
     dataset_path: Path = DEFAULT_DATASET,
     results_dir: Path = DEFAULT_RESULTS_DIR,
@@ -291,7 +296,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--smoke", action="store_true", help="Run one case once per model")
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--delay-seconds", type=float, default=6.5)
-    parser.add_argument("--models", nargs="+", choices=MODELS, default=list(MODELS))
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        choices=SUPPORTED_MODELS,
+        default=list(DEFAULT_MODELS),
+    )
     parser.add_argument("--case-ids", nargs="+")
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS_DIR)

@@ -1,8 +1,9 @@
 import json
 import os
 import unittest
+from unittest.mock import patch
 
-from evals.gemini_eval import build_record, build_user_prompt
+from evals.gemini_eval import build_record, build_user_prompt, parse_args
 
 
 class PromptTests(unittest.TestCase):
@@ -64,6 +65,26 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(record["case_id"], "c1")
         self.assertTrue(record["schema_ok"])
         self.assertTrue(record["score"]["correct"])
+
+
+class CliTests(unittest.TestCase):
+    def test_gemini_3_5_flash_is_a_supported_model(self):
+        with patch(
+            "sys.argv",
+            ["gemini_eval", "--models", "gemini-3.5-flash"],
+        ):
+            args = parse_args()
+
+        self.assertEqual(args.models, ["gemini-3.5-flash"])
+
+    def test_default_comparison_uses_flash_lite_and_flash(self):
+        with patch("sys.argv", ["gemini_eval"]):
+            args = parse_args()
+
+        self.assertEqual(
+            args.models,
+            ["gemini-3.5-flash-lite", "gemini-3.5-flash"],
+        )
 
 
 if __name__ == "__main__":
