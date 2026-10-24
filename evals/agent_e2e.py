@@ -31,6 +31,10 @@ DEFAULT_GOAL_PROMPT = BASE_DIR / "prompts" / "goal_agent_v0_1.txt"
 DEFAULT_MENU_PROMPT = BASE_DIR / "prompts" / "system_prompt_v0_2.txt"
 DEFAULT_RESULTS_DIR = BASE_DIR / "results"
 DEFAULT_MODELS = ("gemini-3.5-flash",)
+GOAL_PROMPTS = {
+    "goal-agent-v0.1": DEFAULT_GOAL_PROMPT,
+    "goal-agent-v0.2": BASE_DIR / "prompts" / "goal_agent_v0_2.txt",
+}
 
 GOAL_OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -39,6 +43,7 @@ GOAL_OUTPUT_SCHEMA: dict[str, Any] = {
             "type": "string",
             "enum": [
                 "NHIS_HEALTH_INSURANCE_CARD_ISSUE",
+                "KB_ACCOUNT_BALANCE_INQUIRY",
                 "OTHER",
                 "UNKNOWN",
             ],
@@ -82,6 +87,15 @@ GenerateMenuBatch = Callable[
     [list[dict[str, Any]]],
     dict[str, tuple[dict[str, Any], int]],
 ]
+
+
+def resolve_goal_prompt(prompt_version: str) -> Path:
+    try:
+        return GOAL_PROMPTS[prompt_version]
+    except KeyError as exc:
+        raise ValueError(
+            f"Unknown goal prompt version: {prompt_version}"
+        ) from exc
 
 
 def build_goal_user_prompt(history: list[dict[str, str]]) -> str:
@@ -497,7 +511,9 @@ def run_evaluation(
     if limit is not None:
         scenarios = scenarios[:limit]
 
-    goal_system_prompt = DEFAULT_GOAL_PROMPT.read_text(encoding="utf-8")
+    goal_system_prompt = resolve_goal_prompt(dataset["prompt_version"]).read_text(
+        encoding="utf-8"
+    )
     menu_system_prompt = DEFAULT_MENU_PROMPT.read_text(encoding="utf-8")
     records: list[dict[str, Any]] = []
     selected_models = tuple(models)

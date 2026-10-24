@@ -41,6 +41,18 @@ class GoalResponseValidationTests(unittest.TestCase):
                 )
             )
 
+    def test_accepts_kb_account_balance_intent(self):
+        response = goal_response(
+            intent="KB_ACCOUNT_BALANCE_INQUIRY",
+            normalized_goal="국민은행 계좌 잔액 조회",
+            assistant_message="계좌 잔액 조회 메뉴를 찾아볼게요.",
+        )
+
+        self.assertEqual(
+            validate_goal_response(response)["intent"],
+            "KB_ACCOUNT_BALANCE_INQUIRY",
+        )
+
 
 class GoalTurnScoringTests(unittest.TestCase):
     def test_scores_expected_intent_action_and_destination(self):

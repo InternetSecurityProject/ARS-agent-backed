@@ -9,6 +9,7 @@ from typing import Any, Iterable
 
 GOAL_INTENTS = {
     "NHIS_HEALTH_INSURANCE_CARD_ISSUE",
+    "KB_ACCOUNT_BALANCE_INQUIRY",
     "OTHER",
     "UNKNOWN",
 }

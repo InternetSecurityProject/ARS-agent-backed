@@ -1,9 +1,11 @@
 import unittest
 
 from evals.agent_e2e import (
+    GOAL_OUTPUT_SCHEMA,
     build_goal_batch_prompt,
     build_goal_user_prompt,
     build_menu_batch_prompt,
+    resolve_goal_prompt,
     run_scenario,
     run_scenarios_batched,
 )
@@ -33,6 +35,21 @@ def menu_payload(action, selected_input=None, sensitive=False):
 
 
 class GoalPromptTests(unittest.TestCase):
+    def test_resolves_prompt_from_dataset_version(self):
+        self.assertEqual(
+            resolve_goal_prompt("goal-agent-v0.2").name,
+            "goal_agent_v0_2.txt",
+        )
+
+    def test_rejects_unknown_prompt_version(self):
+        with self.assertRaisesRegex(ValueError, "Unknown goal prompt version"):
+            resolve_goal_prompt("goal-agent-v9.9")
+
+    def test_goal_schema_allows_kb_balance_intent(self):
+        intents = GOAL_OUTPUT_SCHEMA["properties"]["intent"]["enum"]
+
+        self.assertIn("KB_ACCOUNT_BALANCE_INQUIRY", intents)
+
     def test_prompt_contains_only_conversation_history(self):
         history = [
             {"role": "user", "text": "보험증 받고 싶어"},
