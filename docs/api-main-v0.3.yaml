@@ -1,0 +1,313 @@
+api:
+  title: ARS 자동화 API
+  version: "0.3"
+  source:
+    branch: main
+    commit: 5ac9777
+  base_url: "http://{host}/v1"
+  production_protocol:
+    rest: https
+    websocket: wss
+
+authentication:
+  create_session:
+    header: "X-App-Key: {app_key}"
+  session_rest:
+    header: "Authorization: Bearer {session_token}"
+  session_websocket:
+    query: "?token={session_token}"
+  token_expiration:
+    after_session_end: 24h
+
+constraints:
+  concurrent_calls: 1
+  phone_number:
+    format: digits
+    min_length: 3
+    max_length: 13
+  current_interpreter: MockInterpreter
+  production_ai_connected: false
+
+rest:
+  - method: POST
+    path: /v1/sessions
+    description: 세션을 생성하고 즉시 기관에 전화를 건다.
+    auth: X-App-Key
+    request:
+      content_type: application/json
+      body:
+        phone_number:
+          type: string
+          required: true
+          example: "1577-1000"
+        goal:
+          type: string
+          required: true
+          example: 건강보험증을 발급받고 싶어
+    response:
+      status: 201
+      body:
+        session_id: ses_4b8e21
+        session_token: st_...
+        events_url: "ws://{host}/v1/sessions/{session_id}/events"
+        audio_url: "ws://{host}/v1/sessions/{session_id}/audio"
+        phone_number: "15771000"
+        status: dialing
+        goal_summary: 건강보험증 발급 메뉴를 찾아드릴게요.
+    errors:
+      400: invalid_request
+      401: unauthorized
+      409: invalid_state
+
+  - method: POST
+    path: /v1/sessions/{session_id}/actions
+    description: 통화 중 사용자가 응답하거나 전화기를 조작한다.
+    auth: session_token
+    request:
+      one_of:
+        - type: answer
+          description: AI의 재질문에 문장으로 답한다.
+          fields:
+            request_id: string
+            text: string
+          example:
+            type: answer
+            request_id: req_1
+            text: 집으로 받고 싶어
+
+        - type: select
+          description: 재질문 후보 중 하나를 선택한다.
+          fields:
+            request_id: string
+            key: string
+          example:
+            type: select
+            request_id: req_1
+            key: "1"
+
+        - type: key
+          description: DTMF 키를 직접 전송하고 AI 판단을 10초간 보류한다.
+          fields:
+            key:
+              type: string
+              pattern: "^[0-9*#]{1,4}$"
+          example:
+            type: key
+            key: "3"
+
+        - type: secure_input
+          description: 민감정보를 DTMF로 전송하고 메모리에서 폐기한다.
+          fields:
+            request_id: string
+            digits:
+              type: string
+              pattern: "^[0-9*#]{1,20}$"
+          example:
+            type: secure_input
+            request_id: req_2
+            digits: "******"
+
+        - type: revise_goal
+          description: 첫 번째 번호를 누르기 전에 목적을 수정한다.
+          fields:
+            text: string
+          example:
+            type: revise_goal
+            text: 건강보험증 발급을 원해
+
+        - type: cancel
+          description: 통화를 종료한다.
+          example:
+            type: cancel
+    success_response:
+      status: 200
+      body:
+        accepted: true
+    errors:
+      400:
+        - invalid_request
+      401:
+        - unauthorized
+      404:
+        - not_found
+      409:
+        - invalid_state
+        - sensitive_input_blocked
+
+  - method: GET
+    path: /v1/sessions/{session_id}/result
+    description: 현재 통화 상태 또는 종료 결과를 조회한다.
+    auth: session_token
+    responses:
+      202:
+        description: 통화 진행 중
+        body:
+          status: listening
+      200:
+        description: 통화 종료
+        body:
+          outcome:
+            enum:
+              - success
+              - partial
+              - failed
+          end_reason: completed
+          summary: 건강보험증 발급 신청이 완료되었습니다.
+          key_info: []
+          handoff_script: null
+          path: []
+          duration_sec: 85
+
+  - method: GET
+    path: /v1/health
+    description: 개발용 서버 상태를 확인한다.
+    auth: none
+    response:
+      backend:
+        enum:
+          - sim
+          - clawops
+      stt:
+        enum:
+          - none
+          - whisper
+      interpreter: interpreter:MockInterpreter
+      mock_goals: []
+      active_session: null
+
+  - method: GET
+    path: /
+    description: 백엔드 시험용 웹 화면을 반환한다.
+    auth: none
+    response:
+      content_type: text/html
+
+websockets:
+  events:
+    path: /v1/sessions/{session_id}/events
+    direction: server_to_app
+    auth: "?token={session_token}"
+    format: JSON
+    on_connect:
+      first_event: snapshot
+    envelope:
+      event: status_changed
+      at: "2026-10-24T15:00:00+09:00"
+      data: {}
+    event_types:
+      snapshot:
+        fields:
+          - status
+          - message
+          - goal
+          - goal_summary
+          - path
+          - captions
+          - pending_request
+          - summary
+          - end_reason
+      status_changed:
+        fields:
+          - status
+          - message
+      caption:
+        fields:
+          - step
+          - speaker
+          - text
+          - at
+      path_updated:
+        fields:
+          - step
+          - text
+          - options
+          - selected
+          - actor
+      request:
+        fields:
+          - request_id
+          - kind
+          - reason
+          - message
+          - expires_at
+        kind:
+          clarification:
+            response_actions:
+              - answer
+              - select
+          secure_input:
+            response_actions:
+              - secure_input
+      input_rejected:
+        fields:
+          - keys
+          - actor
+          - ars_prompt
+          - retry_count
+          - message
+      summary:
+        fields:
+          - kind
+          - summary
+          - key_info
+          - handoff_script
+      ended:
+        fields:
+          - end_reason
+          - message
+          - detail
+
+  audio:
+    path: /v1/sessions/{session_id}/audio
+    direction: bidirectional
+    auth: "?token={session_token}"
+    format:
+      encoding: G.711 mu-law
+      sample_rate: 8000
+      channels: 1
+      frame_duration_ms: 20
+      frame_size_bytes: 160
+    server_to_app:
+      description: 기관 ARS 또는 상담원 음성
+    app_to_server:
+      description: connected_to_agent 상태에서 사용자 마이크 음성 전달
+      otherwise: discarded
+
+session_states:
+  - dialing
+  - listening
+  - selecting
+  - awaiting_user
+  - listening_result
+  - agent_done
+  - waiting_agent
+  - connected_to_agent
+  - ended
+
+end_reasons:
+  success:
+    - completed
+  partial:
+    - agent_call_ended
+    - message_sent
+  failed:
+    - user_input_timeout
+    - out_of_hours
+    - ars_rejected
+    - not_found
+    - loop_detected
+    - user_canceled
+    - no_answer
+    - busy
+    - failed
+    - max_duration
+
+current_main_limitations:
+  - 실제 AI 대신 MockInterpreter가 기본으로 연결되어 있다.
+  - secure_input은 별도 엔드포인트가 아니라 actions에 포함되어 있다.
+  - 민감정보 전송 후 secure_review 없이 AI 처리가 자동 재개된다.
+  - resume_agent 액션이 없다.
+  - WebSocket 이벤트에 event_id가 없다.
+  - WebSocket 토큰을 URL query로 전달한다.
+  - 세션 종료 후 토큰이 24시간 유지된다.
+  - 상담원 오디오 중계는 실제 통화 검증이 필요하다.
