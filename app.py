@@ -18,6 +18,7 @@ from pathlib import Path
 from fastapi import FastAPI, Header, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
+from audio import Segmenter
 from config import Settings, settings as default_settings
 from interpreter import load_interpreter
 from navigator import Navigator
@@ -26,13 +27,25 @@ from stt import make_recognizer
 from telephony import ClawOpsBackend, SimBackend
 
 log = logging.getLogger("ars.app")
+_PREFETCH_TASKS: set[asyncio.Task] = set()
 HERE = Path(__file__).parent
 
 
 def build_deps(st: Settings) -> Deps:
     backend = (SimBackend(st.sim_tree, st.sim_speed, st.sim_audio, st.sim_voice) if st.backend == "sim"
                else ClawOpsBackend(st.clawops_from, st.dtmf_mode))
-    recognizer = make_recognizer(stt_kind(st), st.whisper_model, st.whisper_device)
+    recognizer = make_recognizer(stt_kind(st), st.whisper_model, st.whisper_device, st.vad_rms)
+    prefetch = getattr(recognizer, "prefetch", None)
+    if prefetch and st.stt_prefetch:
+        # ARS 가 말하는 동안 단락 앞부분을 미리 인식한다 (Segmenter 가 쉼마다 넘김)
+        def on_chunk(prefix: bytes, start: int) -> None:
+            t = asyncio.get_running_loop().create_task(prefetch(prefix, start))
+            _PREFETCH_TASKS.add(t)  # 작업이 끝나기 전에 사라지지 않게 참조를 둔다
+            t.add_done_callback(_PREFETCH_TASKS.discard)
+
+        Segmenter.on_chunk = staticmethod(on_chunk)
+    else:
+        Segmenter.on_chunk = None
     interp = load_interpreter(st.interpreter)
     nav = Navigator(interp, st.match_threshold, st.margin, st.max_revisit, st.max_presses, st.low_threshold)
     return Deps(st, backend, recognizer, interp, nav)

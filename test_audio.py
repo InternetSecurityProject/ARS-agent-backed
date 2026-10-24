@@ -64,3 +64,43 @@ def test_clawops_fail_reason_mapping():
     m = ClawOpsBackend.FAIL_REASON
     assert m["busy"] == "busy" and m["no-answer"] == "no_answer" and m["rejected"] == "no_answer"
     assert m["canceled"] == "local_hangup" and m["failed"] == "failed"
+
+
+def test_segmenter_hands_chunks_at_pauses():
+    calls = []
+    seg = Segmenter(threshold=500, silence_ms=1200)
+    seg.on_chunk = lambda prefix, start: calls.append((len(prefix), start))
+    loud, quiet = dtmf_ulaw("5")[:FRAME], b"\xff" * FRAME
+    for _ in range(2):  # 2초 말하고 0.4초 쉼 (단락 안의 쉼)
+        for _ in range(100):
+            seg.feed(loud)
+        for _ in range(20):
+            seg.feed(quiet)
+    assert len(calls) == 2 and calls[0][1] == 0 and calls[1][1] == calls[0][0]
+
+
+def test_whisper_prefetch_reuses_recognized_prefix():
+    import asyncio
+
+    from stt import WhisperRecognizer
+
+    rec = WhisperRecognizer()
+    runs = []
+
+    def fake_run(ulaw, context=""):
+        runs.append(len(ulaw))
+        return f"조각{len(runs)}"
+
+    rec._run = fake_run
+    loud, quiet = dtmf_ulaw("5")[:FRAME], b"\xff" * FRAME
+    a = loud * 100
+    b = a + loud * 100
+    whole = b + quiet * 45  # 마지막 조각 뒤 단락 끝 무음
+
+    async def go():
+        await rec.prefetch(a, 0)
+        await rec.prefetch(b, len(a))
+        return await rec.recognize(whole)
+
+    assert asyncio.run(go()) == "조각1 조각2"
+    assert runs == [len(a), len(b) - len(a)]  # 앞부분은 다시 인식하지 않고, 끝 무음은 인식하지 않는다

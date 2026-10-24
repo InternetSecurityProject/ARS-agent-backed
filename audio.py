@@ -122,7 +122,15 @@ class Segmenter:
 
     100ms 이상 소리가 나면 단락 시작, paragraph_silence_ms 이상 무음이면 단락 종료로 본다.
     mute() 로 지정한 구간(우리가 송출한 DTMF 톤의 반향)은 무시한다.
+
+    미리 인식: on_chunk 가 있으면 단락 안에서 잠깐 쉴 때(pause_ms) 그때까지의 단락 음성과 직전에 넘긴 위치를
+    on_chunk(prefix, start) 로 넘긴다. STT 가 ARS 가 말하는 동안 앞부분을 인식해 두어 단락이 끝난 뒤의 인식 시간을 줄인다.
+    on_chunk 는 클래스 기본값으로 둘 수 있다 (서버가 시작할 때 STT 에 맞춰 지정, 동시 통화 1건).
     """
+
+    on_chunk = None          # Callable[[bytes, int], None] | None
+    pause_ms = 300           # 단락 안의 쉼으로 볼 무음 길이
+    min_chunk_ms = 1500      # 미리 인식으로 넘길 최소 길이 (너무 짧으면 낱말이 잘린다)
 
     def __init__(self, threshold: float = 500, silence_ms: int = 1200, max_s: float = 30.0) -> None:
         self.threshold = threshold
@@ -137,6 +145,7 @@ class Segmenter:
         self.loud_run = 0
         self.quiet_run = 0
         self.frames = 0
+        self.sent = 0  # 미리 인식으로 넘긴 위치 (바이트)
 
     def mute(self, seconds: float) -> None:
         self._mute_frames = max(self._mute_frames, int(seconds * 50) + 5)
@@ -158,6 +167,10 @@ class Segmenter:
         self.buf.extend(frame)
         self.frames += 1
         self.quiet_run = 0 if loud else self.quiet_run + 1
+        if (self.on_chunk and self.quiet_run == self.pause_ms // 20 and self.quiet_run < self.end_frames
+                and len(self.buf) - self.sent >= self.min_chunk_ms * 8):
+            self.on_chunk(bytes(self.buf), self.sent)
+            self.sent = len(self.buf)
         if self.quiet_run >= self.end_frames or self.frames >= self.max_frames:
             seg = bytes(self.buf)
             self.reset()
