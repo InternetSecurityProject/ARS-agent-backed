@@ -15,3 +15,6 @@ venv/
 *.log
 *.wav
 _to_delete/
+
+# 음성 가상 ARS 합성 음성 캐시
+.sim_audio/

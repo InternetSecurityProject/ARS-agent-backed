@@ -30,12 +30,17 @@ HERE = Path(__file__).parent
 
 
 def build_deps(st: Settings) -> Deps:
-    backend = (SimBackend(st.sim_tree, st.sim_speed, st.sim_audio) if st.backend == "sim"
-               else ClawOpsBackend(st.clawops_from))
-    recognizer = make_recognizer("none" if st.backend == "sim" else st.stt, st.whisper_model, st.whisper_device)
+    backend = (SimBackend(st.sim_tree, st.sim_speed, st.sim_audio, st.sim_voice) if st.backend == "sim"
+               else ClawOpsBackend(st.clawops_from, st.dtmf_mode))
+    recognizer = make_recognizer(stt_kind(st), st.whisper_model, st.whisper_device)
     interp = load_interpreter(st.interpreter)
     nav = Navigator(interp, st.match_threshold, st.margin, st.max_revisit, st.max_presses, st.low_threshold)
     return Deps(st, backend, recognizer, interp, nav)
+
+
+def stt_kind(st: Settings) -> str:
+    """가상 ARS 는 문장을 직접 주므로 인식하지 않는다. 음성 가상 ARS 는 실통화와 같이 인식한다."""
+    return "none" if st.backend == "sim" and not st.sim_voice else st.stt
 
 
 def create_app(st: Settings | None = None) -> FastAPI:
@@ -172,7 +177,7 @@ def create_app(st: Settings | None = None) -> FastAPI:
     async def health():
         a = manager.active()
         ex = getattr(deps.interp, "goal_examples", None)
-        return {"backend": st.backend, "stt": "none" if st.backend == "sim" else st.stt, "interpreter": st.interpreter,
+        return {"backend": st.backend, "stt": stt_kind(st), "sim_voice": st.sim_voice, "interpreter": st.interpreter,
                 "mock_goals": ex() if ex else [], "active_session": a.id if a else None}
 
     return app
@@ -181,6 +186,8 @@ def create_app(st: Settings | None = None) -> FastAPI:
 def main() -> None:
     ap = argparse.ArgumentParser(description="ARS 자동화 API 서버")
     ap.add_argument("--sim", action="store_true", help="가상 ARS 로 실행")
+    ap.add_argument("--sim-voice", action="store_true", help="음성 가상 ARS (TTS 안내 → STT, DTMF 톤 인식)")
+    ap.add_argument("--sim-tree", help="가상 ARS 메뉴 트리 (예: sim_nhis.json)")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--debug", action="store_true")
@@ -189,11 +196,15 @@ def main() -> None:
                         format="%(asctime)s %(name)s %(message)s", datefmt="%H:%M:%S")
     logging.getLogger("clawops").setLevel(logging.INFO if a.debug else logging.WARNING)
     st = Settings()
-    if a.sim:
+    if a.sim or a.sim_voice:
         st.backend = "sim"
+    if a.sim_voice:
+        st.sim_voice = True
+    if a.sim_tree:
+        st.sim_tree = a.sim_tree
     import uvicorn
 
-    log.info("백엔드=%s STT=%s 해석기=%s", st.backend, "none" if st.backend == "sim" else st.stt, st.interpreter)
+    log.info("백엔드=%s%s STT=%s 해석기=%s", st.backend, "(음성)" if st.sim_voice else "", stt_kind(st), st.interpreter)
     uvicorn.run(create_app(st), host=a.host, port=a.port, log_level="info")
 
 

@@ -48,6 +48,8 @@ def dtmf_ulaw(keys: str, tone_ms: int = 150, gap_ms: int = 100) -> bytes:
         if ch not in _TONE_CACHE:
             _TONE_CACHE[ch] = pcm16_to_ulaw(_pcm(DTMF_HZ[ch], tone_ms, 0.5) + _silence(gap_ms))
         out += _TONE_CACHE[ch]
+    if len(out) % FRAME:
+        out += b"\xff" * (FRAME - len(out) % FRAME)  # 20ms(160바이트) 프레임 단위로 맞춘다 (마지막 프레임이 잘리지 않게)
     return bytes(out)
 
 
@@ -58,6 +60,52 @@ def hum_ulaw(ms: int = 20) -> bytes:
 
 
 SILENCE_FRAME = b"\xff" * FRAME
+
+_ROWS = (697, 770, 852, 941)
+_COLS = (1209, 1336, 1477)
+_KEY_AT = {hz: k for k, hz in DTMF_HZ.items()}
+
+
+def _goertzel(x, freq: float) -> float:
+    import numpy as np
+
+    n = len(x)
+    w = 2 * math.pi * round(n * freq / RATE) / n
+    c = 2 * math.cos(w)
+    s1 = s2 = 0.0
+    for v in x:
+        s1, s2 = v + c * s1 - s2, s1
+    return float(s1 * s1 + s2 * s2 - c * s1 * s2) / n / max(1.0, float(np.dot(x, x)))
+
+
+def detect_dtmf(ulaw: bytes, block_ms: int = 40) -> str:
+    """μ-law 오디오에서 DTMF 키 열을 찾는다 (Goertzel).
+    행·열 주파수가 각각 가장 강하고 신호 에너지 대부분을 차지하는 블록이 2개 이상 이어지면 한 번 누른 것으로 본다.
+    가상 ARS 의 키 수신과 톤 생성 검증에 쓴다."""
+    import numpy as np
+
+    pcm = np.frombuffer(ulaw_to_pcm16(ulaw), dtype=np.int16).astype(np.float64)
+    n = RATE * block_ms // 1000
+    out, prev, run = [], None, 0
+    for i in range(0, len(pcm) - n + 1, n):
+        x = pcm[i:i + n]
+        key = None
+        if np.sqrt(np.mean(x * x)) > 300:
+            rows = [_goertzel(x, f) for f in _ROWS]
+            cols = [_goertzel(x, f) for f in _COLS]
+            r, c = int(np.argmax(rows)), int(np.argmax(cols))
+            # 두 주파수가 에너지의 대부분이고 나머지 행·열보다 뚜렷이 강해야 한다 (말소리와 구분)
+            if (rows[r] + cols[c] > 0.15 and rows[r] > 4 * sorted(rows)[-2]
+                    and cols[c] > 4 * sorted(cols)[-2]):
+                key = _KEY_AT.get((_ROWS[r], _COLS[c]))
+        if key is not None and key == prev:
+            run += 1
+            if run == 2:
+                out.append(key)
+        else:
+            run = 1 if key is not None else 0
+        prev = key
+    return "".join(out)
 
 
 def rms(ulaw: bytes) -> float:

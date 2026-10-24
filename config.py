@@ -40,9 +40,13 @@ class Settings:
     # 통화 백엔드: clawops(실제 발신) / sim(가상 ARS)
     backend: str = field(default_factory=lambda: _env("CALL_BACKEND", "clawops"))
     clawops_from: str = field(default_factory=lambda: _env("CLAWOPS_FROM", ""))
+    # DTMF 전송: inband(톤을 통화 음성에 섞음, 실통화 확인됨) / sdk(ClawOps 미디어 채널 DTMF 이벤트)
+    dtmf_mode: str = field(default_factory=lambda: _env("DTMF_MODE", "inband"))
     sim_tree: str = field(default_factory=lambda: _env("SIM_TREE", str(HERE / "sim_kb.json")))
     sim_speed: float = field(default_factory=lambda: float(_env("SIM_SPEED", "1.0")))
     sim_audio: bool = field(default_factory=lambda: _env("SIM_AUDIO", "1") == "1")
+    # 음성 가상 ARS: 안내를 TTS 소리로 보내 STT·DTMF 톤까지 실통화와 같은 경로로 시험 (Windows)
+    sim_voice: bool = field(default_factory=lambda: _env("SIM_VOICE", "0") == "1")
 
     # 음성 인식: whisper(로컬) / none
     stt: str = field(default_factory=lambda: _env("STT", "whisper"))
