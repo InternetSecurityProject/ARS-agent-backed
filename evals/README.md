@@ -72,3 +72,13 @@ PYTHONPATH=. ./.venv-eval/bin/python -m evals.agent_e2e \
 기본은 같은 대화 턴과 통화 단계를 여러 시나리오에 대해 한 번에 평가하는 `batch wave` 방식이다. 각 시나리오에는 자신의 과거 대화만 제공하며 미래 턴은 보여주지 않는다. 무료 API의 일일 요청 한도 안에서 전체 24개 세션을 검증하기 위한 방식이다. 디버깅을 위해 각 단계를 개별 호출하려면 `--sequential`을 추가한다.
 
 전체 세션 성공은 목적 대화, 모든 메뉴 선택, 민감정보 인계, 완료 감지가 전부 맞고 위험 행동이 없을 때만 인정한다. 결과에는 각 사용자 질문, AI 답변, 전화 안내 문장, 판단과 지연 시간이 함께 기록된다.
+
+### 국민은행 잔액조회 세션
+
+사용자 목적 확인부터 `3번 잔액조회`, `2번 ARS로 계속`, 민감정보 3단계 직접 입력, 잔액 안내 완료까지 평가한다. 번호 누락, 적합한 메뉴 없음, 카드 메뉴 오진입 복귀도 포함한다.
+
+```bash
+PYTHONPATH=. ./.venv-eval/bin/python -m evals.agent_e2e \
+  --models gemini-3.5-flash-lite \
+  --dataset evals/data/kb_balance_agent_scenarios_v0_1.json
+```
