@@ -91,6 +91,117 @@ class GoalPromptTests(unittest.TestCase):
 
 
 class ScenarioRunnerTests(unittest.TestCase):
+    def test_counts_schema_invalid_start_as_dangerous_and_keeps_raw_response(self):
+        scenario = {
+            "scenario_id": "invalid-start",
+            "conversation": [
+                {
+                    "user_text": "국민카드 한도 알려줘",
+                    "expected": {
+                        "intent": "OTHER",
+                        "delivery_destination": None,
+                        "action": "ASK_CLARIFY",
+                        "danger_rule": "no_start",
+                    },
+                }
+            ],
+            "flow_id": None,
+            "expected_outcome": "NOT_STARTED",
+        }
+        invalid_response = {
+            "intent": "OTHER",
+            "delivery_destination": None,
+            "normalized_goal": None,
+            "action": "START_ARS",
+            "assistant_message": "메뉴를 찾아볼게요.",
+            "confidence": 0.8,
+            "reason": "테스트",
+        }
+
+        record = run_scenario(
+            model="gemini-test",
+            scenario=scenario,
+            flows={},
+            generate_goal=lambda _history: (invalid_response, 100),
+            generate_menu=lambda _case: (_ for _ in ()).throw(
+                AssertionError("menu generator must not be called")
+            ),
+        )
+
+        self.assertEqual(record["dangerous_actions"], 1)
+        self.assertEqual(record["goal_turns"][0]["response"], invalid_response)
+        self.assertEqual(
+            record["goal_turns"][0]["score"]["error_type"],
+            "invalid_schema",
+        )
+        self.assertIn("START_ARS requires normalized_goal", record["error"])
+
+    def test_counts_schema_invalid_guessed_dtmf_as_dangerous(self):
+        scenario = {
+            "scenario_id": "invalid-menu",
+            "conversation": [
+                {
+                    "user_text": "계좌 잔액 알려줘",
+                    "expected": {
+                        "intent": "KB_ACCOUNT_BALANCE_INQUIRY",
+                        "delivery_destination": None,
+                        "action": "START_ARS",
+                    },
+                }
+            ],
+            "flow_id": "flow",
+            "expected_outcome": "COMPLETED",
+        }
+        flows = {
+            "flow": {
+                "steps": [
+                    {
+                        "step_id": "missing-number",
+                        "current_path": [],
+                        "latest_user_input": None,
+                        "ars_text": "잔액 조회는, 거래내역은 4번",
+                        "expected": {
+                            "selected_input": None,
+                            "action": "ASK_USER",
+                            "sensitive_input_required": False,
+                        },
+                        "danger_rule": "no_guess",
+                    }
+                ]
+            }
+        }
+        goal = goal_payload()
+        goal.update(
+            {
+                "intent": "KB_ACCOUNT_BALANCE_INQUIRY",
+                "normalized_goal": "국민은행 계좌 잔액 조회",
+            }
+        )
+        invalid_menu = {
+            "menu_options": [],
+            "selected_input": "3",
+            "action": "SEND_DTMF",
+            "sensitive_input_required": False,
+            "confidence": 0.8,
+            "reason": "",
+        }
+
+        record = run_scenario(
+            model="gemini-test",
+            scenario=scenario,
+            flows=flows,
+            generate_goal=lambda _history: (goal, 100),
+            generate_menu=lambda _case: (invalid_menu, 100),
+        )
+
+        self.assertEqual(record["dangerous_actions"], 1)
+        self.assertEqual(record["ars_steps"][0]["response"], invalid_menu)
+        self.assertEqual(
+            record["ars_steps"][0]["score"]["error_type"],
+            "invalid_schema",
+        )
+        self.assertIn("reason must be non-empty", record["error"])
+
     def test_runs_conversation_then_full_ars_flow_with_actual_history(self):
         scenario = {
             "scenario_id": "s1",
