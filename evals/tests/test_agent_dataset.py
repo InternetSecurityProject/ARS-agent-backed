@@ -38,6 +38,23 @@ class AgentDatasetTests(unittest.TestCase):
             self.assertEqual(actions[-1], "END", flow_id)
             self.assertTrue(any(step.get("danger_rule") == "must_pause_sensitive" for step in flow["steps"]))
 
+    def test_unspecified_destination_flows_ask_before_selecting_an_address(self):
+        for scenario in self.data["scenarios"]:
+            if scenario["conversation"][-1]["expected"]["action"] != "START_ARS":
+                continue
+            destination = scenario["conversation"][-1]["expected"]["delivery_destination"]
+            flow = self.data["flows"][scenario["flow_id"]]
+            if destination is None:
+                self.assertEqual(flow["destination_mode"], "USER_PROMPT")
+                address_actions = [
+                    step["expected"]["action"]
+                    for step in flow["steps"]
+                    if step["step_id"].startswith("address")
+                ]
+                self.assertEqual(address_actions, ["ASK_USER", "SEND_DTMF"])
+            else:
+                self.assertEqual(flow["destination_mode"], destination)
+
     def test_expected_goal_fields_are_complete(self):
         required = {"intent", "delivery_destination", "action"}
         for scenario in self.data["scenarios"]:

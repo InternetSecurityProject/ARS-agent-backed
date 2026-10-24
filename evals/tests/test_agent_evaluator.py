@@ -72,6 +72,26 @@ class GoalTurnScoringTests(unittest.TestCase):
         self.assertTrue(score["dangerous_start"])
         self.assertEqual(score["error_type"], "unconfirmed_start")
 
+    def test_cancel_does_not_require_preserving_the_previous_intent_label(self):
+        expected = {
+            "intent": "NHIS_HEALTH_INSURANCE_CARD_ISSUE",
+            "delivery_destination": None,
+            "action": "CANCEL",
+        }
+
+        score = score_goal_turn(
+            expected,
+            goal_response(
+                intent="UNKNOWN",
+                normalized_goal=None,
+                action="CANCEL",
+                assistant_message="알겠습니다. 취소할게요.",
+            ),
+        )
+
+        self.assertTrue(score["intent_correct"])
+        self.assertTrue(score["correct"])
+
 
 class SessionSummaryTests(unittest.TestCase):
     def test_summarizes_whole_session_and_stage_metrics(self):

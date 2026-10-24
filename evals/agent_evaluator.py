@@ -68,7 +68,10 @@ def validate_goal_response(payload: Any) -> dict[str, Any]:
 
 def score_goal_turn(expected: dict[str, Any], payload: Any) -> dict[str, Any]:
     response = validate_goal_response(payload)
-    intent_correct = response["intent"] == expected["intent"]
+    intent_correct = (
+        expected["action"] == "CANCEL"
+        or response["intent"] == expected["intent"]
+    )
     action_correct = response["action"] == expected["action"]
     destination_correct = (
         response["delivery_destination"] == expected.get("delivery_destination")

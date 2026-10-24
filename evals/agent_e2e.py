@@ -74,6 +74,14 @@ GOAL_OUTPUT_SCHEMA: dict[str, Any] = {
 
 GenerateGoal = Callable[[list[dict[str, str]]], tuple[dict[str, Any], int]]
 GenerateMenu = Callable[[dict[str, Any]], tuple[dict[str, Any], int]]
+GenerateGoalBatch = Callable[
+    [list[dict[str, Any]]],
+    dict[str, tuple[dict[str, Any], int]],
+]
+GenerateMenuBatch = Callable[
+    [list[dict[str, Any]]],
+    dict[str, tuple[dict[str, Any], int]],
+]
 
 
 def build_goal_user_prompt(history: list[dict[str, str]]) -> str:
@@ -88,6 +96,89 @@ def build_goal_user_prompt(history: list[dict[str, str]]) -> str:
     )
 
 
+def build_goal_batch_prompt(items: list[dict[str, Any]]) -> str:
+    payload = [
+        {"id": item["id"], "conversation": item["history"]}
+        for item in items
+    ]
+    return "\n".join(
+        [
+            "각 항목의 대화 이력을 서로 독립적으로 분석하세요.",
+            "입력 id를 그대로 보존해 results 배열로 답하세요.",
+            "<batch>",
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            "</batch>",
+        ]
+    )
+
+
+def build_menu_batch_prompt(items: list[dict[str, Any]]) -> str:
+    payload = []
+    for item in items:
+        case = item["case"]
+        payload.append(
+            {
+                "id": item["id"],
+                "user_goal": case.get("user_goal"),
+                "current_path": case.get("current_path", []),
+                "latest_user_input": case.get("latest_user_input"),
+                "ars_text": case.get("ars_text", ""),
+            }
+        )
+    return "\n".join(
+        [
+            "각 항목의 현재 통화 상태를 서로 독립적으로 분석하세요.",
+            "입력 id를 그대로 보존해 results 배열로 답하세요.",
+            "<batch>",
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            "</batch>",
+        ]
+    )
+
+
+def _batch_schema(response_schema: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "results": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "response": response_schema,
+                    },
+                    "required": ["id", "response"],
+                    "additionalProperties": False,
+                },
+            }
+        },
+        "required": ["results"],
+        "additionalProperties": False,
+    }
+
+
+def _unpack_batch(
+    payload: dict[str, Any],
+    expected_ids: set[str],
+    latency_ms: int,
+) -> dict[str, tuple[dict[str, Any], int]]:
+    results = payload.get("results")
+    if not isinstance(results, list):
+        raise ValueError("batch response needs a results array")
+    unpacked: dict[str, tuple[dict[str, Any], int]] = {}
+    for item in results:
+        if not isinstance(item, dict) or set(item) != {"id", "response"}:
+            raise ValueError("invalid batch result item")
+        item_id = item["id"]
+        if not isinstance(item_id, str) or item_id in unpacked:
+            raise ValueError("invalid or duplicate batch result ID")
+        unpacked[item_id] = (item["response"], latency_ms)
+    if set(unpacked) != expected_ids:
+        raise ValueError("batch response IDs do not match request IDs")
+    return unpacked
+
+
 def _call_gemini_json(
     *,
     client: Any,
@@ -97,6 +188,7 @@ def _call_gemini_json(
     schema: dict[str, Any],
     retries: int,
     retry_delay_seconds: float,
+    max_output_tokens: int = 2_048,
 ) -> tuple[dict[str, Any], int]:
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
@@ -106,7 +198,7 @@ def _call_gemini_json(
         "systemInstruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
         "generationConfig": {
-            "maxOutputTokens": 2_048,
+            "maxOutputTokens": max_output_tokens,
             "responseMimeType": "application/json",
             "responseJsonSchema": schema,
             "thinkingConfig": {"thinkingLevel": "LOW"},
@@ -259,6 +351,115 @@ def run_scenario(
     }
 
 
+def run_scenarios_batched(
+    *,
+    model: str,
+    scenarios: list[dict[str, Any]],
+    flows: dict[str, Any],
+    generate_goal_batch: GenerateGoalBatch,
+    generate_menu_batch: GenerateMenuBatch,
+) -> list[dict[str, Any]]:
+    """Evaluate scenarios in turn-aligned waves to minimize API requests."""
+    by_id = {scenario["scenario_id"]: scenario for scenario in scenarios}
+    histories = {scenario_id: [] for scenario_id in by_id}
+    goal_outputs: dict[str, list[tuple[dict[str, Any], int]]] = {
+        scenario_id: [] for scenario_id in by_id
+    }
+    menu_outputs: dict[str, list[tuple[dict[str, Any], int]]] = {
+        scenario_id: [] for scenario_id in by_id
+    }
+
+    max_goal_turns = max(
+        (len(scenario["conversation"]) for scenario in scenarios),
+        default=0,
+    )
+    for turn_index in range(max_goal_turns):
+        items: list[dict[str, Any]] = []
+        for scenario in scenarios:
+            if turn_index >= len(scenario["conversation"]):
+                continue
+            scenario_id = scenario["scenario_id"]
+            user_text = scenario["conversation"][turn_index]["user_text"]
+            histories[scenario_id].append({"role": "user", "text": user_text})
+            items.append(
+                {
+                    "id": scenario_id,
+                    "history": [dict(entry) for entry in histories[scenario_id]],
+                }
+            )
+        responses = generate_goal_batch(items)
+        expected_ids = {item["id"] for item in items}
+        if set(responses) != expected_ids:
+            raise ValueError("goal batch response IDs do not match request IDs")
+        for item in items:
+            scenario_id = item["id"]
+            response, latency_ms = responses[scenario_id]
+            goal_outputs[scenario_id].append((response, latency_ms))
+            histories[scenario_id].append(
+                {"role": "assistant", "text": response["assistant_message"]}
+            )
+
+    started_ids = {
+        scenario_id
+        for scenario_id, outputs in goal_outputs.items()
+        if outputs and outputs[-1][0]["action"] == "START_ARS"
+    }
+    max_menu_steps = max(
+        (
+            len(flows[by_id[scenario_id]["flow_id"]]["steps"])
+            for scenario_id in started_ids
+            if by_id[scenario_id].get("flow_id")
+        ),
+        default=0,
+    )
+    for step_index in range(max_menu_steps):
+        items = []
+        for scenario_id in sorted(started_ids):
+            scenario = by_id[scenario_id]
+            flow_id = scenario.get("flow_id")
+            if not flow_id:
+                continue
+            steps = flows[flow_id]["steps"]
+            if step_index >= len(steps):
+                continue
+            normalized_goal = goal_outputs[scenario_id][-1][0]["normalized_goal"] or ""
+            step = steps[step_index]
+            items.append(
+                {
+                    "id": scenario_id,
+                    "case": {
+                        **step,
+                        "case_id": f"{scenario_id}:{step['step_id']}",
+                        "user_goal": normalized_goal,
+                    },
+                }
+            )
+        if not items:
+            continue
+        responses = generate_menu_batch(items)
+        expected_ids = {item["id"] for item in items}
+        if set(responses) != expected_ids:
+            raise ValueError("menu batch response IDs do not match request IDs")
+        for item in items:
+            menu_outputs[item["id"]].append(responses[item["id"]])
+
+    records = []
+    for scenario in scenarios:
+        scenario_id = scenario["scenario_id"]
+        goal_iter = iter(goal_outputs[scenario_id])
+        menu_iter = iter(menu_outputs[scenario_id])
+        records.append(
+            run_scenario(
+                model=model,
+                scenario=scenario,
+                flows=flows,
+                generate_goal=lambda _history, iterator=goal_iter: next(iterator),
+                generate_menu=lambda _case, iterator=menu_iter: next(iterator),
+            )
+        )
+    return records
+
+
 def _write_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
@@ -274,6 +475,7 @@ def run_evaluation(
     delay_seconds: float,
     retries: int,
     retry_delay_seconds: float,
+    batch: bool = True,
     dataset_path: Path = DEFAULT_DATASET,
     results_dir: Path = DEFAULT_RESULTS_DIR,
 ) -> dict[str, Path]:
@@ -310,6 +512,66 @@ def run_evaluation(
 
     try:
         for model in selected_models:
+            if batch:
+                batch_suffix = (
+                    "\n\n배치 모드: 각 입력은 서로 독립적입니다. "
+                    "최상위 JSON 객체의 results 배열에 id와 response를 반환하세요."
+                )
+
+                def generate_goal_batch(items: list[dict[str, Any]]):
+                    payload, latency_ms = _call_gemini_json(
+                        client=client,
+                        model=model,
+                        system_prompt=goal_system_prompt + batch_suffix,
+                        user_prompt=build_goal_batch_prompt(items),
+                        schema=_batch_schema(GOAL_OUTPUT_SCHEMA),
+                        retries=retries,
+                        retry_delay_seconds=retry_delay_seconds,
+                        max_output_tokens=8_192,
+                    )
+                    pause()
+                    return _unpack_batch(
+                        payload,
+                        {item["id"] for item in items},
+                        latency_ms,
+                    )
+
+                def generate_menu_batch(items: list[dict[str, Any]]):
+                    payload, latency_ms = _call_gemini_json(
+                        client=client,
+                        model=model,
+                        system_prompt=menu_system_prompt + batch_suffix,
+                        user_prompt=build_menu_batch_prompt(items),
+                        schema=_batch_schema(OUTPUT_SCHEMA),
+                        retries=retries,
+                        retry_delay_seconds=retry_delay_seconds,
+                        max_output_tokens=8_192,
+                    )
+                    pause()
+                    return _unpack_batch(
+                        payload,
+                        {item["id"] for item in items},
+                        latency_ms,
+                    )
+
+                model_records = run_scenarios_batched(
+                    model=model,
+                    scenarios=scenarios,
+                    flows=dataset["flows"],
+                    generate_goal_batch=generate_goal_batch,
+                    generate_menu_batch=generate_menu_batch,
+                )
+                records.extend(model_records)
+                for record in model_records:
+                    verdict = "PASS" if record["success"] else "FAIL"
+                    print(
+                        f"{model} {record['scenario_id']}: {verdict} "
+                        f"goal={record['goal_turns_correct']}/{record['goal_turns_total']} "
+                        f"ars={record['ars_steps_correct']}/{record['ars_steps_total']}",
+                        flush=True,
+                    )
+                continue
+
             for scenario in scenarios:
                 def generate_goal(history: list[dict[str, str]]):
                     result = _call_gemini_json(
@@ -391,6 +653,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--delay-seconds", type=float, default=1.0)
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--retry-delay-seconds", type=float, default=3.0)
+    parser.add_argument(
+        "--sequential",
+        action="store_true",
+        help="Call the model once per scenario step instead of batching waves",
+    )
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS_DIR)
     return parser.parse_args()
@@ -409,6 +676,7 @@ def main() -> None:
         delay_seconds=args.delay_seconds,
         retries=args.retries,
         retry_delay_seconds=args.retry_delay_seconds,
+        batch=not args.sequential,
         dataset_path=args.dataset,
         results_dir=args.results_dir,
     )

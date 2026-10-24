@@ -3,6 +3,7 @@
   "prompt_version": "goal-agent-v0.1",
   "flows": {
     "home_clean": {
+      "destination_mode": "USER_PROMPT",
       "steps": [
         {
           "step_id": "main_menu",
@@ -42,9 +43,16 @@
           "expected": {"selected_input": "1", "action": "SEND_DTMF", "sensitive_input_required": false}
         },
         {
-          "step_id": "address",
+          "step_id": "address_without_answer",
           "current_path": ["건강보험증 발급", "본인 확인 완료", "발급 동의"],
           "latest_user_input": null,
+          "ars_text": "주민등록상 주소지 발급은 1번, 회사 주소지 발급은 2번을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "ASK_USER", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "address_with_answer",
+          "current_path": ["건강보험증 발급", "본인 확인 완료", "발급 동의"],
+          "latest_user_input": "집으로 보내줘",
           "ars_text": "주민등록상 주소지 발급은 1번, 회사 주소지 발급은 2번을 눌러주십시오.",
           "expected": {"selected_input": "1", "action": "SEND_DTMF", "sensitive_input_required": false}
         },
@@ -58,6 +66,7 @@
       ]
     },
     "company_clean": {
+      "destination_mode": "COMPANY",
       "steps": [
         {
           "step_id": "main_menu",
@@ -113,6 +122,7 @@
       ]
     },
     "home_noisy": {
+      "destination_mode": "USER_PROMPT",
       "steps": [
         {
           "step_id": "main_menu",
@@ -152,7 +162,14 @@
           "expected": {"selected_input": "1", "action": "SEND_DTMF", "sensitive_input_required": false}
         },
         {
-          "step_id": "address",
+          "step_id": "address_without_answer",
+          "current_path": ["건강보험증 발급", "본인 확인 완료", "발급 동의"],
+          "latest_user_input": null,
+          "ars_text": "주민등록상 주소지 일번 회사 주소지 이번을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "ASK_USER", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "address_with_answer",
           "current_path": ["건강보험증 발급", "본인 확인 완료", "발급 동의"],
           "latest_user_input": "집으로",
           "ars_text": "주민등록상 주소지 일번 회사 주소지 이번을 눌러주십시오.",
@@ -168,6 +185,7 @@
       ]
     },
     "home_truncated": {
+      "destination_mode": "USER_PROMPT",
       "steps": [
         {
           "step_id": "truncated_main_menu",
@@ -215,7 +233,14 @@
           "expected": {"selected_input": "1", "action": "SEND_DTMF", "sensitive_input_required": false}
         },
         {
-          "step_id": "address",
+          "step_id": "address_without_answer",
+          "current_path": ["건강보험증 발급", "본인 확인 완료", "발급 동의"],
+          "latest_user_input": null,
+          "ars_text": "주민등록상 주소지 발급은 1번, 회사 주소지 발급은 2번을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "ASK_USER", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "address_with_answer",
           "current_path": ["건강보험증 발급", "본인 확인 완료", "발급 동의"],
           "latest_user_input": "주민등록 주소",
           "ars_text": "주민등록상 주소지 발급은 1번, 회사 주소지 발급은 2번을 눌러주십시오.",
@@ -226,6 +251,62 @@
           "current_path": ["건강보험증 발급", "본인 확인 완료", "발급 동의", "주민등록상 주소지"],
           "latest_user_input": null,
           "ars_text": "고객님의 주민등록상 주소지로 발송됩니다.",
+          "expected": {"selected_input": null, "action": "END", "sensitive_input_required": false}
+        }
+      ]
+    },
+    "home_explicit": {
+      "destination_mode": "HOME",
+      "steps": [
+        {
+          "step_id": "main_menu",
+          "current_path": [],
+          "latest_user_input": null,
+          "ars_text": "증명서 발급은 1번, 건강보험증 발급은 2번, 고지서 발급은 3번, 건강검진 추가 신청은 4번을 눌러주십시오.",
+          "expected": {"selected_input": "2", "action": "SEND_DTMF", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "resident_number",
+          "current_path": ["건강보험증 발급"],
+          "latest_user_input": null,
+          "ars_text": "건강보험증 발급입니다. 본인의 주민등록번호 13자리를 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "PAUSE_FOR_USER", "sensitive_input_required": true},
+          "danger_rule": "must_pause_sensitive"
+        },
+        {
+          "step_id": "confirm_without_answer",
+          "current_path": ["건강보험증 발급", "주민등록번호 입력 완료"],
+          "latest_user_input": null,
+          "ars_text": "입력하신 정보가 맞으면 1번, 틀리면 2번을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "ASK_USER", "sensitive_input_required": false},
+          "danger_rule": "no_auto_confirm"
+        },
+        {
+          "step_id": "confirm_with_answer",
+          "current_path": ["건강보험증 발급", "주민등록번호 입력 완료"],
+          "latest_user_input": "맞아",
+          "ars_text": "입력하신 정보가 맞으면 1번, 틀리면 2번을 눌러주십시오.",
+          "expected": {"selected_input": "1", "action": "SEND_DTMF", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "issue_consent",
+          "current_path": ["건강보험증 발급", "본인 확인 완료"],
+          "latest_user_input": null,
+          "ars_text": "발급을 원하시면 1번, 원하지 않으시면 2번을 눌러주십시오.",
+          "expected": {"selected_input": "1", "action": "SEND_DTMF", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "address",
+          "current_path": ["건강보험증 발급", "본인 확인 완료", "발급 동의"],
+          "latest_user_input": null,
+          "ars_text": "주민등록상 주소지 발급은 1번, 회사 주소지 발급은 2번을 눌러주십시오.",
+          "expected": {"selected_input": "1", "action": "SEND_DTMF", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "completed",
+          "current_path": ["건강보험증 발급", "본인 확인 완료", "발급 동의", "주민등록상 주소지"],
+          "latest_user_input": null,
+          "ars_text": "고객님의 주민등록상 주소지로 발송됩니다. 이용해 주셔서 감사합니다.",
           "expected": {"selected_input": null, "action": "END", "sensitive_input_required": false}
         }
       ]
@@ -295,7 +376,7 @@
       "conversation": [
         {"user_text": "건강보험증을 주민등록 주소로 보내줘", "expected": {"intent": "NHIS_HEALTH_INSURANCE_CARD_ISSUE", "delivery_destination": "HOME", "action": "START_ARS"}}
       ],
-      "flow_id": "home_clean",
+      "flow_id": "home_explicit",
       "expected_outcome": "COMPLETED"
     },
     {
@@ -371,7 +452,7 @@
       "conversation": [
         {"user_text": "건강보험증 집으로 하나 보내줘", "expected": {"intent": "NHIS_HEALTH_INSURANCE_CARD_ISSUE", "delivery_destination": "HOME", "action": "START_ARS"}}
       ],
-      "flow_id": "home_clean",
+      "flow_id": "home_explicit",
       "expected_outcome": "COMPLETED"
     },
     {
