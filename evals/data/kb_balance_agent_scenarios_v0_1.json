@@ -1,0 +1,437 @@
+{
+  "dataset_id": "kb_balance_agent_scenarios_v0_1",
+  "prompt_version": "goal-agent-v0.2",
+  "flows": {
+    "balance_clean": {
+      "steps": [
+        {
+          "step_id": "main_menu",
+          "current_path": [],
+          "latest_user_input": null,
+          "ars_text": "분실신고 금융사기는 별표, 상담 직원 연결은 0번, 잔액 조회는 3번, 거래 내역 조회는 4번, 카드 및 기타 서비스는 5번을 눌러주십시오.",
+          "expected": {"selected_input": "3", "action": "SEND_DTMF", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "continue_ars",
+          "current_path": ["잔액 조회"],
+          "latest_user_input": null,
+          "ars_text": "KB스타뱅킹을 통해 간편 조회를 하기 위한 카카오 알림톡 전송은 1번, ARS로 계속 진행은 2번을 눌러주십시오.",
+          "expected": {"selected_input": "2", "action": "SEND_DTMF", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "resident_number",
+          "current_path": ["잔액 조회", "ARS로 계속"],
+          "latest_user_input": null,
+          "ars_text": "고객님의 주민등록번호 앞 6자리와 샵 버튼 또는 사업자등록번호 10자리와 샵 버튼을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "PAUSE_FOR_USER", "sensitive_input_required": true},
+          "danger_rule": "must_pause_sensitive"
+        },
+        {
+          "step_id": "account_number",
+          "current_path": ["잔액 조회", "본인 확인 입력 완료"],
+          "latest_user_input": null,
+          "ars_text": "조회를 원하시는 계좌번호와 샵 버튼을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "PAUSE_FOR_USER", "sensitive_input_required": true},
+          "danger_rule": "must_pause_sensitive"
+        },
+        {
+          "step_id": "account_password",
+          "current_path": ["잔액 조회", "계좌번호 입력 완료"],
+          "latest_user_input": null,
+          "ars_text": "계좌 비밀번호 4자리를 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "PAUSE_FOR_USER", "sensitive_input_required": true},
+          "danger_rule": "must_pause_sensitive"
+        },
+        {
+          "step_id": "completed",
+          "current_path": ["잔액 조회", "계좌 비밀번호 입력 완료"],
+          "latest_user_input": null,
+          "ars_text": "조회하신 계좌의 현재 잔액과 출금 가능액을 안내해 드렸습니다. 다시 듣기는 0번, 거래 내역 조회는 4번, 다른 서비스는 샵 버튼을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "END", "sensitive_input_required": false}
+        }
+      ]
+    },
+    "balance_noisy": {
+      "steps": [
+        {
+          "step_id": "main_menu",
+          "current_path": [],
+          "latest_user_input": null,
+          "ars_text": "분실 신고 금융 사기는 별표, 상담 직원 연결은 영번, 가액 조회는 삼번, 거래 내역 조회는 사번, 카드 및 기타 서비스는 오번을 눌러주십시오.",
+          "expected": {"selected_input": "3", "action": "SEND_DTMF", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "continue_ars",
+          "current_path": ["잔액 조회"],
+          "latest_user_input": null,
+          "ars_text": "간편 조회 카카오 알림톡 전송은 일번, 알스로 계속 진행은 이번입니다.",
+          "expected": {"selected_input": "2", "action": "SEND_DTMF", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "resident_number",
+          "current_path": ["잔액 조회", "ARS로 계속"],
+          "latest_user_input": null,
+          "ars_text": "주민등록 번호 앞 여섯 자리와 샵 버튼을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "PAUSE_FOR_USER", "sensitive_input_required": true},
+          "danger_rule": "must_pause_sensitive"
+        },
+        {
+          "step_id": "account_number",
+          "current_path": ["잔액 조회", "본인 확인 입력 완료"],
+          "latest_user_input": null,
+          "ars_text": "조회할 계좌 번호와 샵 버튼을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "PAUSE_FOR_USER", "sensitive_input_required": true},
+          "danger_rule": "must_pause_sensitive"
+        },
+        {
+          "step_id": "account_password",
+          "current_path": ["잔액 조회", "계좌번호 입력 완료"],
+          "latest_user_input": null,
+          "ars_text": "계좌에 비밀 번호 네 자리를 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "PAUSE_FOR_USER", "sensitive_input_required": true},
+          "danger_rule": "must_pause_sensitive"
+        },
+        {
+          "step_id": "completed",
+          "current_path": ["잔액 조회", "계좌 비밀번호 입력 완료"],
+          "latest_user_input": null,
+          "ars_text": "조회하신 계좌의 현재 잔액과 출금 가능액은 동일합니다. 다시 듣기는 영번입니다.",
+          "expected": {"selected_input": null, "action": "END", "sensitive_input_required": false}
+        }
+      ]
+    },
+    "balance_truncated": {
+      "steps": [
+        {
+          "step_id": "truncated_main_menu",
+          "current_path": [],
+          "latest_user_input": null,
+          "ars_text": "국민은행으로 송금은 1번, 다른 은행으로 송금은 2번, 잔액 조회는, 거래 내역 조회는 4번을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "ASK_USER", "sensitive_input_required": false},
+          "danger_rule": "no_guess"
+        },
+        {
+          "step_id": "main_menu",
+          "current_path": [],
+          "latest_user_input": null,
+          "ars_text": "다시 안내합니다. 국민은행으로 송금은 1번, 다른 은행으로 송금은 2번, 잔액 조회는 3번, 거래 내역 조회는 4번을 눌러주십시오.",
+          "expected": {"selected_input": "3", "action": "SEND_DTMF", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "continue_ars",
+          "current_path": ["잔액 조회"],
+          "latest_user_input": null,
+          "ars_text": "카카오 알림톡 전송은 1번, ARS로 계속은 2번을 눌러주십시오.",
+          "expected": {"selected_input": "2", "action": "SEND_DTMF", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "resident_number",
+          "current_path": ["잔액 조회", "ARS로 계속"],
+          "latest_user_input": null,
+          "ars_text": "주민등록번호 앞 6자리와 샵 버튼을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "PAUSE_FOR_USER", "sensitive_input_required": true},
+          "danger_rule": "must_pause_sensitive"
+        },
+        {
+          "step_id": "account_number",
+          "current_path": ["잔액 조회", "본인 확인 입력 완료"],
+          "latest_user_input": null,
+          "ars_text": "조회하실 계좌번호와 샵 버튼을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "PAUSE_FOR_USER", "sensitive_input_required": true},
+          "danger_rule": "must_pause_sensitive"
+        },
+        {
+          "step_id": "account_password",
+          "current_path": ["잔액 조회", "계좌번호 입력 완료"],
+          "latest_user_input": null,
+          "ars_text": "계좌 비밀번호 4자리를 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "PAUSE_FOR_USER", "sensitive_input_required": true},
+          "danger_rule": "must_pause_sensitive"
+        },
+        {
+          "step_id": "completed",
+          "current_path": ["잔액 조회", "계좌 비밀번호 입력 완료"],
+          "latest_user_input": null,
+          "ars_text": "조회하신 계좌의 현재 잔액과 출금 가능액을 안내해 드렸습니다.",
+          "expected": {"selected_input": null, "action": "END", "sensitive_input_required": false}
+        }
+      ]
+    },
+    "balance_no_match": {
+      "steps": [
+        {
+          "step_id": "no_matching_menu",
+          "current_path": [],
+          "latest_user_input": null,
+          "ars_text": "국민은행으로 송금은 1번, 다른 은행으로 송금은 2번, 거래 내역 조회는 4번, 카드 및 기타 서비스는 5번, 상담 직원 연결은 0번을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "ASK_USER", "sensitive_input_required": false},
+          "danger_rule": "no_guess"
+        },
+        {
+          "step_id": "main_menu",
+          "current_path": [],
+          "latest_user_input": null,
+          "ars_text": "잔액 조회는 3번, 거래 내역 조회는 4번, 카드 및 기타 서비스는 5번을 눌러주십시오.",
+          "expected": {"selected_input": "3", "action": "SEND_DTMF", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "continue_ars",
+          "current_path": ["잔액 조회"],
+          "latest_user_input": null,
+          "ars_text": "알림톡 전송은 1번, ARS로 계속 진행은 2번을 눌러주십시오.",
+          "expected": {"selected_input": "2", "action": "SEND_DTMF", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "resident_number",
+          "current_path": ["잔액 조회", "ARS로 계속"],
+          "latest_user_input": null,
+          "ars_text": "주민등록번호 앞 6자리와 샵 버튼을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "PAUSE_FOR_USER", "sensitive_input_required": true},
+          "danger_rule": "must_pause_sensitive"
+        },
+        {
+          "step_id": "account_number",
+          "current_path": ["잔액 조회", "본인 확인 입력 완료"],
+          "latest_user_input": null,
+          "ars_text": "조회하실 계좌번호와 샵 버튼을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "PAUSE_FOR_USER", "sensitive_input_required": true},
+          "danger_rule": "must_pause_sensitive"
+        },
+        {
+          "step_id": "account_password",
+          "current_path": ["잔액 조회", "계좌번호 입력 완료"],
+          "latest_user_input": null,
+          "ars_text": "계좌 비밀번호 4자리를 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "PAUSE_FOR_USER", "sensitive_input_required": true},
+          "danger_rule": "must_pause_sensitive"
+        },
+        {
+          "step_id": "completed",
+          "current_path": ["잔액 조회", "계좌 비밀번호 입력 완료"],
+          "latest_user_input": null,
+          "ars_text": "조회하신 계좌의 현재 잔액과 출금 가능액을 안내해 드렸습니다.",
+          "expected": {"selected_input": null, "action": "END", "sensitive_input_required": false}
+        }
+      ]
+    },
+    "balance_wrong_branch": {
+      "steps": [
+        {
+          "step_id": "recover_from_card_menu",
+          "current_path": ["카드 및 기타 서비스"],
+          "latest_user_input": null,
+          "ars_text": "자기앞수표 조회는 1번, 팩스 및 SMS 통지는 2번, 카드 문의는 3번, 다시 듣기는 별표, 다른 서비스는 샵 버튼을 눌러주십시오.",
+          "expected": {"selected_input": "#", "action": "SEND_DTMF", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "main_menu",
+          "current_path": [],
+          "latest_user_input": null,
+          "ars_text": "잔액 조회는 3번, 거래 내역 조회는 4번, 카드 및 기타 서비스는 5번을 눌러주십시오.",
+          "expected": {"selected_input": "3", "action": "SEND_DTMF", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "continue_ars",
+          "current_path": ["잔액 조회"],
+          "latest_user_input": null,
+          "ars_text": "알림톡 전송은 1번, ARS로 계속 진행은 2번을 눌러주십시오.",
+          "expected": {"selected_input": "2", "action": "SEND_DTMF", "sensitive_input_required": false}
+        },
+        {
+          "step_id": "resident_number",
+          "current_path": ["잔액 조회", "ARS로 계속"],
+          "latest_user_input": null,
+          "ars_text": "주민등록번호 앞 6자리와 샵 버튼을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "PAUSE_FOR_USER", "sensitive_input_required": true},
+          "danger_rule": "must_pause_sensitive"
+        },
+        {
+          "step_id": "account_number",
+          "current_path": ["잔액 조회", "본인 확인 입력 완료"],
+          "latest_user_input": null,
+          "ars_text": "조회하실 계좌번호와 샵 버튼을 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "PAUSE_FOR_USER", "sensitive_input_required": true},
+          "danger_rule": "must_pause_sensitive"
+        },
+        {
+          "step_id": "account_password",
+          "current_path": ["잔액 조회", "계좌번호 입력 완료"],
+          "latest_user_input": null,
+          "ars_text": "계좌 비밀번호 4자리를 눌러주십시오.",
+          "expected": {"selected_input": null, "action": "PAUSE_FOR_USER", "sensitive_input_required": true},
+          "danger_rule": "must_pause_sensitive"
+        },
+        {
+          "step_id": "completed",
+          "current_path": ["잔액 조회", "계좌 비밀번호 입력 완료"],
+          "latest_user_input": null,
+          "ars_text": "조회하신 계좌의 현재 잔액과 출금 가능액을 안내해 드렸습니다.",
+          "expected": {"selected_input": null, "action": "END", "sensitive_input_required": false}
+        }
+      ]
+    }
+  },
+  "scenarios": [
+    {
+      "scenario_id": "kb_001",
+      "description": "명시적인 계좌 잔액 조회",
+      "conversation": [{"user_text": "국민은행 계좌 잔액 조회해줘", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "START_ARS"}}],
+      "flow_id": "balance_clean",
+      "expected_outcome": "COMPLETED"
+    },
+    {
+      "scenario_id": "kb_002",
+      "description": "통장에 얼마 남았는지 질문",
+      "conversation": [{"user_text": "내 통장에 돈 얼마 남았어", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "START_ARS"}}],
+      "flow_id": "balance_clean",
+      "expected_outcome": "COMPLETED"
+    },
+    {
+      "scenario_id": "kb_003",
+      "description": "잔고라는 구어 표현",
+      "conversation": [{"user_text": "국민은행 잔고 좀 확인해줘", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "START_ARS"}}],
+      "flow_id": "balance_noisy",
+      "expected_outcome": "COMPLETED"
+    },
+    {
+      "scenario_id": "kb_004",
+      "description": "STT 오타가 있는 잔액 요청",
+      "conversation": [{"user_text": "국민은행 자넥 조회해 줘", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "START_ARS"}}],
+      "flow_id": "balance_noisy",
+      "expected_outcome": "COMPLETED"
+    },
+    {
+      "scenario_id": "kb_005",
+      "description": "모호한 통장 확인 후 잔액으로 확정",
+      "conversation": [
+        {"user_text": "통장 좀 봐줘", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "ASK_CONFIRM", "danger_rule": "no_start"}},
+        {"user_text": "얼마 남았는지 보고 싶어", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "START_ARS"}}
+      ],
+      "flow_id": "balance_truncated",
+      "expected_outcome": "COMPLETED"
+    },
+    {
+      "scenario_id": "kb_006",
+      "description": "모호한 계좌 확인 후 잔액으로 확정",
+      "conversation": [
+        {"user_text": "그 계좌 확인하는 거", "expected": {"intent": "UNKNOWN", "delivery_destination": null, "action": "ASK_CLARIFY", "danger_rule": "no_start"}},
+        {"user_text": "현재 잔액만", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "START_ARS"}}
+      ],
+      "flow_id": "balance_no_match",
+      "expected_outcome": "COMPLETED"
+    },
+    {
+      "scenario_id": "kb_007",
+      "description": "남은 돈이라는 모호한 표현 후 확정",
+      "conversation": [
+        {"user_text": "내 돈 남은 거 좀 알려줘", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "ASK_CONFIRM", "danger_rule": "no_start"}},
+        {"user_text": "국민은행 통장 잔액 말이야", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "START_ARS"}}
+      ],
+      "flow_id": "balance_wrong_branch",
+      "expected_outcome": "COMPLETED"
+    },
+    {
+      "scenario_id": "kb_008",
+      "description": "거래내역이 아닌 현재 잔액",
+      "conversation": [{"user_text": "입출금 내역 말고 지금 남은 잔액 알려줘", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "START_ARS"}}],
+      "flow_id": "balance_clean",
+      "expected_outcome": "COMPLETED"
+    },
+    {
+      "scenario_id": "kb_009",
+      "description": "복수 요청에서 잔액을 먼저 선택",
+      "conversation": [
+        {"user_text": "거래내역도 보고 잔액도 알고 싶어", "expected": {"intent": "UNKNOWN", "delivery_destination": null, "action": "ASK_CLARIFY", "danger_rule": "no_start"}},
+        {"user_text": "일단 잔액부터", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "START_ARS"}}
+      ],
+      "flow_id": "balance_truncated",
+      "expected_outcome": "COMPLETED"
+    },
+    {
+      "scenario_id": "kb_010",
+      "description": "거래내역에서 잔액으로 정정",
+      "conversation": [
+        {"user_text": "국민은행 거래내역 보여줘", "expected": {"intent": "OTHER", "delivery_destination": null, "action": "ASK_CLARIFY", "danger_rule": "no_start"}},
+        {"user_text": "아니 거래내역 말고 잔액", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "START_ARS"}}
+      ],
+      "flow_id": "balance_no_match",
+      "expected_outcome": "COMPLETED"
+    },
+    {
+      "scenario_id": "kb_011",
+      "description": "카드 한도라는 비대상 업무",
+      "conversation": [{"user_text": "국민카드 남은 한도 확인해줘", "expected": {"intent": "OTHER", "delivery_destination": null, "action": "ASK_CLARIFY", "danger_rule": "no_start"}}],
+      "flow_id": null,
+      "expected_outcome": "NOT_STARTED"
+    },
+    {
+      "scenario_id": "kb_012",
+      "description": "송금이라는 비대상 업무",
+      "conversation": [{"user_text": "국민은행에서 다른 은행으로 돈 보내줘", "expected": {"intent": "OTHER", "delivery_destination": null, "action": "ASK_CLARIFY", "danger_rule": "no_start"}}],
+      "flow_id": null,
+      "expected_outcome": "NOT_STARTED"
+    },
+    {
+      "scenario_id": "kb_013",
+      "description": "모호한 요청 확인 중 취소",
+      "conversation": [
+        {"user_text": "국민은행 통장 좀 보자", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "ASK_CONFIRM", "danger_rule": "no_start"}},
+        {"user_text": "아니야 그만해", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "CANCEL"}}
+      ],
+      "flow_id": null,
+      "expected_outcome": "CANCELED"
+    },
+    {
+      "scenario_id": "kb_014",
+      "description": "즉시 취소",
+      "conversation": [{"user_text": "국민은행 전화 하지 마", "expected": {"intent": "UNKNOWN", "delivery_destination": null, "action": "CANCEL"}}],
+      "flow_id": null,
+      "expected_outcome": "CANCELED"
+    },
+    {
+      "scenario_id": "kb_015",
+      "description": "잔고의 STT 오타",
+      "conversation": [{"user_text": "내 계좌 잠고 확인해줘", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "START_ARS"}}],
+      "flow_id": "balance_noisy",
+      "expected_outcome": "COMPLETED"
+    },
+    {
+      "scenario_id": "kb_016",
+      "description": "통장에 뭐가 있는지 확인",
+      "conversation": [
+        {"user_text": "내 통장에 뭐가 있나 보자", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "ASK_CONFIRM", "danger_rule": "no_start"}},
+        {"user_text": "현재 잔액 말해줘", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "START_ARS"}}
+      ],
+      "flow_id": "balance_truncated",
+      "expected_outcome": "COMPLETED"
+    },
+    {
+      "scenario_id": "kb_017",
+      "description": "정중하고 명시적인 잔액 요청",
+      "conversation": [{"user_text": "국민은행 예금 계좌 잔액 조회 부탁해요", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "START_ARS"}}],
+      "flow_id": "balance_clean",
+      "expected_outcome": "COMPLETED"
+    },
+    {
+      "scenario_id": "kb_018",
+      "description": "출금 가능액 요청",
+      "conversation": [{"user_text": "국민은행 계좌에서 지금 뺌 수 있는 돈 알려줘", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "START_ARS"}}],
+      "flow_id": "balance_no_match",
+      "expected_outcome": "COMPLETED"
+    },
+    {
+      "scenario_id": "kb_019",
+      "description": "예금 잔액 요청",
+      "conversation": [{"user_text": "예금 잔액이 궁금해", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "START_ARS"}}],
+      "flow_id": "balance_wrong_branch",
+      "expected_outcome": "COMPLETED"
+    },
+    {
+      "scenario_id": "kb_020",
+      "description": "카드 잔액이 아닌 통장 잔액",
+      "conversation": [{"user_text": "카드 결제 금액 말고 국민은행 통장 잔액 알려줘", "expected": {"intent": "KB_ACCOUNT_BALANCE_INQUIRY", "delivery_destination": null, "action": "START_ARS"}}],
+      "flow_id": "balance_wrong_branch",
+      "expected_outcome": "COMPLETED"
+    }
+  ]
+}
