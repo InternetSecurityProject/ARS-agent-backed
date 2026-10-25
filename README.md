@@ -154,6 +154,8 @@ PowerShell 스크립트 실행이 막힌 경우 `Set-ExecutionPolicy -Scope Curr
 | 명령 | 용도 |
 | --- | --- |
 | `python app.py --sim` | 가상 ARS (실통화·과금 없음) |
+| `python app.py --sim-voice` | 음성 가상 ARS: 안내를 한국어 TTS 소리로 보내고 DTMF 톤을 해독 (STT·DTMF 까지 실통화와 같은 경로, Windows) |
+| `python app.py --sim-voice --sim-tree sim_kb_real.json` | 실제 KB 녹음 기반 조건(첫 메뉴 29초, 입력 대기 4.5초, `*`·`#` 업무 선택지, 상담원 대기 음악) |
 | `python app.py` | ClawOps 실통화 (`.env` 에 `CLAWOPS_API_KEY`, `CLAWOPS_ACCOUNT_ID`, `CLAWOPS_FROM` 입력) |
 
 - 기본 주소: `http://localhost:8000` (`--port` 로 변경)
@@ -196,11 +198,13 @@ python api_check.py real --phone 15889999 --goal "상담원 연결해줘" --sec 
 
 - `--audio`: 오디오 채널(`/audio`) 연결, 수신 음성 `audio_check.wav`(8kHz 16bit mono) 저장, 프레임 형식·수신 비율·끊김·소리 크기 출력
 - `check` 는 옵션 없이도 오디오 채널 확인 포함
-- 가상 ARS 는 음성 없음. 안내 문장을 텍스트로 직접 전달하므로 오디오 채널에는 안내 구간 동안 400Hz 시험음만 전송. 시험음이 끊김 없이 이어지면 정상
+- 가상 ARS(`--sim`)는 음성 없음. 안내 문장을 텍스트로 직접 전달하므로 오디오 채널에는 안내 구간 동안 400Hz 시험음만 전송. 시험음이 끊김 없이 이어지면 정상
+- 음성 가상 ARS(`--sim-voice`)는 오디오 채널로 합성 안내 음성이 들림
 - 실제 ARS 음성 품질은 실통화로 확인 (`python app.py` 실행 후 `real ... --audio` 실행, 저장된 WAV 재생)
 - 정상 기준: 프레임 160바이트, 수신 비율 95% 이상, 300ms 이상 멈춤 없음, 소리 구간 있음 (100ms 이상 지연 도착 횟수는 참고용 출력)
 - 실시간 청취: 시험 화면(`http://localhost:8000`)의 "ARS 소리 켜기" (같은 오디오 채널 API 사용)
 - 앱 → 서버(마이크) 방향은 상담원 연결(`connected_to_agent`) 중에만 통화로 전달되므로 실통화 상담원 연결에서 확인
+- 마이크 음성은 160바이트(20ms) 프레임으로 나눠 보내며, 160바이트에 못 미치는 나머지는 다음 데이터와 이어 붙임 (앱 녹음 단위가 160의 배수가 아니어도 끊기지 않음)
 
 ## 실시간 듣기·디버깅 (`live.py`)
 
@@ -237,13 +241,35 @@ python live.py --session ses_xxx --token st_xxx
 - 앱이 만든 세션 연결 시 세션 생성 응답의 `session_id`·`session_token` 사용 (이벤트·오디오 채널은 여러 클라이언트 동시 연결 가능)
 - 시험 화면(`http://localhost:8000`)에서도 같은 기능 제공: "ARS 소리 켜기"로 실시간 청취, 번호 입력 시 상태 카드에 번호·선택지·신뢰도 표시와 키패드 버튼 강조 (소리 켠 경우 버튼음 재생)
 
+## 음성 인식(STT)·통화 계층
+
+| 항목 | 내용 | 설정 (`.env`) |
+| --- | --- | --- |
+| STT 모델 | 로컬 faster-whisper. 기본은 한국어 저음질 음성으로 추가 학습한 Whisper small (MIT) | `WHISPER_MODEL` (`small` 등으로 변경 가능), `WHISPER_BEAM` |
+| 미리 인식 | ARS 가 말하는 동안 단락 안의 쉼(0.3초)마다 앞부분을 인식. 안내가 끝난 뒤 인식 시간 약 2초 → 0.6초 | `STT_PREFETCH=1` |
+| 단락 나누기 | 1.2초 무음이면 단락 종료, 최대 45초. 상담원 대기 음악(크기가 일정한 소리)은 무음처럼 취급해 STT 로 보내지 않음 | `VAD_RMS` |
+| 오인식 보정 | 무음·음악 구간에서 지어내는 문장 제거, ARS 키 이름 표기 보정 (예: 샷 버튼 → 샵 버튼) | — |
+| 외부 STT | OpenAI 음성 인식 선택 가능. 외부 전송이므로 민감정보를 다시 읽어 주는 구간은 인식하지 않음 | `STT=openai`, `OPENAI_STT_MODEL` |
+| DTMF | 톤을 통화 음성에 섞어 전송(실통화 확인), 20ms 프레임 단위로 맞춤. ClawOps 미디어 채널 DTMF 이벤트 선택 가능 | `DTMF_MODE=inband` / `sdk` |
+| 발신 실패 | ClawOps 종료 상태(busy·no-answer·rejected·canceled·failed)를 종료 사유로 대응 | — |
+
+STT 모델 비교 (실통화 없음, Windows 한국어 TTS 로 ARS 안내를 합성해 전화 음질로 변환)
+
+```bash
+python stt_bench.py --models small kimthegarden/whisper-small-ko-low-qual-voice-ct2
+```
+
+- 실통화 녹음 WAV(8kHz) 인식: `python stt_bench.py --models small --wav 파일.wav`
+- 음성 가상 ARS 는 안내 종료 → 키 수신 시간과 끼어들기를 서버 로그(`ars.simvoice 키 응답`)로 남김
+
 ## 자동 시험
 
 ```bash
-python -m pytest -q test_flows.py
+python -m pytest -q test_flows.py test_audio.py
 ```
 
-가상 ARS 기반 전체 흐름·`api_check.py check`·`live.py` 콘솔 시험 (실통화 없음)
+- `test_flows.py`: 가상 ARS 기반 전체 흐름·`api_check.py check`·`live.py` 콘솔 시험 (실통화 없음)
+- `test_audio.py`: DTMF 톤 생성·인식(잡음 포함)·프레임 크기, 단락 나누기·미리 인식·대기 음악 구분, STT 보정, 마이크 오디오 프레임, 발신 실패 사유
 
 ## 구조
 
@@ -255,11 +281,15 @@ python -m pytest -q test_flows.py
 | `interpreter.py` | AI 슬롯필링 연동 지점 (`Interpreter` 프로토콜, 목 구현) |
 | `mock_ai.json` | AI 자리의 목 데이터 |
 | `telephony.py` | ClawOps 실통화 백엔드, 가상 ARS 백엔드 |
-| `stt.py`, `audio.py` | 로컬 Whisper 음성 인식, μ-law·DTMF·발화 구간 처리 |
+| `stt.py`, `audio.py` | 로컬 Whisper 음성 인식(미리 인식·보정), μ-law·DTMF 생성·인식·발화 구간(대기 음악 구분) 처리 |
+| `sim_voice.py` | 음성 가상 ARS (TTS 안내 송출, DTMF 톤 해독, 대기 음악) |
 | `sim_kb.json` | 가상 ARS 메뉴 트리 (시험용, 실제 메뉴와 다름) |
+| `sim_kb_real.json` | 실제 KB 녹음 기반 가상 ARS (첫 메뉴·입력 대기 4.5초·키 배치, 하위 메뉴 일부 추정) |
+| `sim_nhis.json` | 가상 국민건강보험공단 ARS (표현·키 배치가 다른 경우 시험) |
+| `stt_bench.py` | STT 모델 비교 도구 |
 | `api_check.py` | API 호출 확인 도구 (전체 점검, 흐름별 시나리오, 오디오 채널 확인) |
 | `live.py` | 실시간 듣기·디버깅 콘솔 (앱 대역) |
-| `test_flows.py` | 자동 시험 |
+| `test_flows.py`, `test_audio.py` | 자동 시험 |
 | `static/index.html` | 시험용 앱 화면 |
 
 ## AI 슬롯필링 연동
@@ -278,4 +308,5 @@ INTERPRETER=my_module:MyInterpreter
 
 - `.env` 는 ClawOps API 키 포함, 커밋 금지 (`.gitignore` 처리)
 - ClawOps Trial 플랜: 동시 통화 1건, 발신 10분 제한
-- 첫 실통화 실행 시 Whisper 모델 다운로드 (small 약 460MB)
+- 첫 실통화·음성 가상 ARS 실행 시 Whisper 모델 다운로드 (small 계열 약 500MB)
+- ClawOps 콘솔의 통화 녹음(부가서비스)이 켜져 있으면 모든 통화가 녹음·보관되며, 사용자가 입력한 민감정보의 DTMF 톤도 녹음에 남아 숫자로 복원할 수 있음. 운영 시 끌 것
