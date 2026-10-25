@@ -168,3 +168,13 @@ def test_segmenter_does_not_mistake_speech_for_music():
     seg = Segmenter(threshold=500, silence_ms=1200)
     out = _feed_all(seg, _speech_like(25) + b"\xff" * 16000)
     assert len(out) == 1 and not seg.music  # 25초 말소리는 한 단락 그대로
+
+
+def test_no_prefetch_for_music_only_chunks():
+    from sim_voice import hold_music
+
+    calls = []
+    seg = Segmenter(threshold=500, silence_ms=1200)
+    seg.on_chunk = lambda prefix, start: calls.append(len(prefix))
+    _feed_all(seg, b"\xff" * 8000 + hold_music(20) + b"\xff" * 16000)
+    assert calls == []  # 대기 음악만 나올 때는 미리 인식을 하지 않는다

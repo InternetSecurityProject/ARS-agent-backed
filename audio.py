@@ -197,7 +197,8 @@ class Segmenter:
         self.music_frames += like_music
         self.quiet_run = 0 if loud else self.quiet_run + 1
         if (self.on_chunk and self.quiet_run == self.pause_ms // 20 and self.quiet_run < self.end_frames
-                and len(self.buf) - self.sent >= self.min_chunk_ms * 8):
+                and len(self.buf) - self.sent >= self.min_chunk_ms * 8
+                and self.music_frames < 0.6 * self.frames):  # 음악뿐인 조각은 인식하지 않는다 (CPU 를 상담원 목소리에 남긴다)
             self.on_chunk(bytes(self.buf), self.sent)
             self.sent = len(self.buf)
         if self.quiet_run >= self.end_frames or self.frames >= self.max_frames:
