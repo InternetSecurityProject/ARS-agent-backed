@@ -113,3 +113,58 @@ def test_stt_fixes_ars_terms():
     assert _clean("케이 비 청년 미래 적금 안내는 8번") == "KB 청년 미래 적금 안내는 8번"
     assert _clean("본 뱅킹 전용 메뉴는 7번") == "폰뱅킹 전용 메뉴는 7번"
     assert _clean("케이크는 3번") == "케이크는 3번"  # 일반 단어는 바꾸지 않는다
+
+
+def test_mic_audio_keeps_remainder_across_messages():
+    from audio import FrameChunker
+
+    ch = FrameChunker()
+    data = bytes(range(256)) * 16  # 4096바이트를 앱처럼 1024바이트씩 보낸다
+    frames = []
+    for i in range(0, len(data), 1024):
+        frames += ch.feed(data[i:i + 1024])
+    assert all(len(f) == FRAME for f in frames)
+    assert b"".join(frames) + ch.rest == data  # 버리는 바이트 없이 순서대로
+    assert len(frames) == 4096 // FRAME and len(ch.rest) == 4096 % FRAME
+
+
+def _speech_like(seconds: float, seed: int = 0) -> bytes:
+    """말소리처럼 크기가 출렁이는 소리 (음절 120~200ms + 짧은 쉼)."""
+    import math
+    import struct
+
+    rnd = random.Random(seed)
+    pcm = []
+    while len(pcm) < seconds * 8000:
+        n, amp, f = int(rnd.uniform(0.12, 0.2) * 8000), rnd.uniform(3000, 9000), rnd.uniform(150, 300)
+        pcm += [int(amp * math.sin(2 * math.pi * f * i / 8000) * math.sin(math.pi * i / n)) for i in range(n)]
+        pcm += [0] * int(rnd.uniform(0.04, 0.12) * 8000)
+    return pcm16_to_ulaw(struct.pack(f"<{len(pcm)}h", *pcm))
+
+
+def _feed_all(seg: Segmenter, ulaw: bytes) -> list[tuple[float, int]]:
+    out = []
+    for i in range(0, len(ulaw) - FRAME + 1, FRAME):
+        r = seg.feed(ulaw[i:i + FRAME])
+        if r is not None:
+            out.append((i / 8000, len(r)))
+    return out
+
+
+def test_segmenter_ends_announcement_when_hold_music_starts():
+    from sim_voice import hold_music
+
+    seg = Segmenter(threshold=500, silence_ms=1200)
+    speech = _speech_like(6)
+    out = _feed_all(seg, speech + hold_music(20) + _speech_like(3, seed=1) + b"\xff" * 16000)
+    # 안내 단락은 음악이 시작되고 몇 초 안에 끝나고, 음악만 있는 단락은 STT 로 보내지 않으며, 상담원 목소리는 따로 나온다
+    assert len(out) == 2
+    ann_end, ann_len = out[0]
+    assert len(speech) / 8000 < ann_end < len(speech) / 8000 + 5
+    assert out[1][0] > len(speech) / 8000 + 20
+
+
+def test_segmenter_does_not_mistake_speech_for_music():
+    seg = Segmenter(threshold=500, silence_ms=1200)
+    out = _feed_all(seg, _speech_like(25) + b"\xff" * 16000)
+    assert len(out) == 1 and not seg.music  # 25초 말소리는 한 단락 그대로

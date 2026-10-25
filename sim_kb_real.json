@@ -18,7 +18,7 @@
       "keys": {"1": "lost_agent", "2": "lost_agent", "3": "lost_agent", "*": "@back"}
     },
     "lost_agent": {"type": "agent", "say": "분실 신고 상담원과 연결해 드리겠습니다. 잠시만 기다려 주십시오.", "human": "네, KB국민은행 분실신고센터 상담원입니다."},
-    "agent": {"type": "agent", "say": "상담직원과 연결해 드리겠습니다. 잠시만 기다려 주십시오.", "human": "네, KB국민은행 상담원입니다. 무엇을 도와드릴까요?"},
+    "agent": {"type": "agent", "hold_s": 15, "say": "상담직원과 연결해 드리겠습니다. 잠시만 기다려 주십시오.", "human": "네, KB국민은행 상담원입니다. 무엇을 도와드릴까요?"},
     "easy": {"type": "end", "say": "빠른 말 또는 쉬운 말 서비스로 전환합니다."},
     "history": {"type": "result", "say": "최근 거래내역을 문자로 보내 드렸습니다. 감사합니다."},
     "card": {

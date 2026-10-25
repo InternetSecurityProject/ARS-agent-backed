@@ -18,7 +18,7 @@ from pathlib import Path
 from fastapi import FastAPI, Header, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
-from audio import Segmenter
+from audio import FrameChunker, Segmenter
 from config import Settings, settings as default_settings
 from interpreter import load_interpreter
 from navigator import Navigator
@@ -166,6 +166,7 @@ def create_app(st: Settings | None = None) -> FastAPI:
                 await ws.send_bytes(frame)
 
         down = asyncio.create_task(downlink())
+        chunker = FrameChunker()  # 연결마다 나머지를 이어 붙인다
         try:
             while True:
                 msg = await ws.receive()
@@ -173,8 +174,8 @@ def create_app(st: Settings | None = None) -> FastAPI:
                     break
                 data = msg.get("bytes")
                 if data:
-                    for i in range(0, len(data) - len(data) % 160, 160):
-                        await s.mic_audio(data[i:i + 160])
+                    for frame in chunker.feed(data):
+                        await s.mic_audio(frame)
         except (WebSocketDisconnect, RuntimeError):
             pass
         finally:

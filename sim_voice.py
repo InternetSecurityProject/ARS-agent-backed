@@ -61,10 +61,27 @@ def speech_ulaw(text: str) -> bytes:
     return f.read_bytes()
 
 
+def hold_music(seconds: float) -> bytes:
+    """상담원 연결 대기 음악 (단순한 화음 선율, 말소리만큼 크게, 끊김 없이 이어짐)."""
+    import math
+    import struct
+
+    notes = [523.3, 659.3, 784.0, 659.3, 587.3, 698.5, 880.0, 698.5]  # 도미솔미 레파라파
+    n_note = int(0.35 * 8000)
+    pcm = []
+    for i in range(int(seconds * 8000)):
+        f = notes[(i // n_note) % len(notes)]
+        k = i % n_note
+        env = min(1.0, k / 200, (n_note - k) / 200)  # 음 사이 딸깍 소리 방지
+        v = 0.6 * math.sin(2 * math.pi * f * i / 8000) + 0.3 * math.sin(2 * math.pi * f * 1.5 * i / 8000)
+        pcm.append(int(9000 * env * v))
+    return pcm16_to_ulaw(struct.pack(f"<{len(pcm)}h", *pcm))
+
+
 def prepare(tree: dict) -> None:
     """메뉴 트리의 모든 안내를 미리 합성한다 (첫 실행 시 문장당 1~2초)."""
     texts = [n["say"] for n in tree["nodes"].values()] + [n["human"] for n in tree["nodes"].values() if n.get("human")]
-    texts += ["잘못 누르셨습니다.", "입력 시간이 초과되었습니다.", "입력이 없어 통화를 종료합니다.",
+    texts += [tree.get("timeout_say", "입력 시간이 초과되었습니다."), "잘못 누르셨습니다.", "입력이 없어 통화를 종료합니다.",
               "상담원 김민지입니다. 무엇을 도와드릴까요?"]
     t0 = time.monotonic()
     for t in texts:
@@ -94,6 +111,24 @@ class VoiceSimCall(SimCall):
         if not self._cut:
             self.said_end = time.monotonic()
         self._cut = False
+
+    async def _play_node(self) -> None:
+        n = self.node
+        if n.get("type") == "agent" and n.get("hold_s"):
+            # 상담원 연결: 대기 안내 → 대기 음악 → 상담원이 받으면 음악이 끊기고 바로 말한다 (사이에 무음 없음)
+            self._input_gen += 1
+            gen = self._input_gen
+            await self._say(n["say"])
+            self._out += hold_music(n["hold_s"] * self.speed)
+            self.speaking = True
+            while self._out and not self.ended and gen == self._input_gen:
+                await asyncio.sleep(0.02)
+            self.speaking = False
+            if gen == self._input_gen and not self.ended:
+                log.info("가상 ARS 상담원 응답 (대기 음악 %.0f초 후)", n["hold_s"] * self.speed)
+                await self._say(n.get("human", "상담원 김민지입니다. 무엇을 도와드릴까요?"))
+            return
+        await super()._play_node()
 
     async def _audio_loop(self) -> None:
         t0, i = time.monotonic(), 0
