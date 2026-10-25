@@ -104,3 +104,12 @@ def test_whisper_prefetch_reuses_recognized_prefix():
 
     assert asyncio.run(go()) == "조각1 조각2"
     assert runs == [len(a), len(b) - len(a)]  # 앞부분은 다시 인식하지 않고, 끝 무음은 인식하지 않는다
+
+
+def test_stt_fixes_ars_terms():
+    # 실제 KB 녹음에서 나온 오인식
+    assert _clean("빠른 말 서비스는 샷 버튼 잔액조회는 3번") == "빠른 말 서비스는 샵 버튼 잔액조회는 3번"
+    assert _clean("국민의 평생 금융 파트너 킬로바이트 국민은행입니다") == "국민의 평생 금융 파트너 KB 국민은행입니다"
+    assert _clean("케이 비 청년 미래 적금 안내는 8번") == "KB 청년 미래 적금 안내는 8번"
+    assert _clean("본 뱅킹 전용 메뉴는 7번") == "폰뱅킹 전용 메뉴는 7번"
+    assert _clean("케이크는 3번") == "케이크는 3번"  # 일반 단어는 바꾸지 않는다

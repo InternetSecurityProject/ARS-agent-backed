@@ -261,7 +261,8 @@ class SimCall:
             await self._say("입력이 없어 통화를 종료합니다.")
             await self._remote_end()
             return
-        await self._say("입력 시간이 초과되었습니다.")
+        log.info("가상 ARS 입력 대기 초과 %d회 (%s)", self.repeats, self.node_id)
+        await self._say(self.tree.get("timeout_say", "입력 시간이 초과되었습니다."))
         await self._play_node()
 
     async def _remote_end(self) -> None:

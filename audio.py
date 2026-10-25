@@ -132,7 +132,7 @@ class Segmenter:
     pause_ms = 300           # 단락 안의 쉼으로 볼 무음 길이
     min_chunk_ms = 1500      # 미리 인식으로 넘길 최소 길이 (너무 짧으면 낱말이 잘린다)
 
-    def __init__(self, threshold: float = 500, silence_ms: int = 1200, max_s: float = 30.0) -> None:
+    def __init__(self, threshold: float = 500, silence_ms: int = 1200, max_s: float = 45.0) -> None:
         self.threshold = threshold
         self.end_frames = silence_ms // 20
         self.max_frames = int(max_s * 50)

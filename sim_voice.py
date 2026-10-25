@@ -78,17 +78,22 @@ class VoiceSimCall(SimCall):
     def __init__(self, tree: dict, handlers: CallHandlers, speed: float) -> None:
         super().__init__(tree, handlers, speed, audio=True)
         self._out = bytearray()   # 송출할 안내 음성
+        self.said_end: float | None = None  # 마지막 안내를 끝까지 말한 시각 (키 응답 시간 측정)
         self._noise = [_noise_frame() for _ in range(25)]
+        self._cut = False
 
     async def _say(self, text: str) -> None:
         if self.ended:
             return
         ulaw = await asyncio.to_thread(speech_ulaw, text)
         self._out += ulaw
-        self.speaking = True
+        self.speaking, self.said_end = True, None
         while self._out and not self.ended:  # 다 말하거나 키 입력으로 끊길 때까지
             await asyncio.sleep(0.02)
         self.speaking = False
+        if not self._cut:
+            self.said_end = time.monotonic()
+        self._cut = False
 
     async def _audio_loop(self) -> None:
         t0, i = time.monotonic(), 0
@@ -116,6 +121,12 @@ class VoiceSimCall(SimCall):
 
     async def _keys_after(self, keys: str, dur: float) -> None:
         await asyncio.sleep(dur)
+        if self._out:
+            log.info("키 응답: 안내 도중 '%s' (끼어들기)", keys if len(keys) == 1 else f"{len(keys)}자리")
+            self._cut = True
+        elif self.said_end is not None:
+            log.info("키 응답: 안내 끝 → '%s' %.1f초 (입력 대기 %.1f초)", keys if len(keys) == 1 else f"{len(keys)}자리",
+                     time.monotonic() - dur - self.said_end, self.tree.get("timeout_s", 12) * self.speed)
         self._out.clear()  # 끼어들기: 안내 중 키를 누르면 안내를 멈춘다
         for ch in keys:
             await self._key_later(ch)

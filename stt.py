@@ -27,7 +27,7 @@ from audio import rms, ulaw8k_to_pcm16k
 log = logging.getLogger("ars.stt")
 
 # ARS 안내에 자주 나오는 표현. 인식 시 어휘 힌트로 쓴다.
-ARS_PROMPT = ("안녕하십니까. 잔액조회는 1번, 거래내역조회는 2번, 상담원 연결은 0번, "
+ARS_PROMPT = ("안녕하십니까. KB국민은행입니다. 잔액조회는 1번, 거래내역조회는 2번, 상담원 연결은 0번, 다른 서비스는 샵 버튼, "
               "이전 메뉴는 별표, 다시 들으시려면 우물정자를 눌러 주십시오. 주민등록번호 앞 여섯 자리를 입력해 주십시오.")
 
 # 무음·대기 음악 구간에서 Whisper 가 지어내는 대표적인 문장
@@ -36,10 +36,20 @@ _HALLUCINATIONS = re.compile(
     r"다음\s*영상에서|^감사합니다\.?$")
 
 
+# 실제 ARS 녹음에서 반복된 오인식을 ARS 표기로 바로잡는다 (키 이름·기관명. 해석기가 기호 키를 찾을 수 있게)
+_ARS_FIXES = [
+    (re.compile(r"(샷|샾|섀)\s?(버튼|키)"), r"샵 \2"),
+    (re.compile(r"(킬로\s?바이트|힐로\s?바이트|케이\s?비|KBE)(?=\s?(국민|청년|고객|스타|\s|$))"), "KB"),
+    (re.compile(r"본\s?뱅킹"), "폰뱅킹"),
+]
+
+
 def _clean(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     if not text or _HALLUCINATIONS.search(text):
         return ""
+    for pat, rep in _ARS_FIXES:
+        text = pat.sub(rep, text)
     return text
 
 
