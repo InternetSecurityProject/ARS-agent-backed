@@ -50,7 +50,7 @@ class Settings:
 
     # 음성 인식: whisper(로컬) / none
     stt: str = field(default_factory=lambda: _env("STT", "whisper"))
-    whisper_model: str = field(default_factory=lambda: _env("WHISPER_MODEL", "small"))
+    whisper_model: str = field(default_factory=lambda: _env("WHISPER_MODEL", "kimthegarden/whisper-small-ko-low-qual-voice-ct2"))
     whisper_device: str = field(default_factory=lambda: _env("WHISPER_DEVICE", "cpu"))
     # ARS 가 말하는 동안 단락 앞부분을 미리 인식 (단락이 끝난 뒤 인식 시간 단축)
     stt_prefetch: bool = field(default_factory=lambda: _env("STT_PREFETCH", "1") == "1")

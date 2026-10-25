@@ -5,7 +5,7 @@ Recognizer 프로토콜을 구현하면 다른 STT 로 교체할 수 있다.
   - is_local: 서버 밖으로 오디오를 보내지 않으면 True. 민감정보 입력 구간(ARS 가 입력값을 다시 읽어 주는 구간)은
               로컬 STT 일 때만 인식하고, 결과의 숫자는 마스킹한다. 외부 STT 이면 해당 구간을 인식하지 않는다.
 
-  STT=whisper  로컬 faster-whisper (WHISPER_MODEL: small / medium / large-v3-turbo ...)
+  STT=whisper  로컬 faster-whisper (WHISPER_MODEL: 기본 한국어 small 모델, small / medium / large-v3-turbo ...)
   STT=openai   OpenAI 음성 인식 API (OPENAI_STT_MODEL, 기본 gpt-4o-transcribe). 외부 STT 이므로 is_local=False
   STT=none     인식하지 않음 (가상 ARS)
 """
