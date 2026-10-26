@@ -263,6 +263,8 @@ class SimCall:
             return
         log.info("가상 ARS 입력 대기 초과 %d회 (%s)", self.repeats, self.node_id)
         await self._say(self.tree.get("timeout_say", "입력 시간이 초과되었습니다."))
+        if gen != self._input_gen or self.ended:
+            return  # 안내 도중 키를 받아 다른 메뉴로 넘어갔다. 그 메뉴를 다시 재생하지 않는다
         await self._play_node()
 
     async def _remote_end(self) -> None:
