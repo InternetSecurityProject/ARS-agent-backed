@@ -70,11 +70,14 @@ class Settings:
     max_presses: int = 5
 
     # 시간 기준 (초)
-    no_response_s: float = 8.0           # 키 전송 후 새 안내가 없을 때 (7장 추가 규칙 1)
+    no_response_s: float = 8.0           # 키 전송 후 ARS 가 소리를 내지 않을 때 (7장 3항)
     clarify_expire_s: float = 30.0       # 재질문 expires_at (6.3 무응답 처리)
     clarify_drop_s: float = 60.0         # 재질문 무효 처리
     secure_expire_s: float = 60.0        # 민감정보 입력 expires_at
     user_key_hold_s: float = 10.0        # 사용자 직접 선택 후 AI 보류 (4.3 key)
+    # 상대가 끊은 뒤 마지막 안내 인식·결과 요약을 기다리는 최대 시간 (7장 7항). AI 요약 최악 응답(제한 6초 × 재시도 2회 = 12초)보다 길게.
+    # 넘기면 결과 안내 원문으로 요약을 대신하여 summary → ended 를 보낸다
+    hangup_flush_s: float = 15.0
     max_call_s: int = 600
 
 

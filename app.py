@@ -115,7 +115,7 @@ def create_app(st: Settings | None = None) -> FastAPI:
         q = s.hub.subscribe()
         try:
             await ws.send_json({"event": "snapshot", "at": now_iso(), "data": s.snapshot()})
-            while True:
+            while not (s.ended and q.empty()):  # 이미 끝난 세션이면 snapshot(ended) 와 남은 이벤트만 보내고 닫는다
                 msg = await q.get()
                 await ws.send_json(msg)
                 if msg["event"] == "ended":
@@ -155,6 +155,9 @@ def create_app(st: Settings | None = None) -> FastAPI:
             await ws.close(code=4401 if e.status == 401 else 4404, reason=e.code)
             return
         await ws.accept()
+        if s.ended:
+            await ws.close()
+            return
         q: asyncio.Queue = asyncio.Queue()
         s.audio_out.add(q)
 

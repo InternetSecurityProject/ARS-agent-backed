@@ -11,7 +11,7 @@
 콜백(CallHandlers)
   on_answer()        : 상대 응답
   on_audio(ulaw)     : 상대(ARS·상담원) 음성 프레임
-  on_transcript(txt) : 백엔드가 문장을 직접 주는 경우(sim). 실통화는 사용하지 않음
+  on_transcript(txt, started_at) : 백엔드가 문장을 직접 주는 경우(sim). started_at 은 안내를 말하기 시작한 시각(monotonic). 실통화는 사용하지 않음
   on_end(reason)     : no_answer / busy / failed / remote_hangup / local_hangup
 """
 
@@ -34,7 +34,7 @@ log = logging.getLogger("ars.call")
 class CallHandlers:
     on_answer: Callable[[], Awaitable[None]]
     on_audio: Callable[[bytes], Awaitable[None]]
-    on_transcript: Callable[[str], Awaitable[None]]
+    on_transcript: Callable[..., Awaitable[None]]
     on_end: Callable[[str], Awaitable[None]]
 
 
@@ -224,11 +224,12 @@ class SimCall:
         return self.tree["nodes"][self.node_id]
 
     async def _say(self, text: str) -> None:
+        started = time.monotonic()
         self.speaking = True
         await asyncio.sleep(max(0.01, len(text) * 0.07 * self.speed))
         self.speaking = False
         if not self.ended:
-            await self.h.on_transcript(text)
+            await self.h.on_transcript(text, started)
 
     async def _enter(self, node_id: str, push: bool = True) -> None:
         if push and node_id != self.node_id:
