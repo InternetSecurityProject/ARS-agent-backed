@@ -654,6 +654,42 @@ def test_answer_to_voice_request_waits_for_next_menu():
 
 
 
+def test_pressed_digits_never_reach_interpreter():
+    """사용자가 직접 누른 키 값(DTMF)은 AI 모듈에 넘기지 않는다.
+    민감정보 요청을 알아보지 못해 사용자가 key 로 숫자를 눌러도, score 의 path 와 handoff_script 의 경로 문장에는
+    들은 선택지의 카테고리·문장만 들어간다. 앱에 보내는 경로(PathStep)에는 그대로 남는다."""
+    async def go():
+        s, call = await manual("카드 결제일 바꾸고 싶어", user_key_hold_s=0.1, clarify_expire_s=5, clarify_drop_s=10)
+        interp = s.d.interp
+        got: list[tuple] = []
+        orig_score, orig_handoff = interp.score, interp.handoff_script
+
+        async def score(goal, options, path=None):
+            got.append(("score", list(path or [])))
+            return await orig_score(goal, options, path)
+
+        async def handoff(goal, texts):
+            got.append(("handoff", list(texts)))
+            return await orig_handoff(goal, texts)
+
+        interp.score, interp.handoff_script = score, handoff
+        await s.on_paragraph(ROOT)                                   # 카드 업무(5)
+        await s.action({"type": "key", "key": "1234"})               # 안내에 없던 키를 직접 누름 (숫자 입력)
+        await s.on_paragraph(CARD)
+        await asyncio.sleep(0.2)                                     # 직접 선택 보류 시간이 끝난 뒤 메뉴 판단 → 결제일 변경(3)
+        assert call.keys == ["5", "1234", "3"]
+        await s.on_paragraph("분실 신고 상담원과 연결 중입니다. 잠시만 기다려 주십시오.")
+        await s.on_paragraph("상담원 김민지입니다. 무엇을 도와드릴까요?")
+        assert s.status == "connected_to_agent"
+        assert [k for k, _ in got] == ["score", "score", "handoff"]
+        assert got[1] == ("score", ["카드 업무"])                      # 1234 는 경로 카테고리에 없다
+        assert got[2][1] == ["잔액조회·거래내역조회·카드 업무·상담직원 연결 중 카드 업무(5) 선택",
+                             "카드 분실 신고·결제 대금 조회·결제일 변경 중 결제일 변경(3) 선택"]
+        assert "1234" not in str(got)
+        assert [p["text"] for p in s.path][1] == "1234 입력"            # 앱에 보내는 경로에는 남는다
+    run(go())
+
+
 # ---------------------------------------------------------------------------
 # 음성 경로 시간 처리 (음성 가상 ARS 시험에서 발견된 문제)
 # ---------------------------------------------------------------------------

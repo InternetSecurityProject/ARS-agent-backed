@@ -152,6 +152,7 @@ class Session:
 
         self.captions: list[dict] = []
         self.path: list[dict] = []
+        self.ai_path_texts: list[str] = []   # AI 에 넘기는 경로 문장: 들은 선택지를 고른 단계만 (누른 키 값은 넘기지 않는다)
         self.step = 0
         self.layers: list[Layer] = []        # 키를 눌러 지나온 메뉴 (사용자·AI 공통)
         self.current: Prompt | None = None   # 가장 최근에 들은 메뉴·확인 질문
@@ -542,8 +543,7 @@ class Session:
                             "번호로 고를 수 있으면 골라 주세요.")
 
     async def _handoff(self) -> None:
-        texts = [p["text"] for p in self.path]
-        script = (await self._ai("handoff_script", self.d.interp.handoff_script(self.goal, texts),
+        script = (await self._ai("handoff_script", self.d.interp.handoff_script(self.goal, self.ai_path_texts),
                                  f"{self.goal} 건으로 연락드렸습니다.") if self.goal else None)
         self.summary = {"kind": "handoff", "summary": "상담원 연결까지 진행했습니다.", "handoff_script": script}
         self.publish("summary", self.summary)
@@ -668,6 +668,8 @@ class Session:
             "actor": actor,
         }
         self.path.append(step)
+        if p is not None and any(o.key == keys for o in p.options):
+            self.ai_path_texts.append(text)  # 직접 누른 키·이동 키는 AI 에 넘기지 않는다
         self.publish("path_updated", step)
         if self.agent_active and self.pending is None:
             self.set_status("listening")  # 재질문에 select·key 로 답한 경우도 awaiting_user 를 해제한다

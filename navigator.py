@@ -66,6 +66,10 @@ class Navigator:
         self.threshold, self.margin, self.low = threshold, margin, low_threshold
         self.max_revisit, self.max_presses = max_revisit, max_presses
 
+    @staticmethod
+    def _categories(layers: list[Layer]) -> list[str]:
+        return [c for layer in layers if (c := layer.prompt.category_of(layer.key)) is not None]
+
     async def _rank(self, goal: str, opts: list[Option], path: list[str]) -> tuple[list[tuple[Option, float]], dict[str, float]]:
         scores = await self.interp.score(goal, opts, path) if opts else {}
         ranked = sorted(((o, scores.get(o.key, 0.0)) for o in opts), key=lambda x: x[1], reverse=True)
@@ -91,7 +95,8 @@ class Navigator:
         if current.critical:
             return Decision("ask", reason="critical_action", note="중요 선택", options=current.options)
 
-        path = [layer.prompt.category_of(layer.key) for layer in history]
+        # AI 에 넘기는 경로는 들은 선택지의 카테고리뿐이다. 안내에 없던 키(직접 입력)는 넘기지 않는다
+        path = self._categories(history)
         ranked, scores = await self._rank(st.goal, opts, path)
         if ranked and ranked[0][1] >= self.threshold:
             best, s1 = ranked[0]
@@ -117,7 +122,7 @@ class Navigator:
 
         prev = history[-1]
         alts = [o for o in prev.prompt.options if o.key != prev.key]
-        alt_ranked, _ = await self._rank(st.goal, alts, path[:-1])
+        alt_ranked, _ = await self._rank(st.goal, alts, self._categories(history[:-1]))
         if not alt_ranked or alt_ranked[0][1] < self.threshold:
             return Decision("end", reason="not_found", note="현재·이전 계층 모두 일치 선택지 없음", scores=scores)
 

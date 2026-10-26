@@ -76,9 +76,11 @@ class Prompt:
     def label_of(self, key: str) -> str:
         return next((o.label for o in self.all_options() if o.key == key), key)
 
-    def category_of(self, key: str) -> str:
-        o = next((o for o in self.all_options() if o.key == key), None)
-        return (o.category or o.label) if o else key
+    def category_of(self, key: str) -> str | None:
+        """안내에서 들은 업무 선택지의 카테고리. 안내에 없던 키(직접 입력)와 이동 키는 None.
+        AI 모듈에는 사용자가 누른 키 값을 전달하지 않는다."""
+        o = next((o for o in self.options if o.key == key), None)
+        return (o.category or o.label) if o else None
 
     def signature(self) -> str:
         return "|".join(sorted(f"{o.key}:{_norm(o.label)}" for o in self.options))
@@ -118,7 +120,8 @@ class Interpreter(Protocol):
         """업무 결과. {"summary": 한 문장, "key_info": [{"label": 항목, "value": 값}, ...]}"""
 
     async def handoff_script(self, goal: str, path_texts: list[str]) -> str:
-        """상담사에게 전달할 문장."""
+        """상담사에게 전달할 문장.
+        path_texts: 안내에서 들은 선택지를 고른 단계의 경로 문장. 직접 누른 키(key)와 민감정보 입력은 들어 있지 않다."""
 
 
 # ---------------------------------------------------------------------------

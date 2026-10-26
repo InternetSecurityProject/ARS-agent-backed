@@ -711,11 +711,11 @@ reason 별 응답 방식
 | --- | --- | --- | --- |
 | `summarize_goal` | 세션 생성(4.1), `revise_goal`(첫 번호 전) | `goal`: 사용자 목적 문장 | 이해한 목적 한 문장 (`goal_summary`, 승인 질문이 아님. 예: "계좌 잔액을 확인해 드릴게요.") |
 | `classify` | ARS 안내 한 단락이 끝날 때마다 | `text`: 안내 단락 STT 결과 | Prompt (9.2). 선택지마다 `label` 을 정규화한 `category` 포함 |
-| `score` | 메뉴 판단 시, 이전 계층 확인 시 | `goal`, `options`: 정규화된 선택지 목록(`label`, `category`), `path`: 지금까지 선택한 메뉴의 `category` | 사용자 목적을 각 선택지 카테고리에 맞춘 신뢰도 0~1 (`{"3": 0.92, "4": 0.10}`). 서버는 이 값을 `path_updated.selected.confidence`, 재질문 `options[].confidence` 로 앱에 전송하고 6.3 신뢰도 구간과 비교하여 판단한다 |
+| `score` | 메뉴 판단 시, 이전 계층 확인 시 | `goal`, `options`: 정규화된 선택지 목록(`label`, `category`), `path`: 지금까지 들은 선택지 중 고른 메뉴의 `category` (직접 선택한 키·이동 키 제외) | 사용자 목적을 각 선택지 카테고리에 맞춘 신뢰도 0~1 (`{"3": 0.92, "4": 0.10}`). 서버는 이 값을 `path_updated.selected.confidence`, 재질문 `options[].confidence` 로 앱에 전송하고 6.3 신뢰도 구간과 비교하여 판단한다 |
 | `answer_confirm` | 확인 질문("맞으면 1번") 수신 시 (중요 선택이 아닌 경우) | `goal`, Prompt | 누를 키. 판단 불가 시 `null` (→ `request(clarification, unknown_prompt)`) |
 | `merge_answer` | 재질문(`clarification`)에 대한 `answer` | `goal`, `question`: 재질문 문장, `answer`: 사용자 답변 | 답변을 반영한 새 목적 문장 |
 | `summarize_result` | 결과 안내 수신 시 | `goal`, `captions`: 탐색 시작 이후 자막 목록 | `{"summary": 업무 결과 한 문장, "key_info": [{"label": 항목, "value": 값}]}` |
-| `handoff_script` | 상담원 음성 감지 시 | `goal`, `path_texts`: PathStep `text` 목록 | 상담사 전달 문장 (`summary.handoff_script`) |
+| `handoff_script` | 상담원 음성 감지 시 | `goal`, `path_texts`: 안내에서 들은 선택지를 고른 단계의 PathStep `text` 목록 (직접 선택한 키·이동 키·민감정보 입력 제외) | 상담사 전달 문장 (`summary.handoff_script`) |
 
 서버가 수행하는 판단: 신뢰도 구간(0.50·0.30)·차이(0.10) 비교, 반복 감지, 이전 계층 확인과 종료(7장 탐색 규칙), 재질문 문장 틀, 키 전송, 상태 전환. AI 모듈은 키를 직접 전송하지 않는다.
 
@@ -769,7 +769,8 @@ reason 별 응답 방식
 | `summarize_result` | 결과 안내 원문을 `summary` 로, `key_info` 는 빈 배열 |
 | `handoff_script` | "목적 건으로 연락드렸습니다." |
 
-7. 선택지 정규화는 미리 정해 둔 단어 목록으로 하지 않는다. 매 ARS 단계마다 들은 선택지를 그 자리에서 카테고리로 정규화하고(`classify`), 사용자 목적을 그 단계의 카테고리에 맞춘다(`score`). 카테고리 이름 체계는 AI 담당이 정한다.
+7. AI 모듈에는 사용자가 누른 키 값을 전달하지 않는다. `score` 의 `path` 와 `handoff_script` 의 `path_texts` 에는 안내에서 들은 선택지를 고른 단계만 카테고리·문장으로 넣으며, 직접 선택한 키(`key`)·이동 키·민감정보 입력은 제외한다. 앱에 전송하는 경로(PathStep)에는 직접 선택한 키가 그대로 남는다.
+8. 선택지 정규화는 미리 정해 둔 단어 목록으로 하지 않는다. 매 ARS 단계마다 들은 선택지를 그 자리에서 카테고리로 정규화하고(`classify`), 사용자 목적을 그 단계의 카테고리에 맞춘다(`score`). 카테고리 이름 체계는 AI 담당이 정한다.
 
 ### 9.4 목 데이터
 
