@@ -745,6 +745,57 @@ def test_hangup_during_result_summary_is_completed():
     run(go())
 
 
+def test_hangup_flush_timeout_sends_caption_summary_before_ended():
+    """결과 안내 뒤 끊겼는데 AI 요약이 제한 시간(hangup_flush_s) 안에 끝나지 않으면, 요약 없이 끝내지 않고
+    결과 안내 원문으로 summary 를 보낸 뒤 ended 를 보낸다. 늦게 끝난 AI 요약은 버린다 (명세 7장 7항)."""
+    async def go():
+        s, call = await manual("이번 달 카드 대금 알고 싶어", hangup_flush_s=0.3, clarify_expire_s=5, clarify_drop_s=10)
+
+        async def very_slow(goal, caps):
+            await asyncio.sleep(1.0)                                 # 제한 시간보다 긴 AI 응답
+            return {"summary": "늦은 AI 요약", "key_info": []}
+
+        s.d.interp.summarize_result = very_slow
+        await s.on_paragraph(ROOT)
+        await s.on_paragraph(CARD)
+        t = asyncio.create_task(s.on_paragraph(BILL))
+        await wait_for(s, lambda s: s.status == "listening_result")
+        await s._on_end("remote_hangup")
+        await wait_for(s, lambda s: s.ended, timeout=2)
+        names = [e["event"] for e in s.hub.history]
+        assert s.end_reason == "completed" and names[-1] == "ended" and names.count("summary") == 1
+        assert s.summary["summary"] == BILL                          # 결과 안내 원문
+        await t
+        await asyncio.sleep(0.05)
+        assert s.summary["summary"] == BILL and [e["event"] for e in s.hub.history].count("summary") == 1
+    run(go())
+
+
+def test_agent_connected_status_comes_before_handoff_summary():
+    """상담원 음성을 감지하면 connected_to_agent 를 먼저 보내고(마이크 중계 시작), 상담사 전달 문장(summary)은
+    AI 응답을 기다린 뒤 보낸다. 표시가 AI 응답 시간만큼 늦지 않는다."""
+    async def go():
+        s, call = await manual("상담원 연결해줘", clarify_expire_s=5, clarify_drop_s=10)
+        orig = s.d.interp.handoff_script
+
+        async def slow(goal, texts):
+            await asyncio.sleep(0.3)
+            return await orig(goal, texts)
+
+        s.d.interp.handoff_script = slow
+        await s.on_paragraph(ROOT)
+        await s.on_paragraph(AGENT_WAIT)
+        t = asyncio.create_task(s.on_paragraph(AGENT_HUMAN))
+        await wait_for(s, lambda s: s.status == "connected_to_agent", timeout=0.2)
+        assert s.summary is None                                     # 연결 표시가 먼저
+        await t
+        names = [e["event"] for e in s.hub.history]
+        statuses = [e["data"]["status"] for e in s.hub.history if e["event"] == "status_changed"]
+        assert names.index("summary") > names.index("status_changed") and statuses[-1] == "connected_to_agent"
+        assert s.summary["kind"] == "handoff" and s.summary["handoff_script"]
+    run(go())
+
+
 def test_hangup_right_after_result_speech_is_recognized():
     """결과를 말하고 바로 끊어 단락 끝 무음이 오지 않아도, 끊기 전까지 들은 안내를 인식해 completed 로 끝낸다"""
     async def go():

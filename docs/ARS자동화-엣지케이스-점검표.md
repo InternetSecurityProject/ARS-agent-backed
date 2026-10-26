@@ -161,7 +161,9 @@
 | 결과 안내 | `summary(result)` → `agent_done`, 통화 유지 | `test_goal_first_secure_input_completed` |
 | 결과 안내 직후 상대가 끊음 (요약 생성 중) | 요약을 마친 뒤 `summary` → `ended(completed)`. 종료 뒤 상태 되돌림 없음 | `test_hangup_during_result_summary_is_completed` |
 | 결과를 말하고 무음 없이 바로 끊음 | 끊기 전까지의 음성을 인식하여 `completed` | `test_hangup_right_after_result_speech_is_recognized` |
-| 상담원 대기 → 상담원 음성 | `summary(handoff)` → `connected_to_agent` | `test_agent_connection_handoff` |
+| 결과 안내 뒤 끊김, AI 요약이 제한 시간(15초) 안에 끝나지 않음 | 결과 안내 원문으로 `summary` → `ended(completed)`. 늦게 끝난 AI 요약은 버린다 | `test_hangup_flush_timeout_sends_caption_summary_before_ended` |
+| 상담원 대기 → 상담원 음성 | `connected_to_agent` 먼저(마이크 중계 시작) → AI 응답 뒤 `summary(handoff)` | `test_agent_connection_handoff`, `test_agent_connected_status_comes_before_handoff_summary` |
+| 상담사 전달 문장 생성 중 끊김 (제한 시간 초과) | 기본 문장으로 `summary(handoff)` → `ended(agent_call_ended)` | — (코드 `_after_hangup`) |
 | 상담원 대기 중 끊김 | `failed` | `test_remote_hangup_while_waiting_for_user_is_user_input_timeout` |
 | 문자 발송·업무시간 외·거절 안내 | `message_sent`(partial) / `out_of_hours` / `ars_rejected`(failed) 로 종료 | `test_ars_ending_notices_end_the_call_with_matching_reason` |
 | 음성 응답 요구 | `request(clarification, unknown_prompt)` (TTS 미구현) | `test_answer_to_voice_request_waits_for_next_menu` |
@@ -176,7 +178,7 @@
 | `answer_confirm` 실패 또는 판단 불가(`null`) | `unknown_prompt` 재질문 | `test_confirm_question_without_answer_asks_user` |
 | `summarize_goal` 실패 | 대체 문장 "'목적' 업무를 찾아 드릴게요." | `test_ai_goal_summary_and_merge_failure_fallbacks` |
 | `merge_answer` 실패 | 답변 문장을 새 목적으로 사용 | `test_ai_goal_summary_and_merge_failure_fallbacks` |
-| `summarize_result` 실패 | 결과 안내 원문을 요약으로 사용 | — (코드 `_paragraph` 결과 분기) |
+| `summarize_result` 실패 또는 끊긴 뒤 제한 시간 초과 | 결과 안내 원문을 요약으로 사용 | `test_hangup_flush_timeout_sends_caption_summary_before_ended` |
 | `handoff_script` 실패 | 대체 문장 "목적 건으로 연락드렸습니다." | — (코드 `_handoff`) |
 | AI 판단 중 통화 종료 | 판단 결과를 버린다 (키 전송 없음) | — (코드 `_decide_inner` 의 종료 확인) |
 | 키 전송 실패 (AI 경로) | 예외 없이 멈추고 종료는 `_on_end` 가 처리 | `test_key_send_failure_is_409_for_user_and_harmless_for_ai` |

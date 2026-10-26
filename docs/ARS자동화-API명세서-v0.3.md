@@ -505,7 +505,7 @@ reason 별 응답 방식
 4. 사용자가 직접 선택(4.3 `key`)한 키에도 2·3항을 동일하게 적용한다. 이 경우 `input_rejected.actor` 는 `user` 이다.
 5. 반복(`loop`) 판정은 서버가 키를 전송한 결과로 이미 지나온 메뉴에 되돌아온 경우만 센다. 키를 전송하지 않은 상태에서 ARS 가 입력 대기 시간 초과로 같은 메뉴를 다시 재생하는 경우, 다시 듣기 키로 재생된 경우(3항 포함), 사용자 확인 대기 중 재생된 경우, 입력 오류 뒤 재생된 경우, 이전 계층 복귀로 도착한 경우는 반복으로 세지 않는다.
 6. 입력 오류는 같은 단계에서 연속으로 난 경우만 센다. 키가 받아들여져 오류가 아닌 다음 안내가 오면 다시 센다.
-7. 상대(ARS·상담원)가 통화를 끊으면, 끊기 직전까지 들은 안내(무음이 오기 전에 끊긴 마지막 단락 포함)의 인식·처리와 결과 요약을 마친 뒤(최대 10초) 종료 사유를 정하고 `ended` 를 전송한다. 끊긴 뒤에 인식한 메뉴에는 키를 전송하지 않으며, 사용자 조작은 `cancel` 외에 `409 invalid_state` 로 거절한다.
+7. 상대(ARS·상담원)가 통화를 끊으면, 끊기 직전까지 들은 안내(무음이 오기 전에 끊긴 마지막 단락 포함)의 인식·처리와 결과 요약을 마친 뒤(최대 15초) 종료 사유를 정하고 `ended` 를 전송한다. 결과 안내를 들었거나 상담원이 연결된 뒤 제한 시간 안에 AI 요약이 끝나지 않으면 결과 안내 원문(상담원 연결은 기본 문장)으로 `summary` 를 전송한 뒤 `ended` 를 전송하며, 늦게 끝난 AI 요약은 버린다. 끊긴 뒤에 인식한 메뉴에는 키를 전송하지 않으며, 사용자 조작은 `cancel` 외에 `409 invalid_state` 로 거절한다.
 8. 서버가 키를 보내기 전에 시작된 안내는 키 이전 상태의 안내로 본다. 그 안내가 메뉴·확인 질문·입력 오류이면 자막만 전송하고 판단·오류 집계에 쓰지 않는다 (AI 판단이 ARS 의 입력 대기 시간보다 늦어 ARS 가 같은 메뉴를 다시 읽기 시작한 뒤 키를 누른 경우, 같은 키를 두 번 보내지 않기 위함). 키를 보내면 그때까지 듣던 끝나지 않은 단락은 버린다(6.1).
 9. AI 모듈 호출이 실패하면 서버는 통화를 멈추지 않고 9.3 의 대체 동작으로 진행한다.
 
@@ -520,7 +520,7 @@ reason 별 응답 방식
 | 중요 선택 (결제·계약·해지 최종 승인 등, 확인 질문 포함) | `status_changed(selecting)` → 키를 전송하지 않음 → `status_changed(awaiting_user)` → `request(clarification, critical_action)` → 사용자가 `select` 로 명시적으로 지시한 경우에만 전송 |
 | 민감정보 요청 | AI 처리 중단 → `status_changed(awaiting_user)` → `request(secure_input)` → 사용자 입력(`secure_input`) → 톤 전송 → ARS 의 다음 안내부터 처리 재개 |
 | 결과 안내 | `status_changed(listening_result)` → `summary(result)` → `status_changed(agent_done)`. AI 탐색을 끝내고 통화는 유지한다. 사용자가 `cancel` 하거나 ARS 가 통화를 끊으면 `ended(completed)`. 결과 요약을 마치기 전에 ARS 가 끊으면 요약을 마친 뒤 `summary(result)` → `ended(completed)` 순서로 전송한다 (`agent_done` 생략, 7항) |
-| 상담원 대기 | `status_changed(waiting_agent)` → 대기 중 계속 청취 → 상담원 음성 감지 시 `summary(handoff)` → `status_changed(connected_to_agent)` → 오디오 채널(4.5)로 사용자 통화 **[검증 필요]** |
+| 상담원 대기 | `status_changed(waiting_agent)` → 대기 중 계속 청취 → 상담원 음성 감지 시 `status_changed(connected_to_agent)` → 오디오 채널(4.5)로 사용자 통화 → `summary(handoff)` (상담사 전달 문장은 AI 응답을 기다린 뒤 전송) **[검증 필요]** |
 | 업무시간 외·거절·문자 발송 | 해당 `end_reason` 으로 통화 종료 |
 | 음성 응답 요구 (음성봇) | "버튼 메뉴" 등 전환 문구를 음성으로 송출 **[검증 필요]**. 서버 음성 송출(TTS) 구현 전까지는 `request(clarification, unknown_prompt)` 로 사용자에게 알린다 |
 | 입력 오류 안내 ("잘못 누르셨습니다", "입력 시간이 초과되었습니다") | 키 전송 후인 경우 `input_rejected` → 같은 단계의 선택지를 다시 듣고 재판단. 같은 단계에서 연속 2회이면 `request(clarification, input_rejected)` |
@@ -620,9 +620,9 @@ reason 별 응답 방식
 | 3 | ← | `status_changed` | `waiting_agent`, "상담원 연결을 기다리고 있습니다." | 상담원 연결 대기 |
 | 4 |  | (대기 음악 구간: AI 가 계속 청취, 앱 이벤트 없음) |  |  |
 | 5 | ← | `caption` | 상담원 첫 음성 ("상담원 김민지입니다. 무엇을 도와드릴까요?") | 자막 추가 |
-| 6 | ← | `summary` | `kind=handoff`, 진행 요약, `handoff_script` | 상담사 전달 문장 표시 |
-| 7 | ← | `status_changed` | `connected_to_agent`, "상담원이 연결되었습니다. 직접 말씀하세요." | 상담원 연결됨 (화면·음성) |
-| 8 | ⇄ | 오디오 채널 | 사용자 마이크 음성 전달 시작 | 통화 화면 |
+| 6 | ← | `status_changed` | `connected_to_agent`, "상담원이 연결되었습니다. 직접 말씀하세요." | 상담원 연결됨 (화면·음성) |
+| 7 | ⇄ | 오디오 채널 | 사용자 마이크 음성 전달 시작 | 통화 화면 |
+| 8 | ← | `summary` | `kind=handoff`, 진행 요약, `handoff_script` | 상담사 전달 문장 표시 (AI 응답 뒤, 연결 표시보다 늦게 올 수 있음) |
 | 9 | ← | `ended` | `end_reason=agent_call_ended` | 종료 |
 
 #### 시나리오 F. 다시 말하기 (첫 번호를 누르기 전)

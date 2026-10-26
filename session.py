@@ -308,6 +308,17 @@ class Session:
         deadline = time.monotonic() + self.s.hangup_flush_s
         while (self.stt_inflight or self._lock.locked()) and time.monotonic() < deadline:
             await asyncio.sleep(0.05)
+        if self.summary is None and (self.result_heard or self.status == "connected_to_agent"):
+            # 결과(또는 상담원 인계) 요약이 제한 시간 안에 끝나지 않았다 (AI 응답 지연). 요약 없이 끝내지 않고
+            # 안내 원문·기본 문장으로 summary 를 보낸 뒤 ended 를 보낸다. 늦게 끝난 AI 요약은 버린다 (명세 7장 7항, 9.3)
+            log.warning("끊긴 뒤 %.0f초 안에 요약이 끝나지 않아 안내 원문으로 대신한다", self.s.hangup_flush_s)
+            if self.result_heard:
+                res = self._result_fallback()
+                self.summary = {"kind": "result", "summary": res["summary"], "key_info": [], "handoff_script": None}
+            else:
+                self.summary = {"kind": "handoff", "summary": "상담원 연결까지 진행했습니다.",
+                                "handoff_script": self._handoff_fallback()}
+            self.publish("summary", self.summary)
         if self.status == "connected_to_agent":
             reason = "agent_call_ended"
         elif self.result_heard:
@@ -518,12 +529,13 @@ class Session:
             # 요약을 마치기 전에 ARS 가 끊어도 completed 이며, 요약을 마친 뒤 summary → ended 순서로 보낸다 (_after_hangup)
             self.result_heard = True
             self.set_status("listening_result")
-            caps = [c["text"] for c in self.captions[self.agent_goal_at_caption:]]
             try:
-                res = await interp.summarize_result(self.goal or "", caps)
+                res = await interp.summarize_result(self.goal or "", self._result_captions())
             except Exception:
                 log.exception("결과 요약 실패")
-                res = {"summary": caps[-1] if caps else "", "key_info": []}  # 결과 안내 원문으로 대신한다
+                res = self._result_fallback()  # 결과 안내 원문으로 대신한다
+            if self.ended or self.summary is not None:
+                return  # 요약하는 동안 통화가 끊기고 제한 시간이 지나 _after_hangup 이 원문 요약을 이미 보냈다
             self.summary = {"kind": "result", "summary": res.get("summary", ""),
                             "key_info": res.get("key_info", []), "handoff_script": None}
             self.publish("summary", self.summary)
@@ -541,15 +553,30 @@ class Session:
                             "ARS 가 말로 대답하라고 합니다. 음성으로 답하는 기능은 아직 지원하지 않습니다. "
                             "번호로 고를 수 있으면 골라 주세요.")
 
+    def _result_captions(self) -> list[str]:
+        return [c["text"] for c in self.captions[self.agent_goal_at_caption:]]
+
+    def _result_fallback(self) -> dict:
+        """AI 요약을 쓸 수 없을 때의 결과 요약: 마지막 결과 안내 원문 (명세 9.3)."""
+        caps = self._result_captions()
+        return {"summary": caps[-1] if caps else "", "key_info": []}
+
     async def _handoff(self) -> None:
-        texts = [p["text"] for p in self.path]
-        script = (await self._ai("handoff_script", self.d.interp.handoff_script(self.goal, texts),
-                                 f"{self.goal} 건으로 연락드렸습니다.") if self.goal else None)
-        self.summary = {"kind": "handoff", "summary": "상담원 연결까지 진행했습니다.", "handoff_script": script}
-        self.publish("summary", self.summary)
+        # 상담원이 받았음을 먼저 알린다 (앱 마이크 중계가 바로 시작된다). 상황 설명 문장은 AI 응답(최대 12초)을 기다린 뒤
+        # summary 로 보낸다. 설명 문장을 만드는 동안 끊기면 _after_hangup 이 기본 문장으로 summary 를 보낸다
         self.agent_active = False
         self.pending = None
         self.set_status("connected_to_agent")
+        texts = [p["text"] for p in self.path]
+        script = (await self._ai("handoff_script", self.d.interp.handoff_script(self.goal, texts),
+                                 self._handoff_fallback()) if self.goal else None)
+        if self.ended or self.summary is not None:
+            return
+        self.summary = {"kind": "handoff", "summary": "상담원 연결까지 진행했습니다.", "handoff_script": script}
+        self.publish("summary", self.summary)
+
+    def _handoff_fallback(self) -> str | None:
+        return f"{self.goal} 건으로 연락드렸습니다." if self.goal else None
 
     # 판단 ------------------------------------------------------------------
     async def _decide_heard(self, p: Prompt) -> None:
