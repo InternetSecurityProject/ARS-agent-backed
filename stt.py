@@ -44,12 +44,21 @@ _ARS_FIXES = [
 ]
 
 
+# 메뉴 안내의 번호를 고유어로 적은 경우 ("보험료 문의는 한 번" → "1번"). Whisper 가 문맥에 따라 "1번" 대신 쓴다.
+# "~은/는 N번" 이 두 개 이상인 메뉴 안내일 때만 바꾼다 ("한 번 더 눌러 주세요", "두 번 나누어" 같은 문장은 그대로 둔다)
+_NATIVE = {"한": "1", "두": "2", "세": "3", "네": "4", "다섯": "5", "여섯": "6", "일곱": "7", "여덟": "8", "아홉": "9"}
+_NATIVE_KEY = re.compile(r"(?<=[은는])\s(한|두|세|네|다섯|여섯|일곱|여덟|아홉)\s?번(?=을|를|에|이요|입니다|[^가-힣]|$)")
+_MENU_ITEM = re.compile(r"[은는]\s?(?:[0-9]|한|두|세|네|다섯|여섯|일곱|여덟|아홉)\s?번(?=을|를|에|이요|입니다|[^가-힣]|$)")
+
+
 def _clean(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     if not text or _HALLUCINATIONS.search(text):
         return ""
     for pat, rep in _ARS_FIXES:
         text = pat.sub(rep, text)
+    if len(_MENU_ITEM.findall(text)) >= 2:
+        text = _NATIVE_KEY.sub(lambda m: f" {_NATIVE[m.group(1)]}번", text)
     return text
 
 
@@ -143,9 +152,10 @@ class WhisperRecognizer:
             else:
                 text = f"{prev} {await asyncio.to_thread(self._run, rest, prev)}".strip()
         self._prefix.clear()
+        text = _clean(text)
         log.info("인식 %.2fs (음성 %.1fs, 미리 인식 %.1fs 사용) %s", time.monotonic() - t0, len(ulaw8k) / 8000,
                  done / 8000, text)
-        return _clean(text)
+        return text
 
 
 class OpenAIRecognizer:

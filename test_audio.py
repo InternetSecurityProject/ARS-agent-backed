@@ -178,3 +178,12 @@ def test_no_prefetch_for_music_only_chunks():
     seg.on_chunk = lambda prefix, start: calls.append(len(prefix))
     _feed_all(seg, b"\xff" * 8000 + hold_music(20) + b"\xff" * 16000)
     assert calls == []  # 대기 음악만 나올 때는 미리 인식을 하지 않는다
+
+
+def test_stt_native_number_keys_in_menu():
+    # QA 에서 실제로 나온 표기: "1번" 을 "한 번" 으로 적어 AI 가 선택지를 버렸다
+    assert _clean("보험료 관련 문의는 한 번 자격 및 증명서 발급은 2번") == "보험료 관련 문의는 1번 자격 및 증명서 발급은 2번"
+    assert _clean("최근거래내역은 한 번 기간별 거래내역은 두 번을 눌러 주십시오") == "최근거래내역은 1번 기간별 거래내역은 2번을 눌러 주십시오"
+    assert _clean("잔액조회는 세 번, 거래내역조회는 네 번") == "잔액조회는 3번, 거래내역조회는 4번"
+    assert _clean("한 번 더 눌러 주세요") == "한 번 더 눌러 주세요"  # 메뉴 안내 형태가 아니면 그대로
+    assert _clean("이번 달 결제 예정 금액은 두 번 나누어") == "이번 달 결제 예정 금액은 두 번 나누어"

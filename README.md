@@ -262,6 +262,27 @@ python stt_bench.py --models small kimthegarden/whisper-small-ko-low-qual-voice-
 - 실통화 녹음 WAV(8kHz) 인식: `python stt_bench.py --models small --wav 파일.wav`
 - 음성 가상 ARS 는 안내 종료 → 키 수신 시간과 끼어들기를 서버 로그(`ars.simvoice 키 응답`)로 남김
 
+## QA 재시험·실통화 점검
+
+QA 재시험 (`qa_run.py`, 실통화 없음): 음성 가상 ARS 로 시나리오(실제 KB 조건 잔액조회·분실신고·상담원 대기 음악, 건강보험)를 실행하고
+알려진 문제·확인 항목을 통과/실패 표로 출력. 서버·AI 코드가 바뀔 때마다 실행
+
+```bash
+python qa_run.py --interpreter gemini_interpreter:GeminiInterpreter --report qa_report.md
+```
+
+- 확인 항목: 고른 번호, 입력 대기(4.5초) 안에 누름, 민감정보 키패드 요청, 안내 도중 서버가 스스로 누른 키, 민감정보 입력에 섞인 키, 결과 후 `completed`, `waiting_agent` 표시, 상담원 인식 지연
+- `--only 잔액 상담원` 일부만, `--verbose` 서버·STT·AI 기록 출력. 시나리오 1건 1~2분 (Windows)
+
+실통화 점검 (`call_check.py`): 실행 중인 서버(`python app.py`)로 통화 1건을 걸어 연결·오디오 프레임·자막·키 반응·종료 사유를 확인하고 받은 음성을 WAV 로 저장
+
+```bash
+python call_check.py --phone 15889999 --goal "상담원 연결해줘" --sec 60 --wav call1.wav
+```
+
+- 민감정보 입력 요청·재질문이 오면 입력하지 않고, 상담원 대기에 들어가면 바로 끊는다 (상담원을 붙잡지 않음)
+- 실통화 서버이면 발신 전에 번호·목적·제한 시간을 확인받는다. 기록(`.txt`)의 4자리 이상 숫자는 가린다
+
 ## 자동 시험
 
 ```bash
@@ -287,6 +308,7 @@ python -m pytest -q test_flows.py test_audio.py
 | `sim_kb_real.json` | 실제 KB 녹음 기반 가상 ARS (첫 메뉴·입력 대기 4.5초·키 배치, 하위 메뉴 일부 추정) |
 | `sim_nhis.json` | 가상 국민건강보험공단 ARS (표현·키 배치가 다른 경우 시험) |
 | `stt_bench.py` | STT 모델 비교 도구 |
+| `qa_run.py`, `call_check.py` | QA 재시험(음성 가상 ARS), 실통화 점검 (통화 1건) |
 | `api_check.py` | API 호출 확인 도구 (전체 점검, 흐름별 시나리오, 오디오 채널 확인) |
 | `live.py` | 실시간 듣기·디버깅 콘솔 (앱 대역) |
 | `test_flows.py`, `test_audio.py` | 자동 시험 |

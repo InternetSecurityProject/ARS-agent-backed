@@ -98,6 +98,7 @@ class VoiceSimCall(SimCall):
         self.said_end: float | None = None  # 마지막 안내를 끝까지 말한 시각 (키 응답 시간 측정)
         self._noise = [_noise_frame() for _ in range(25)]
         self._cut = False
+        self.human_at: float | None = None
 
     async def _say(self, text: str) -> None:
         if self.ended:
@@ -126,6 +127,7 @@ class VoiceSimCall(SimCall):
             self.speaking = False
             if gen == self._input_gen and not self.ended:
                 log.info("가상 ARS 상담원 응답 (대기 음악 %.0f초 후)", n["hold_s"] * self.speed)
+                self.human_at = time.monotonic()  # 상담원이 말하기 시작한 시각 (상담원 인식 지연 측정)
                 await self._say(n.get("human", "상담원 김민지입니다. 무엇을 도와드릴까요?"))
             return
         await super()._play_node()
