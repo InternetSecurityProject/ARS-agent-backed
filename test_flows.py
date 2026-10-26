@@ -318,6 +318,15 @@ def test_rest_and_websocket():
         assert r.status_code == 409   # 종료된 통화
         r = c.get(f"/v1/sessions/{sid}/result", headers={"Authorization": "Bearer wrong"})
         assert r.status_code == 401
+        # 종료된 세션에 이벤트 채널로 다시 붙으면 snapshot(ended) 만 받고 서버가 닫는다 (영원히 매달리지 않는다)
+        with c.websocket_connect(f"/v1/sessions/{sid}/events?token={tok}") as ws:
+            snap = ws.receive_json()
+            assert snap["event"] == "snapshot" and snap["data"]["status"] == "ended"
+            with pytest.raises(Exception):
+                ws.receive_json()
+        with c.websocket_connect(f"/v1/sessions/{sid}/audio?token={tok}") as ws:
+            with pytest.raises(Exception):
+                ws.receive_bytes()
 
 
 # ---------------------------------------------------------------------------
@@ -430,13 +439,16 @@ CARD = "카드 분실 신고는 1번, 결제 대금 조회는 2번, 결제일 �
 BILL = "이번 달 결제 예정 금액은 352,000원입니다. 감사합니다."
 ERR = "잘못 누르셨습니다."
 CONFIRM = "결제일을 25일로 변경하시겠습니까? 변경하시려면 1번, 취소는 2번을 눌러 주십시오."
+BAL = "알림톡으로 받으시려면 1번, ARS로 계속하시려면 2번을 눌러 주십시오. 이전 메뉴는 별표를 눌러 주십시오."
 
 
 class ManualCall:
-    provides_transcripts = True
+    """transcripts=True 이면 시험 코드가 안내 문장을 직접 넣고(on_paragraph),
+    False 이면 실통화처럼 음성 프레임을 넣어 Segmenter → STT 경로로 처리한다(speak)."""
 
-    def __init__(self) -> None:
+    def __init__(self, transcripts: bool = True) -> None:
         self.keys: list[str] = []
+        self.provides_transcripts = transcripts
 
     async def send_keys(self, keys: str) -> float:
         self.keys.append(keys)
@@ -450,18 +462,43 @@ class ManualCall:
 
 
 class ManualBackend:
-    def __init__(self) -> None:
+    def __init__(self, transcripts: bool = True) -> None:
         self.call: ManualCall | None = None
+        self.transcripts = transcripts
 
     async def start(self) -> None:
         pass
 
     async def dial(self, to, handlers) -> ManualCall:
-        self.call = ManualCall()
+        self.call = ManualCall(self.transcripts)
         return self.call
 
 
-async def manual(goal: str, **kw):
+class ScriptSTT:
+    """시험용 STT: 단락이 끝날 때마다 정해 둔 문장을 차례로 돌려준다."""
+
+    is_local = True
+
+    def __init__(self, lines: list[str]) -> None:
+        self.lines = list(lines)
+
+    async def recognize(self, seg: bytes) -> str:
+        return self.lines.pop(0) if self.lines else ""
+
+
+async def speak(s, sec: float, silence: float = 0.3) -> None:
+    """ARS 음성 흉내: sec 초 동안 소리 프레임, 이어서 silence 초 동안 무음 프레임을 넣는다 (20ms 단위)."""
+    from audio import SILENCE_FRAME, hum_ulaw
+
+    for _ in range(int(sec * 50)):
+        await s._on_audio(hum_ulaw())
+    for _ in range(int(silence * 50)):
+        await s._on_audio(SILENCE_FRAME)
+    await asyncio.sleep(0.02)
+
+
+async def manual(goal: str, stt: ScriptSTT | None = None, **kw):
+    """stt 를 주면 음성 경로(Segmenter → STT)로 시험한다."""
     from interpreter import MockInterpreter, _norm
     from navigator import Navigator
     from session import Deps
@@ -472,7 +509,7 @@ async def manual(goal: str, **kw):
     interp.prompts[_norm(CONFIRM)] = (CONFIRM, {
         "kind": "confirm", "critical": True,
         "options": [{"key": "1", "label": "변경 확정"}, {"key": "2", "label": "취소"}]})
-    deps = Deps(st, ManualBackend(), NullRecognizer(), interp,
+    deps = Deps(st, ManualBackend(transcripts=stt is None), stt or NullRecognizer(), interp,
                 Navigator(interp, st.match_threshold, st.margin, st.max_revisit, st.max_presses, st.low_threshold))
     m = SessionManager(deps)
     out = await m.create("15889999", goal)
@@ -613,6 +650,554 @@ def test_answer_to_voice_request_waits_for_next_menu():
         assert call.keys == ["5"] and not s.ended and s.status == "listening"
         await s.on_paragraph(CARD)                                   # 다음 메뉴에서 새 목적으로 판단
         assert call.keys == ["5", "2"]
+    run(go())
+
+
+
+# ---------------------------------------------------------------------------
+# 음성 경로 시간 처리 (음성 가상 ARS 시험에서 발견된 문제)
+# ---------------------------------------------------------------------------
+def test_no_repeat_key_while_next_menu_is_long():
+    """다음 메뉴 안내가 무응답 시간보다 길어도 ARS 가 말하는 동안에는 다시 듣기 키를 누르지 않는다.
+    누르면 ARS 가 '잘못 누르셨습니다' 후 메뉴를 다시 읽고 두 안내가 한 자막으로 섞인다."""
+    async def go():
+        s, call = await manual("통장 잔액 알고 싶어", stt=ScriptSTT([ROOT, BAL]), no_response_s=0.2,
+                               paragraph_silence_ms=200, clarify_expire_s=5, clarify_drop_s=10)
+        await speak(s, 0.3)                                          # 첫 메뉴 → 잔액조회(3)
+        await wait_for(s, lambda s: call.keys == ["3"])
+        await speak(s, 0.6, silence=0)                               # 다음 메뉴를 말하는 중
+        await asyncio.sleep(0.4)                                     # 무응답 시간(0.2초)이 지나도 계속 말하는 중
+        assert call.keys == ["3"]
+        await speak(s, 0)                                            # 안내 끝 → 인식 → ARS로 계속(2)
+        await wait_for(s, lambda s: call.keys == ["3", "2"])
+        assert [c["text"] for c in s.captions] == [ROOT, BAL]
+    run(go())
+
+
+def test_no_previous_menu_repeat_key_after_ars_spoke():
+    """키 전송 뒤 ARS 가 소리를 냈으면(인식된 문장이 없어도) 다음 안내로 넘어간 것이다.
+    이전 메뉴의 다시 듣기 키(#)는 다음 메뉴에서 다른 뜻일 수 있으므로 누르지 않는다."""
+    async def go():
+        s, call = await manual("통장 잔액 알고 싶어", stt=ScriptSTT([ROOT, ""]), no_response_s=0.2,
+                               paragraph_silence_ms=200, clarify_expire_s=5, clarify_drop_s=10)
+        await speak(s, 0.3)
+        await wait_for(s, lambda s: call.keys == ["3"])
+        await speak(s, 0.2)                                          # 인식되지 않은 안내
+        await asyncio.sleep(0.4)
+        assert call.keys == ["3"]
+    run(go())
+
+
+def test_no_response_after_silence_presses_that_menus_repeat_key():
+    """키 전송 뒤 ARS 가 아무 소리도 내지 않으면(키가 인식되지 않음) 키를 누른 그 메뉴의 다시 듣기 키를 누른다"""
+    async def go():
+        s, call = await manual("통장 잔액 알고 싶어", stt=ScriptSTT([ROOT]), no_response_s=0.2,
+                               paragraph_silence_ms=200, clarify_expire_s=5, clarify_drop_s=10)
+        await speak(s, 0.3)
+        await wait_for(s, lambda s: call.keys == ["3"])
+        await speak(s, 0, silence=0.4)                               # 회선 무음만 들어옴
+        await wait_for(s, lambda s: call.keys == ["3", "#"], timeout=2)
+    run(go())
+
+
+def test_clarify_repeat_key_waits_until_ars_is_quiet():
+    """재질문 30초(시험 0.2초) 다시 듣기 키는 ARS 가 안내하는 중이면 안내가 끝난 뒤 누른다"""
+    async def go():
+        s, call = await manual("카드 관련 문의", clarify_expire_s=0.2, clarify_drop_s=5)
+        await s.on_paragraph(ROOT)                                   # low_confidence 재질문 (누른 키 없음)
+        assert s.pending and s.pending["reason"] == "low_confidence"
+        call.speaking = True                                         # ARS 가 입력 대기 시간이 지나 메뉴를 다시 읽는 중
+        await asyncio.sleep(0.4)
+        assert call.keys == []
+        call.speaking = False
+        await wait_for(s, lambda s: call.keys == ["#"], timeout=2)
+        assert s.pending is not None                                 # 요청은 유지
+    run(go())
+
+
+def test_hangup_during_result_summary_is_completed():
+    """결과 안내 직후 ARS 가 끊어도(요약 생성 중) completed 이며, 요약을 마친 뒤 summary → ended 순서로 전송한다.
+    종료 뒤 늦게 끝난 처리가 상태를 되돌리지 않는다 (새 통화가 409 로 막히지 않는다)."""
+    async def go():
+        s, call = await manual("이번 달 카드 대금 알고 싶어", clarify_expire_s=5, clarify_drop_s=10)
+        orig = s.d.interp.summarize_result
+
+        async def slow(goal, caps):
+            await asyncio.sleep(0.3)                                 # LLM 요약 시간
+            return await orig(goal, caps)
+
+        s.d.interp.summarize_result = slow
+        await s.on_paragraph(ROOT)
+        await s.on_paragraph(CARD)
+        t = asyncio.create_task(s.on_paragraph(BILL))
+        await wait_for(s, lambda s: s.status == "listening_result")
+        await s._on_end("remote_hangup")                             # 요약 중에 ARS 가 끊음
+        await t
+        await wait_for(s, lambda s: s.ended)
+        await asyncio.sleep(0.1)
+        names = [e["event"] for e in s.hub.history]
+        assert s.end_reason == "completed" and s.status == "ended" and names[-1] == "ended"
+        assert names.index("summary") < names.index("ended")
+        code, res = s.result()
+        assert res["outcome"] == "success" and "352,000" in res["summary"]
+    run(go())
+
+
+def test_hangup_right_after_result_speech_is_recognized():
+    """결과를 말하고 바로 끊어 단락 끝 무음이 오지 않아도, 끊기 전까지 들은 안내를 인식해 completed 로 끝낸다"""
+    async def go():
+        s, call = await manual("이번 달 카드 대금 알고 싶어", stt=ScriptSTT([ROOT, CARD, BILL]),
+                               paragraph_silence_ms=200, clarify_expire_s=5, clarify_drop_s=10)
+        await speak(s, 0.3)
+        await wait_for(s, lambda s: call.keys == ["5"])
+        await speak(s, 0.3)
+        await wait_for(s, lambda s: call.keys == ["5", "2"])
+        await speak(s, 0.3, silence=0)                               # 결과 안내 직후 끊김
+        await s._on_end("remote_hangup")
+        await wait_for(s, lambda s: s.ended)
+        assert s.end_reason == "completed" and "352,000" in s.summary["summary"]
+        assert s.captions[-1]["text"] == BILL
+    run(go())
+
+
+# ---------------------------------------------------------------------------
+# 사용자 입력 엣지 케이스 (ARS자동화-엣지케이스-점검표.md 참조)
+#   입력 종류: DTMF 키(key), 통화 종료(cancel), 요청 응답(answer·select·secure_input·revise_goal)
+# ---------------------------------------------------------------------------
+AGENT_WAIT = "상담원과 연결 중입니다. 잠시만 기다려 주십시오."
+AGENT_HUMAN = "상담원 김민지입니다. 무엇을 도와드릴까요?"
+
+
+def test_no_auto_repeat_after_agent_done():
+    """업무 완료(agent_done) 뒤 사용자가 직접 누른 키에는 무응답 재전송(다시 듣기 키)을 걸지 않는다.
+    AI 탐색이 끝났으므로 서버가 임의로 키를 더 보내면 안 된다."""
+    async def go():
+        s, call = await manual("이번 달 카드 대금 알고 싶어", no_response_s=0.1, clarify_expire_s=5, clarify_drop_s=10)
+        await s.on_paragraph(ROOT)
+        await s.on_paragraph(CARD)
+        await s.on_paragraph(BILL)
+        assert s.status == "agent_done"
+        await s.action({"type": "key", "key": "9"})       # 완료 뒤 직접 키
+        await asyncio.sleep(0.3)                            # 무응답 시간이 지나도
+        assert call.keys == ["5", "2", "9"]                 # 다시 듣기 키(#)가 더해지지 않는다
+    run(go())
+
+
+def test_no_auto_repeat_when_connected_to_agent():
+    """상담원 연결 중 사용자가 직접 누른 키에는 무응답 재전송을 걸지 않는다 (상담원 통화에 DTMF 가 끼어들지 않게)."""
+    async def go():
+        s, call = await manual("상담원 연결해줘", no_response_s=0.1, clarify_expire_s=5, clarify_drop_s=10)
+        await s.on_paragraph(ROOT)                          # 상담직원 연결(0)
+        await s.on_paragraph(AGENT_WAIT)
+        await s.on_paragraph(AGENT_HUMAN)
+        assert s.status == "connected_to_agent"
+        await s.action({"type": "key", "key": "1"})         # 상담원 안내에 따라 직접 누름
+        await asyncio.sleep(0.3)
+        assert call.keys == ["0", "1"]                       # 자동 재전송 없음
+    run(go())
+
+
+def test_cancel_reason_by_state():
+    """cancel 의 end_reason 은 상태에 따라 정해진다: 탐색 중 user_canceled, 결과 뒤 completed."""
+    async def go():
+        s, _ = await manual("이번 달 카드 대금 알고 싶어", clarify_expire_s=5, clarify_drop_s=10)
+        await s.on_paragraph(ROOT)
+        await s.action({"type": "cancel"})                  # 탐색 도중 종료
+        assert s.end_reason == "user_canceled"
+
+        s2, _ = await manual("이번 달 카드 대금 알고 싶어", clarify_expire_s=5, clarify_drop_s=10)
+        await s2.on_paragraph(ROOT)
+        await s2.on_paragraph(CARD)
+        await s2.on_paragraph(BILL)
+        assert s2.status == "agent_done"
+        await s2.action({"type": "cancel"})                 # 결과 확인 뒤 종료
+        assert s2.end_reason == "completed"
+    run(go())
+
+
+def test_select_rejects_non_candidate_and_answer_rejects_stale():
+    """select 는 요청 후보에 없는 키를 400, answer 는 이미 닫힌(만료된) 요청을 409 로 거절한다."""
+    async def go():
+        s, _ = await manual("결제 관련", clarify_expire_s=5, clarify_drop_s=10)
+        await s.on_paragraph(ROOT)
+        await s.on_paragraph(CARD)
+        req = s.pending
+        assert req and req["reason"] == "ambiguous"
+        with pytest.raises(ApiError) as e:
+            await s.action({"type": "select", "request_id": req["request_id"], "key": "7"})   # 후보 아님
+        assert e.value.code == "invalid_request"
+        await s.action({"type": "select", "request_id": req["request_id"], "key": "2"})        # 정상 응답으로 닫음
+        with pytest.raises(ApiError) as e:                                                     # 닫힌 요청에 다시 답
+            await s.action({"type": "answer", "request_id": req["request_id"], "text": "결제 대금"})
+        assert e.value.code == "invalid_state"
+    run(go())
+
+
+def test_key_rejected_during_secure_input_request():
+    """민감정보 입력 요청이 열려 있으면 일반 key 입력은 409 sensitive_input_blocked (경로에 숫자가 남지 않게)."""
+    async def go():
+        s, call = await manual("통장 잔액 알고 싶어", clarify_expire_s=5, clarify_drop_s=10)
+        await s.on_paragraph(ROOT)
+        await s.on_paragraph(BAL)
+        await s.on_paragraph("주민등록번호 앞 여섯 자리와 우물정자를 눌러 주십시오.")
+        assert s.pending and s.pending["kind"] == "secure_input"
+        with pytest.raises(ApiError) as e:
+            await s.action({"type": "key", "key": "1"})
+        assert e.value.code == "sensitive_input_blocked"
+        assert "1" not in [p["selected"]["key"] for p in s.path]
+    run(go())
+
+
+RRN = "주민등록번호 앞 여섯 자리와 우물정자를 눌러 주십시오."
+TIMEOUT_MSG = "입력 시간이 초과되었습니다."
+GIVEUP_MSG = "입력이 없어 통화를 종료합니다."
+
+
+async def secure_pending(**kw):
+    """잔액조회 → ARS 계속 → 주민등록번호 입력 요청까지 진행한 세션"""
+    s, call = await manual("통장 잔액 알고 싶어", clarify_expire_s=5, clarify_drop_s=10, **kw)
+    await s.on_paragraph(ROOT)
+    await s.on_paragraph(BAL)
+    await s.on_paragraph(RRN)
+    assert s.pending and s.pending["kind"] == "secure_input" and call.keys == ["3", "2"]
+    return s, call
+
+
+def test_timeout_notice_while_secure_pending_is_caption_only():
+    """민감정보 입력 대기 중(아직 아무 키도 보내지 않음) ARS 의 '입력 시간이 초과되었습니다'는 키 오류가 아니다.
+    input_rejected 를 보내지 않고 자막만 남기며, 입력 요청은 그대로 유지한다."""
+    async def go():
+        s, call = await secure_pending()
+        req = s.pending
+        await s.on_paragraph(TIMEOUT_MSG)
+        await s.on_paragraph(RRN)                                    # ARS 가 입력 안내를 다시 읽음
+        assert ev(s, "input_rejected") == [] and s.pending == req   # 같은 요청 유지, 새 요청 없음
+        assert s.captions[-1]["text"] == TIMEOUT_MSG and call.keys == ["3", "2"]
+    run(go())
+
+
+def test_timeout_notice_while_clarification_pending_is_caption_only():
+    """재질문 대기 중 ARS 가 '입력 시간이 초과되었습니다' 하고 메뉴를 다시 읽어도,
+    키 오류로 세지 않고 메뉴를 다시 판단하지도 않는다 (재질문은 그대로 사용자 응답을 기다린다)."""
+    async def go():
+        s, call = await manual("카드 관련 문의", clarify_expire_s=5, clarify_drop_s=10)
+        await s.on_paragraph(ROOT)                                   # low_confidence 재질문
+        req = s.pending
+        assert req and req["reason"] == "low_confidence" and call.keys == []
+        await s.on_paragraph(TIMEOUT_MSG)
+        await s.on_paragraph(ROOT)
+        assert ev(s, "input_rejected") == [] and s.pending == req and call.keys == []
+        assert s.input_errors == 0
+        await s.action({"type": "answer", "request_id": req["request_id"], "text": "카드 결제일 바꾸고 싶어"})
+        assert call.keys == ["5"]                                    # 답변 뒤 다시 읽어 둔 메뉴로 판단
+    run(go())
+
+
+def test_ars_gives_up_and_hangs_up_while_waiting_for_user():
+    """사용자 응답 대기 중 ARS 가 '입력이 없어 통화를 종료합니다' 하고 끊으면 user_input_timeout (재질문·민감정보 모두)."""
+    async def go():
+        for build in (secure_pending, None):
+            if build:
+                s, call = await build()
+            else:
+                s, call = await manual("카드 관련 문의", clarify_expire_s=5, clarify_drop_s=10)
+                await s.on_paragraph(ROOT)
+            await s.on_paragraph(GIVEUP_MSG)
+            await s._on_end("remote_hangup")
+            await wait_for(s, lambda s: s.ended)
+            assert s.end_reason == "user_input_timeout" and s.captions[-1]["text"] == GIVEUP_MSG
+            assert s.result()[1]["outcome"] == "failed"
+    run(go())
+
+
+def test_secure_input_error_is_not_a_menu_error_and_digits_stay_out():
+    """민감정보 입력값이 거부되면 input_rejected 는 keys=null 로 보내고, 메뉴 키 오류로 세지 않는다 (재질문 없음).
+    ARS 가 입력 안내를 다시 하면 새 secure_input 요청이 나간다 (6.3 처리 규칙 6)."""
+    async def go():
+        s, call = await secure_pending()
+        for n in (1, 2):
+            req = s.pending
+            await s.action({"type": "secure_input", "request_id": req["request_id"], "digits": "9999"})
+            await s.on_paragraph(ERR)                                # 입력값 거부
+            rej = ev(s, "input_rejected")[-1]
+            assert rej["keys"] is None and rej["actor"] == "user" and rej["retry_count"] == n
+            assert s.pending is None                                 # 메뉴 재질문(input_rejected)이 열리지 않는다
+            await s.on_paragraph(RRN)                                # 입력 안내 반복 → 새 요청
+            assert s.pending and s.pending["kind"] == "secure_input" and s.pending["request_id"] != req["request_id"]
+        assert "9999" not in str(s.hub.history) and "9999" not in str(s.path)
+        assert s.input_errors == 0
+    run(go())
+
+
+def test_secure_input_terminator_is_not_duplicated():
+    """사용자가 종료 키(#)까지 눌러 보낸 경우 서버가 #을 한 번 더 붙이지 않는다 (두 번째 #은 ARS 에서 다른 뜻일 수 있다)."""
+    async def go():
+        s, call = await secure_pending()
+        req = s.pending
+        await s.action({"type": "secure_input", "request_id": req["request_id"], "digits": "123456#"})
+        assert call.keys[-1] == "123456#"
+        await s.on_paragraph("계좌번호와 우물정자를 눌러 주십시오.")
+        req = s.pending
+        await s.action({"type": "secure_input", "request_id": req["request_id"], "digits": "1234567890"})
+        assert call.keys[-1] == "1234567890#"                        # 종료 키를 안 눌렀으면 붙인다
+    run(go())
+
+
+def test_digits_matching_secure_input_length_are_masked_but_amounts_are_not():
+    """민감정보 입력 뒤 ARS 가 입력값을 다시 읽으면(확인 표현 없이도) 입력 자릿수와 같은 숫자열만 가리고,
+    금액처럼 자릿수가 다른 숫자는 그대로 둔다 (결과 요약에 쓰인다). 입력값 자체는 저장하지 않는다."""
+    async def go():
+        s, call = await secure_pending()
+        req = s.pending
+        await s.action({"type": "secure_input", "request_id": req["request_id"], "digits": "950101"})
+        assert s.secure_len == 6 and "950101" not in str(vars(s))
+        await s.on_paragraph("입력하신 계좌 950101 의 출금 가능 금액은 1,234,000원입니다. 감사합니다.")
+        cap = s.captions[-1]["text"]
+        assert "950101" not in cap and "1,234,000원" in cap and "******" in cap
+        assert "950101" not in str(s.hub.history)
+    run(go())
+
+
+def test_secure_request_closes_when_ars_returns_to_menu():
+    """민감정보 입력을 기다리던 ARS 가 입력 없이 메뉴로 돌아가면, 입력 요청을 닫고 그 메뉴를 판단한다 (요청에 매달려 멈추지 않는다)."""
+    async def go():
+        s, call = await secure_pending()
+        await s.on_paragraph(TIMEOUT_MSG)
+        await s.on_paragraph(ROOT)                                   # ARS 가 처음 메뉴로 돌아감
+        assert s.pending is None and not s.secure_window
+        assert call.keys == ["3", "2", "3"]                          # 첫 메뉴를 다시 판단하여 잔액조회(3)
+    run(go())
+
+
+def test_stale_menu_heard_before_key_is_not_decided_again():
+    """AI 판단이 ARS 입력 대기보다 늦어 ARS 가 같은 메뉴를 다시 읽기 시작한 뒤 키를 누른 경우,
+    키보다 먼저 시작된 그 안내는 키 이전 상태의 안내이므로 다시 판단하지 않는다 (같은 키 두 번 전송 방지)."""
+    async def go():
+        s, call = await manual("카드 결제일 바꾸고 싶어", clarify_expire_s=5, clarify_drop_s=10)
+        t0 = time.monotonic()
+        await s.on_paragraph(ROOT, started_at=t0)                    # 판단 → 카드 업무(5)
+        assert call.keys == ["5"] and s.last_key_at > t0
+        replay_started = s.last_key_at - 0.5                         # 키보다 먼저 시작된 같은 메뉴(재생)
+        await s.on_paragraph(ROOT, started_at=replay_started)
+        assert call.keys == ["5"]                                    # 두 번 누르지 않는다
+        assert s.captions[-1]["text"] == ROOT                        # 자막은 남긴다
+        await s.on_paragraph(CARD, started_at=time.monotonic())      # 키 이후 시작된 다음 메뉴 → 판단
+        assert call.keys == ["5", "3"]
+    run(go())
+
+
+def test_stale_error_heard_before_key_is_not_a_rejection():
+    """키보다 먼저 시작된 '잘못 누르셨습니다'는 지금 보낸 키에 대한 거부가 아니다. 거부로 세지 않고,
+    그 뒤 키에 대한 진짜 반응은 정상적으로 처리한다."""
+    async def go():
+        s, call = await manual("카드 결제일 바꾸고 싶어", clarify_expire_s=5, clarify_drop_s=10)
+        await s.on_paragraph(ROOT, started_at=time.monotonic())      # 5
+        await s.on_paragraph(ERR, started_at=s.last_key_at - 0.5)    # 키 이전에 시작된 오류 안내
+        assert ev(s, "input_rejected") == [] and s.input_errors == 0
+        await s.on_paragraph(ERR, started_at=time.monotonic())       # 키에 대한 진짜 거부
+        assert len(ev(s, "input_rejected")) == 1
+    run(go())
+
+
+def test_ai_classify_failure_keeps_call_alive():
+    """AI classify 가 예외를 내도 통화는 계속된다. 그 안내는 자막만 남기고, 다음 안내부터 정상 처리한다."""
+    async def go():
+        s, call = await manual("카드 결제일 바꾸고 싶어", clarify_expire_s=5, clarify_drop_s=10)
+        orig = s.d.interp.classify
+        calls = {"n": 0}
+
+        async def flaky(text):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("AI 시간 초과")
+            return await orig(text)
+
+        s.d.interp.classify = flaky
+        await s.on_paragraph(ROOT)                                   # 실패 → 자막만
+        assert call.keys == [] and s.captions[-1]["text"] == ROOT and s.status == "listening"
+        await s.on_paragraph(ROOT)                                   # ARS 가 다시 읽음 → 정상 판단
+        assert call.keys == ["5"]
+    run(go())
+
+
+def test_ai_score_failure_asks_user_instead_of_stalling():
+    """AI score 가 예외를 내면 메뉴 판단을 멈추지 않고 사용자에게 묻는다 (unknown_prompt). 사용자는 select 로 진행할 수 있다."""
+    async def go():
+        s, call = await manual("카드 결제일 바꾸고 싶어", clarify_expire_s=5, clarify_drop_s=10)
+
+        async def broken(goal, options, path=None):
+            raise RuntimeError("AI 오류")
+
+        s.d.interp.score = broken
+        await s.on_paragraph(ROOT)
+        req = s.pending
+        assert req and req["reason"] == "unknown_prompt" and "해석하지 못했습니다" in req["message"]
+        assert [o["key"] for o in req["options"]] == ["3", "4", "5", "0"]
+        await s.action({"type": "select", "request_id": req["request_id"], "key": "5"})
+        assert call.keys == ["5"] and s.status == "listening"
+    run(go())
+
+
+def test_ai_goal_summary_and_merge_failure_fallbacks():
+    """summarize_goal·merge_answer 가 실패해도 세션 생성과 답변 처리는 진행된다."""
+    async def go():
+        from interpreter import MockInterpreter
+        from navigator import Navigator
+        from session import Deps
+        from stt import NullRecognizer
+
+        class Broken(MockInterpreter):
+            async def summarize_goal(self, goal):
+                raise RuntimeError("AI 오류")
+
+            async def merge_answer(self, goal, question, answer):
+                raise RuntimeError("AI 오류")
+
+        st = make_settings(clarify_expire_s=5, clarify_drop_s=10)
+        interp = Broken()
+        m = SessionManager(Deps(st, ManualBackend(), NullRecognizer(), interp, Navigator(interp)))
+        out = await m.create("15889999", "카드 관련 문의")
+        assert out["goal_summary"] == "'카드 관련 문의' 업무를 찾아 드릴게요."
+        s = m.sessions[out["session_id"]]
+        await s._on_answer()
+        await s.on_paragraph(ROOT)                                   # low_confidence 재질문
+        req = s.pending
+        await s.action({"type": "answer", "request_id": req["request_id"], "text": "카드 결제일 바꾸고 싶어"})
+        assert s.goal == "카드 결제일 바꾸고 싶어" and m.deps.backend.call.keys == ["5"]
+    run(go())
+
+
+def test_key_send_failure_is_409_for_user_and_harmless_for_ai():
+    """통화가 끊기는 중이라 키 전송이 실패하면 사용자 조작은 409 로 답하고, AI 탐색은 예외 없이 멈춘다."""
+    async def go():
+        s, call = await manual("카드 결제일 바꾸고 싶어", clarify_expire_s=5, clarify_drop_s=10)
+
+        async def failing(keys):
+            raise RuntimeError("leg closed")
+
+        call.send_keys = failing
+        await s.on_paragraph(ROOT)                                   # AI 가 5를 누르려다 실패 → 예외 없이 계속
+        assert not s.ended and s.path == []
+        with pytest.raises(ApiError) as e:
+            await s.action({"type": "key", "key": "5"})
+        assert e.value.status == 409
+    run(go())
+
+
+def test_backtrack_queue_retries_key_rejected_by_ars():
+    """이전 계층 복귀('처음으로' 키 + 지나온 키) 중 ARS 가 키를 거부하면, 메뉴가 다시 나올 때 같은 키를 다시 누른다."""
+    async def go():
+        s, call = await manual("카드 결제일 바꾸고 싶어", clarify_expire_s=5, clarify_drop_s=10)
+        s.key_queue = ["5"]                                          # 복귀 중: 다음에 누를 키
+        s.after_backtrack = True
+        await s.on_paragraph(ROOT)                                   # 대기열 키 5 전송
+        assert call.keys == ["5"] and s.key_queue == []
+        await s.on_paragraph(ERR)                                    # 거부
+        assert s.key_queue == ["5"]
+        await s.on_paragraph(ROOT)                                   # 메뉴 재생 → 다시 5
+        assert call.keys == ["5", "5"] and s.key_queue == []
+    run(go())
+
+
+def test_remote_hangup_while_waiting_for_user_is_user_input_timeout():
+    """재질문·민감정보 입력 대기 중 상대가 끊으면 user_input_timeout. 상담원 대기 중 끊기면 failed."""
+    async def go():
+        s, _ = await manual("카드 관련 문의", clarify_expire_s=5, clarify_drop_s=10)
+        await s.on_paragraph(ROOT)
+        assert s.pending
+        await s._on_end("remote_hangup")
+        await wait_for(s, lambda s: s.ended)
+        assert s.end_reason == "user_input_timeout"
+
+        s, _ = await secure_pending()
+        await s._on_end("remote_hangup")
+        await wait_for(s, lambda s: s.ended)
+        assert s.end_reason == "user_input_timeout"
+
+        s, _ = await manual("상담원 연결해줘", clarify_expire_s=5, clarify_drop_s=10)
+        await s.on_paragraph(ROOT)
+        await s.on_paragraph(AGENT_WAIT)
+        assert s.status == "waiting_agent"
+        await s._on_end("remote_hangup")
+        await wait_for(s, lambda s: s.ended)
+        assert s.end_reason == "failed"
+    run(go())
+
+
+def test_ars_ending_notices_end_the_call_with_matching_reason():
+    """문자 발송·업무시간 외·거절 안내는 해당 end_reason 으로 통화를 끝낸다 (outcome: partial / failed / failed)."""
+    async def go():
+        from interpreter import _norm
+        cases = [("최근 거래내역을 문자로 보내 드렸습니다. 감사합니다.", None, "message_sent", "partial"),
+                 ("지금은 상담 가능 시간이 아닙니다. 평일 9시부터 18시까지 이용해 주십시오.", "out_of_hours", "out_of_hours", "failed"),
+                 ("본인 확인에 실패하여 서비스를 이용하실 수 없습니다.", "rejected", "ars_rejected", "failed")]
+        for text, kind, reason, outcome in cases:
+            s, call = await manual("최근 거래내역 보고 싶어", clarify_expire_s=5, clarify_drop_s=10)
+            if kind:
+                s.d.interp.prompts[_norm(text)] = (text, {"kind": kind})
+            await s.on_paragraph(ROOT)
+            await s.on_paragraph(text)
+            assert s.ended and s.end_reason == reason and s.result()[1]["outcome"] == outcome
+            assert s.captions[-1]["text"] == text
+    run(go())
+
+
+def test_max_call_duration_ends_call():
+    """상대가 받은 뒤 최대 통화 시간이 지나면 max_duration 으로 종료한다."""
+    async def go():
+        s, call = await manual("카드 관련 문의", max_call_s=0.2, clarify_expire_s=5, clarify_drop_s=10)
+        await s.on_paragraph(ROOT)                                   # 재질문 대기 중
+        await wait_for(s, lambda s: s.ended, timeout=2)
+        assert s.end_reason == "max_duration" and s.result()[1]["outcome"] == "failed"
+    run(go())
+
+
+def test_dial_failures_map_to_end_reasons():
+    """상대가 받지 않음·통화 중·발신 오류는 그대로 end_reason 이 되고, 목적 요약은 유지된다."""
+    async def go():
+        for reason in ("no_answer", "busy", "failed"):
+            s, _ = await manual("카드 관련 문의", clarify_expire_s=5, clarify_drop_s=10)
+            await s._on_end(reason)
+            assert s.ended and s.end_reason == reason and s.result()[1]["outcome"] == "failed"
+            assert s.goal_summary
+    run(go())
+
+
+def test_confirm_question_without_answer_asks_user():
+    """중요 선택이 아닌 확인 질문에 AI 가 누를 키를 정하지 못하거나(None) 실패하면 unknown_prompt 로 사용자에게 묻는다."""
+    async def go():
+        from interpreter import _norm
+        text = "조회 결과를 문자로 받으시겠습니까? 받으시려면 1번, 아니면 2번을 눌러 주십시오."
+        for broken in (False, True):
+            s, call = await manual("카드 결제일 바꾸고 싶어", clarify_expire_s=5, clarify_drop_s=10)
+            s.d.interp.prompts[_norm(text)] = (text, {"kind": "confirm", "options": [
+                {"key": "1", "label": "문자 수신"}, {"key": "2", "label": "수신 안 함"}]})
+            if broken:
+                async def boom(goal, prompt):
+                    raise RuntimeError("AI 오류")
+                s.d.interp.answer_confirm = boom
+            await s.on_paragraph(ROOT)
+            await s.on_paragraph(text)
+            req = s.pending
+            assert req and req["reason"] == "unknown_prompt" and [o["key"] for o in req["options"]] == ["1", "2"]
+            assert call.keys == ["5"]
+    run(go())
+
+
+def test_new_call_allowed_while_previous_finishes_after_hangup():
+    """상대가 끊은 뒤 마지막 안내·요약을 처리하는 동안(최대 10초)에도 새 통화를 만들 수 있다 (회선은 비어 있다)."""
+    async def go():
+        m = await new_manager()
+        m.deps.backend.tree["timeout_s"] = 300
+        out, s = await start(m, "이번 달 카드 대금 알고 싶어")
+        await wait_for(s, lambda s: s.status == "listening")
+        s.hangup_seen = True                                         # 끊긴 뒤 마무리 처리 중인 상태
+        assert m.active() is None
+        out2 = await m.create("15889999", "통장 잔액 알고 싶어")   # 409 가 아니다
+        assert out2["session_id"] != out["session_id"]
+        for x in list(m.sessions.values()):
+            if not x.ended:
+                await x.finish("user_canceled")
     run(go())
 
 
@@ -846,8 +1431,9 @@ def test_live_console_against_live_server(tmp_path, capsys):
                 await until(lambda: con.status in ("agent_done", "ended"))
                 await con.command("m")                       # 소리 끄기
                 assert not con.sound_is_on
+                f0 = con.frames
                 await con.command("m")                       # 소리 켜기
-                await until(lambda: con.sound_is_on)
+                await until(lambda: con.frames > f0)         # 오디오 채널이 다시 연결되어 소리를 받은 뒤 종료한다
                 await con.command("q")
                 await until(lambda: con.ended.is_set())
                 await con.close(hang_up=False)
