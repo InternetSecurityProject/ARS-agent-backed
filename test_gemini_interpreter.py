@@ -243,3 +243,25 @@ def test_spoken_menu_numbers_nhis():
     """nhis_card_002: '이번'이 2번 메뉴 번호로 쓰인 경우."""
     t = normalize_keys("디지털 알스는 구번, 증명서 발급 일번, 건강 보헙증 발급 이번, 고지서 발급 삼번을 눌러주십시오.")
     assert "9번" in t and "1번" in t and "발급 2번" in t and "3번" in t
+
+
+# 실제 통화 STT 표기 (하은님 통화 기록, 2026-10) ----------------------------------
+def test_real_stt_spellings_of_hash_key():
+    assert normalize_keys("다른 서비스는 취업 버튼을 눌러주십시오") == "다른 서비스는 #을 눌러주십시오"
+    assert normalize_keys("앞 여섯자리와 체업 버튼") == "앞 여섯자리와 #"
+    assert normalize_keys("전단계는 우물 강자를") == "전단계는 #를"
+    assert normalize_keys("누르신 후 우는 정자를") == "누르신 후 #를"
+    assert normalize_keys("다른 서비스는 샵버등.") == "다른 서비스는 #."
+    assert normalize_keys("취업 준비 상담은 1번") == "취업 준비 상담은 1번"
+
+
+def test_real_kb_spoken_menu_numbers():
+    t = normalize_keys("다시 듣기는 영 번 국민은행으로 송금은 일 번 다른 은행으로 송금은 이번 예금 펀드")
+    assert t == "다시 듣기는 0번 국민은행으로 송금은 1번 다른 은행으로 송금은 2번 예금 펀드"
+
+
+def test_real_nhis_rule_fallback():
+    """Gemini 가 실패해도 실제 건강보험 안내의 이동 키·민감정보를 규칙으로 잡는다."""
+    p = rule_classify("건강보험증 발급은 1번, 상담사 연결은 0번, 다시 듣기는 별표 전 단계는 우물 정자를 눌러주십시오.")
+    assert p.kind == "menu" and p.repeat_key == "*" and p.back_key == "#"
+    assert rule_classify("고객님의 주민등록번호 앞 여섯자리와 체업 버튼을 눌러주십시오.").kind == "sensitive"

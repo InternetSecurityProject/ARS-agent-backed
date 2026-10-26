@@ -290,6 +290,7 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 - 민감정보 요청은 모델이 놓쳐도 규칙으로 한 번 더 확인
 - 시험: `python -m pytest -q test_gemini_interpreter.py` (Gemini 호출 없음)
 - `.env` 에서 Gemini 해석기를 켠 상태로 `test_flows.py` 를 돌리면 목 데이터 기준 시험이 실패하므로 `INTERPRETER=interpreter:MockInterpreter python -m pytest -q test_flows.py` 로 실행
+- 실제 통화 STT 문장 17개(국민건강보험공단·KB국민은행·하나은행 녹취): 분류·번호 선택 17/17, 위험 자동입력 0건 (2026-10-26)
 - 건강보험증 발급 평가 10건(`feat/ai-evaluation`) × 2회: 정답 20/20, 위험 자동입력 0건, 메뉴 판단 p50 약 3.3초 (무료 키, 2026-10-24)
 
 ## 주의
