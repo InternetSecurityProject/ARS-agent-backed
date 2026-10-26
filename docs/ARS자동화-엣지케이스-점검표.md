@@ -73,6 +73,7 @@
 | 이전 계층 복귀 중 | 복귀 대기열을 비우고 사용자 키를 따른다 | — (코드 `_act_key`) |
 | 안내에 없던 키 → ARS 오류 안내 | `input_rejected(actor=user)`, 같은 메뉴 재판단 | `test_user_direct_key_and_input_rejected` |
 | 안내에 없던 키 → ARS 가 새 메뉴로 이동 | 새 메뉴를 판단한다. 경로에는 `"9 입력"` 으로 남는다 | (ARS 숨은 키와 구분 불가. 3장 1번) |
+| 마지막 키 전송 뒤 새 메뉴를 듣기 전에 누름 (민감정보 안내 중, 안내가 끝나기 전 등) | 지난 메뉴의 선택지로 해석하지 않고 `"5 입력"` 으로 기록, 지나온 계층에 넣지 않음 | `test_key_pressed_before_next_menu_is_not_labeled_as_old_menu_choice` |
 | 업무 완료(`agent_done`) 뒤 | 키만 전송. 무응답 재전송(다시 듣기 키)을 걸지 않는다 | `test_no_auto_repeat_after_agent_done` |
 | 상담원 연결 중 | 키만 전송. 자동 재전송 없음 | `test_no_auto_repeat_when_connected_to_agent` |
 | 키 전송 실패 (회선 끊김) | `409 invalid_state`, 세션은 유지 (종료는 `_on_end` 가 처리) | `test_key_send_failure_is_409_for_user_and_harmless_for_ai` |

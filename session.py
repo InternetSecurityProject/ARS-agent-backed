@@ -849,7 +849,9 @@ class Session:
         if self.agent_active:
             self.ai_hold_until = time.monotonic() + self.s.user_key_hold_s
             self.timer("ai_hold", self.s.user_key_hold_s, self._resume_after_hold)
-        await self._press(key, "user", self.current)
+        # 마지막 키 전송 뒤 새 메뉴를 듣지 못한 상태(민감정보 안내 중, 안내가 끝나기 전 등)에서 누른 키는
+        # 지난 메뉴의 선택지로 해석하지 않고 "N 입력" 으로만 기록한다 (6.2)
+        await self._press(key, "user", self.current if self.current_fresh else None)
         return {"accepted": True, "key_sent": key}
 
     async def _resume_after_hold(self) -> None:

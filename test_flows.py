@@ -1184,6 +1184,24 @@ def test_confirm_question_without_answer_asks_user():
     run(go())
 
 
+def test_key_pressed_before_next_menu_is_not_labeled_as_old_menu_choice():
+    """마지막 키 전송 뒤 새 메뉴를 듣기 전에(민감정보 안내 중 등) 사용자가 누른 키는 지난 메뉴의 선택지로
+    해석하지 않는다. "5 입력" 으로만 기록하고 지나온 계층에도 넣지 않는다."""
+    async def go():
+        s, call = await manual("통장 잔액 알고 싶어", user_key_hold_s=0.1, clarify_expire_s=5, clarify_drop_s=10)
+        await s.on_paragraph(ROOT)                                   # AI 가 잔액조회(3)
+        assert call.keys == ["3"] and len(s.layers) == 1
+        await s.action({"type": "key", "key": "5"})                  # 다음 안내를 듣기 전에 누름
+        await s.action({"type": "key", "key": "6"})
+        assert [p["text"] for p in s.path[1:]] == ["5 입력", "6 입력"]
+        assert all(p["options"] == [] and p["selected"]["category"] is None for p in s.path[1:])
+        assert len(s.layers) == 1                                    # 첫 메뉴의 '카드 업무(5)' 로 쌓이지 않는다
+        await s.on_paragraph(ROOT)                                   # 메뉴를 새로 들은 뒤(AI 보류 중) 누른 키는 선택지로 기록
+        await s.action({"type": "key", "key": "5"})
+        assert s.path[-1]["text"].endswith("카드 업무(5) 선택")
+    run(go())
+
+
 def test_new_call_allowed_while_previous_finishes_after_hangup():
     """상대가 끊은 뒤 마지막 안내·요약을 처리하는 동안(최대 10초)에도 새 통화를 만들 수 있다 (회선은 비어 있다)."""
     async def go():
