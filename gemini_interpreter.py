@@ -27,7 +27,7 @@ import os
 import re
 import time
 
-from interpreter import Option, Prompt
+from interpreter import Option, Prompt, _norm
 
 log = logging.getLogger("gemini")
 
@@ -52,10 +52,16 @@ _SPOKEN_SYMBOL = [
 _DIGIT_RUN = re.compile(r"(?<![가-힣])([공영일이삼사오육칠팔구]{2,})\s*(?=번(?!호))")
 
 
+_NATIVE = {"한": "1", "두": "2", "세": "3", "네": "4", "다섯": "5", "여섯": "6", "일곱": "7", "여덟": "8", "아홉": "9"}
+# '문의는 한 번' 처럼 '~은/는' 바로 뒤의 고유어만 번호로 본다 ('다시 한 번 눌러' 는 그대로)
+_NATIVE_KEY = re.compile(r"([은는])\s*(한|두|세|네|다섯|여섯|일곱|여덟|아홉)\s?번" + _NOT_KEY_AFTER)
+
+
 def normalize_keys(text: str) -> str:
     """'삼 번' → '3번', '별표' → '*', '우물정자' → '#', '일이삼 번' → '123번'."""
     out = _DIGIT_RUN.sub(lambda m: "".join(_DIGIT[c] for c in m.group(1)), text)
     out = _SPOKEN_KEY.sub(lambda m: _DIGIT[m.group(1)] + "번", out)
+    out = _NATIVE_KEY.sub(lambda m: f"{m.group(1)} {_NATIVE[m.group(2)]}번", out)
     for pat, sym in _SPOKEN_SYMBOL:
         out = pat.sub(sym, out)
     return out
@@ -103,23 +109,33 @@ def confirm_key(prompt: Prompt, answer: str) -> str | None:
 _SENSITIVE = re.compile(r"(주민\s?등록\s?번호|주민\s?번호|생년\s?월일|계좌\s?번호|카드\s?번호|비밀\s?번호|인증\s?번호|"
                         r"보안\s?카드|OTP|휴대\s?(?:폰|전화)\s?번호|전화\s?번호|유효\s?기간|CVC)")
 _INPUT_VERB = re.compile(r"(눌러|입력|누르)")
-_RESULT = re.compile(r"접수\s*되었|완료\s*되었|발송\s*됩니다|발급\s*됩니다|처리\s*되었|발급\s*되었|발송\s*되었|원입니다|입니다\.?\s*감사합니다")
+_RESULT = re.compile(r"잔액은\s*[0-9]|출금\s?가능\s?(?:액|금액)은\s*[0-9]|접수\s*되었|완료\s*되었|발송\s*됩니다|발급\s*됩니다|처리\s*되었|발급\s*되었|발송\s*되었|원입니다|입니다\.?\s*감사합니다")
 _OPTION = re.compile(r"([가-힣A-Za-z0-9 ·]{2,30}?)\s*(?:은|는|면|으로|로)\s*([0-9]|\*|#)\s*(?=번|을|를|,|\.|\s|$)")
+
+
+_DIGITS_FIELD = re.compile(r"([가-힣 ]{2,12}?)\s*[0-9]+\s*자리")
+_HOURS = re.compile(r"(?:업무|운영|상담)\s?시간")
 
 
 def rule_classify(text: str) -> Prompt:
     t = normalize_keys(text)
-    if _SENSITIVE.search(t) and _INPUT_VERB.search(t) and not re.search(r"맞으면|맞으시면|틀리면", t):
+    menu_like = len(_OPTION.findall(t)) >= 2  # '비밀번호 변경은 2번' 같은 메뉴는 민감정보 요청이 아니다
+    if not menu_like and not re.search(r"맞으면|맞으시면|틀리면", t):
         m = _SENSITIVE.search(t)
-        return Prompt(kind="sensitive", text=text, label=m.group(1).replace(" ", ""),
-                      terminator="#" if "#" in t else None)
+        if m and (_INPUT_VERB.search(t) or "자리" in t):
+            return Prompt(kind="sensitive", text=text, label=m.group(1).replace(" ", ""), terminator="#" if "#" in t else None)
+        m = _DIGITS_FIELD.search(t)
+        if m and _INPUT_VERB.search(t):  # '요양 기관 코드 8자리를 입력' 처럼 사용자가 직접 눌러야 하는 값
+            return Prompt(kind="sensitive", text=text, label=m.group(1).strip(), terminator="#" if "#" in t else None)
+    if not re.search(r"[0-9*#]\s*번", t) and _HOURS.search(t) and re.search(r"다시\s*걸어|감사합니다|가능합니다", t):
+        return Prompt(kind="out_of_hours", text=text)
     if re.search(r"(문자|알림톡|카카오톡).{0,10}(보내\s*드렸|발송\s*(?:되었|했|하였))", t):
         return Prompt(kind="message_sent", text=text)
     if _RESULT.search(t):
         return Prompt(kind="result", text=text)
     opts, back, home, rep = [], None, None, None
     for label, key in _OPTION.findall(t):
-        label = re.sub(r"^(그리고|또는|및|,)\s*", "", label.strip())
+        label = re.sub(r"^(?:번\s*|그리고\s*|또는\s*|및\s*|,\s*)+", "", label.strip())
         if re.search(r"이전|전\s?단계", label):
             back = key
         elif re.search(r"처음", label):
@@ -132,6 +148,8 @@ def rule_classify(text: str) -> Prompt:
         kind = "confirm" if re.search(r"맞으면|맞으시면|맞습니까|맞나요", t) else "menu"
         return Prompt(kind=kind, text=text, options=opts, back_key=back, home_key=home, repeat_key=rep,
                       critical=bool(re.search(r"결제|송금|이체|해지|해약|계약|가입", t) and kind == "confirm"))
+    if re.search(r"입력\s*시간이\s*(?:초과|경과)|잘못\s*누르셨", t):
+        return Prompt(kind="input_error", text=text)
     if re.search(r"(상담원|상담사|상담직원)\s*[가-힣]{2,4}\s*입니다", t):
         return Prompt(kind="agent_human", text=text)
     if re.search(r"연결\s*중|연결해\s*드리겠|잠시만\s*기다려", t):
@@ -144,6 +162,20 @@ def unnumbered_labels(text: str) -> list[str]:
     t = normalize_keys(text)
     return [m.strip() for m in re.findall(r"([가-힣A-Za-z ·]{2,20}?)\s*(?:은|는)\s*(?=,|\.|$|[가-힣]{2,}\s*(?:은|는)\s*[0-9*#])", t)
             if m.strip()]
+
+
+def direct_match(goal: str, options: list[Option]) -> str | None:
+    """선택지 이름의 단어가 목적에 모두 들어 있는 선택지가 딱 하나면 그 키 ('건강보험증 발급' ↔ '건강보험증 발급받고 싶어')."""
+    g = re.sub(r"\s", "", goal)
+    hits = []
+    for o in options:
+        words = re.findall(r"[가-힣A-Za-z0-9]{2,}", o.label)
+        if words and all(w in g for w in words) and any(w not in _GENERIC for w in words):
+            hits.append(o.key)
+    return hits[0] if len(hits) == 1 else None
+
+
+_GENERIC = {"발급", "조회", "신청", "업무", "안내", "서비스", "문의", "연결", "변경", "확인"}
 
 
 def _shares_word(a: str, b: str) -> bool:
@@ -172,6 +204,8 @@ kind (하나만):
   rejected 본인 확인 실패 등 거절 / info 그 밖의 안내
 규칙:
 - 안내에 실제로 말한 번호(0-9, *, #)만 key 로 씁니다. 메뉴 이름은 들렸지만 번호가 잘렸거나 불분명하면 그 선택지는 빼고, 번호를 추측하지 않습니다.
+- '*'(별표)·'#'(샵)도 업무 선택지면 options 에 넣습니다 (예: '분실신고 금융사기는 *', '빠른 말 또는 쉬운 말 서비스는 #').
+- 같은 번호가 서로 다른 두 선택지에 붙어 들리면(STT 오류) 둘 다 options 에서 빼고 unnumbered 에 적습니다.
 - '이전 메뉴'·'처음으로'·'다시 듣기'는 options 에 넣지 않고 back_key·home_key·repeat_key 로 분리합니다. 없으면 null.
 - 상담원(상담사·상담직원) 연결 선택지는 options 에 넣고 agent_key 에도 적습니다.
 - label 은 ARS 가 말한 이름 그대로, category 는 기관마다 다른 표현을 묶은 짧은 업무 이름입니다
@@ -226,6 +260,12 @@ HANDOFF = COMMON + """
 - 1~2문장. 무엇을 하려고 했고 ARS 에서 어떤 메뉴를 거쳤는지. 예: '카드 분실 신고 건으로 연락드렸습니다. ARS 에서 카드 업무 > 카드 분실 신고까지 진행했습니다.'
 - 민감정보는 적지 않습니다."""
 
+CLASSIFY_SCORE = CLASSIFY + """
+
+추가 할 일 (kind 가 menu·confirm 일 때만, 아니면 scores 는 빈 목록): 사용자 목적(<goal>)이 options 의 각 선택지와 얼마나 맞는지 scores 에 0~1 로 적습니다.
+""" + SCORE[len(COMMON):].split("할 일:", 1)[1].split("\n", 1)[1].replace(
+    "<unnumbered> 는 이번 안내에서 이름만 들리고 번호가 없던 선택지입니다.", "unnumbered 에 적은 선택지(번호 없이 들린 선택지)가 있으면:")
+
 _S = {"type": "string"}
 _SN = {"type": ["string", "null"]}
 SCHEMA_CLASSIFY = {
@@ -239,6 +279,12 @@ SCHEMA_CLASSIFY = {
         "unnumbered": {"type": "array", "items": _S},
     },
     "required": ["kind", "options", "unnumbered", "back_key", "home_key", "repeat_key", "agent_key", "label", "terminator", "critical"],
+}
+SCHEMA_CLASSIFY_SCORE = {
+    "type": "object",
+    "properties": {**SCHEMA_CLASSIFY["properties"], "scores": {"type": "array", "items": {"type": "object", "properties": {
+        "key": _S, "confidence": {"type": "number"}}, "required": ["key", "confidence"]}}},
+    "required": SCHEMA_CLASSIFY["required"] + ["scores"],
 }
 SCHEMA_SCORE = {
     "type": "object",
@@ -266,7 +312,8 @@ class GeminiClient:
         self.api_key, self.model, self.timeout_s, self.retries, self.thinking = api_key, model, timeout_s, retries, thinking
         self._http = None
 
-    async def generate(self, system: str, user: str, schema: dict) -> dict:
+    async def generate(self, system: str, user: str, schema: dict, timeout_s: float | None = None,
+                       retries: int | None = None) -> dict:
         import httpx
 
         if self._http is None:
@@ -278,10 +325,10 @@ class GeminiClient:
                                  "responseJsonSchema": schema, "thinkingConfig": {"thinkingLevel": self.thinking}},
         }
         last: Exception | None = None
-        for attempt in range(self.retries + 1):
+        for attempt in range((self.retries if retries is None else retries) + 1):
             t0 = time.perf_counter()
             try:
-                r = await self._http.post(self.URL.format(model=self.model), json=body)
+                r = await self._http.post(self.URL.format(model=self.model), json=body, timeout=timeout_s or self.timeout_s)
                 if r.status_code == 429 or r.status_code >= 500:
                     raise RuntimeError(f"Gemini HTTP {r.status_code}")
                 r.raise_for_status()
@@ -311,19 +358,35 @@ class GeminiInterpreter:
                 raise RuntimeError("GEMINI_API_KEY 가 .env 에 없습니다. (INTERPRETER=gemini_interpreter:GeminiInterpreter 사용 시 필요)")
             client = GeminiClient(key, os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite"),
                                   float(os.environ.get("GEMINI_TIMEOUT_S", "6")),
-                                  thinking=os.environ.get("GEMINI_THINKING", "LOW"))
+                                  thinking=os.environ.get("GEMINI_THINKING", "MINIMAL"))
         self.client = client
+        # 번호를 눌러야 하는 판단(분류·점수·확인 질문)의 Gemini 대기 시간. ARS 입력 대기(KB 4.5초) 안에 끝나야 한다
+        self.decide_timeout_s = float(os.environ.get("GEMINI_DECIDE_TIMEOUT_S", "4"))
+        self.goal: str | None = None              # 현재 목적 (분류할 때 점수까지 한 번에 받기 위해 기억)
+        self._scores: dict[str, dict[str, tuple[str, float]]] = {}  # 목적 → {키: (선택지 이름, 신뢰도)}
+        self._cache: dict[tuple[str, str], dict] = {}               # (안내, 목적) → Gemini 분류·점수 결과
+        self._slow_until = 0.0  # 급한 판단이 시간 초과되면 잠시 Gemini 를 건너뛰고 규칙으로 판단 (연속 대기 방지)
         self.last_menu: Prompt | None = None     # 가장 최근에 들은 메뉴 (merge_answer 의 '그거'·'3번' 해석용)
         self.last_path: list[str] = []
         self.last_answer: str | None = None      # 가장 최근 재질문 답변 (확인 질문 '네/아니요' 규칙용)
         self.unnumbered: dict[str, list[str]] = {}  # 메뉴 signature → 번호 없이 들린 선택지 이름
 
-    async def _ask(self, system: str, schema: dict, **blocks) -> dict:
+    async def _ask(self, system: str, schema: dict, fast: bool = False, **blocks) -> dict:
+        """fast=True: 번호를 눌러야 하는 판단. 대기 시간을 줄이고 재시도하지 않는다 (실패 시 규칙·재질문)."""
         user = "\n".join(_block(k, v) for k, v in blocks.items())
+        if fast:
+            if time.monotonic() < self._slow_until:
+                raise RuntimeError("Gemini 응답 지연으로 잠시 규칙 판단")
+            try:
+                return await self.client.generate(system, user, schema, timeout_s=self.decide_timeout_s, retries=0)
+            except Exception:
+                self._slow_until = time.monotonic() + 20
+                raise
         return await self.client.generate(system, user, schema)
 
     async def summarize_goal(self, goal: str) -> str:
         self.last_answer, self.last_menu, self.last_path = None, None, []
+        self.goal, self._scores = goal, {}
         try:
             text = (await self._ask(GOAL, SCHEMA_TEXT, goal=goal))["text"].strip()
             if text:
@@ -334,22 +397,41 @@ class GeminiInterpreter:
 
     async def classify(self, text: str) -> Prompt:
         norm = normalize_keys(text)
+        goal = self.goal or ""
         try:
-            d = await self._ask(CLASSIFY, SCHEMA_CLASSIFY, ars=norm)
-            p = self._to_prompt(text, norm, d)
-            missing = [str(x) for x in d.get("unnumbered") or []]
+            d = self._cache.get((norm, goal))
+            if d is None:  # 같은 안내를 다시 들으면(다시 듣기·입력 시간 초과) Gemini 에 다시 묻지 않는다
+                if goal:  # 목적을 알면 점수까지 한 번에 받는다 (score 호출 때 Gemini 를 다시 부르지 않음)
+                    d = await self._ask(CLASSIFY_SCORE, SCHEMA_CLASSIFY_SCORE, fast=True, goal=goal, path=self.last_path, ars=norm)
+                else:
+                    d = await self._ask(CLASSIFY, SCHEMA_CLASSIFY, fast=True, ars=norm)
+                if len(self._cache) > 64:
+                    self._cache.clear()
+                self._cache[(norm, goal)] = d
+            p, dup = self._to_prompt(text, norm, d)
+            missing = [str(x) for x in d.get("unnumbered") or []] + dup
             # 모델이 안내에 없는 번호를 붙인 선택지도 번호 없는 선택지로 본다
             kept = {o.label for o in p.options}
             missing += [str(o.get("label")) for o in d.get("options") or [] if o.get("label") and o.get("label") not in kept]
+            if goal and d.get("scores") is not None:
+                got = {str(x.get("key")): float(x.get("confidence", 0.0)) for x in d["scores"]}
+                self._scores[goal] = {o.key: (o.label, min(1.0, max(0.0, got.get(o.key, 0.0)))) for o in p.options}
         except Exception as e:
             log.warning("classify 규칙 기반 대체: %s", e)
             p, missing = rule_classify(text), []
+            self._scores.pop(goal, None)
         # 민감정보 요청·결과 안내는 모델이 놓쳐도 규칙으로 한 번 더 잡는다
         r = rule_classify(text)
         if r.kind == "sensitive" and p.kind in ("info", "menu"):
             p = r
         elif r.kind == "result" and p.kind == "info":
             p = r
+        elif p.kind == "menu" and r.kind == "menu":
+            # 모델이 빠뜨린 '*'·'#' 업무 선택지를 규칙으로 채운다 ('빠른 말 서비스는 샵 버튼')
+            nav = {p.back_key, p.home_key, p.repeat_key}
+            for o in r.options:
+                if o.key in ("*", "#") and o.key not in nav and all(x.key != o.key for x in p.options):
+                    p.options.append(o)
         if p.kind in ("menu", "confirm"):
             self.last_menu = p
             self.unnumbered[p.signature()] = list(dict.fromkeys(missing + unnumbered_labels(text)))
@@ -364,10 +446,22 @@ class GeminiInterpreter:
             return k if VALID_KEY.match(k) and _key_in_text(k, norm) else None
 
         opts: list[Option] = []
+        dup: list[str] = []   # 같은 번호가 다른 선택지에 두 번 붙은 경우 (STT 오류 의심) → 둘 다 빼고 번호 없는 선택지로 본다
         for o in d.get("options") or []:
             k = key_ok(o.get("key"))
-            if k and all(x.key != k for x in opts):
-                opts.append(Option(k, str(o.get("label") or k).strip(), (o.get("category") or None)))
+            label = str(o.get("label") or k).strip()
+            if not k:
+                continue
+            same = next((x for x in opts if x.key == k), None)
+            if same is None and k not in {x for x in dup}:
+                opts.append(Option(k, label, (o.get("category") or None)))
+            elif same is not None and _norm(same.label) != _norm(label):
+                opts.remove(same)
+                dup += [k, same.label, label]
+            elif same is None:
+                dup.append(label)
+        dup_keys = {x for x in dup if VALID_KEY.match(x)}
+        dup = [x for x in dup if x not in dup_keys]
         nav = {f: key_ok(d.get(f)) for f in ("back_key", "home_key", "repeat_key", "agent_key")}
         opts = [o for o in opts if o.key not in (nav["back_key"], nav["home_key"], nav["repeat_key"])]
         if nav["agent_key"] and all(o.key != nav["agent_key"] for o in opts):
@@ -375,9 +469,11 @@ class GeminiInterpreter:
         if kind in ("menu", "confirm") and not opts:
             kind = "info"  # 번호가 확인된 선택지가 없으면 판단하지 않고 다음 안내를 기다린다
         term = d.get("terminator")
+        if dup:
+            log.warning("같은 번호에 다른 선택지가 두 번 들림 (STT 오류 의심): %s", dup)
         return Prompt(kind=kind, text=text.strip(), options=opts, label=d.get("label") if kind == "sensitive" else None,
                       terminator=term if kind == "sensitive" and term in ("#", "*") else None,
-                      critical=bool(d.get("critical")), **nav)
+                      critical=bool(d.get("critical")), **nav), dup
 
     async def score(self, goal: str, options: list[Option], path: list[str] | None = None) -> dict[str, float]:
         if not options:
@@ -386,16 +482,22 @@ class GeminiInterpreter:
         opts = [{"key": o.key, "label": o.label, "category": o.category or o.label} for o in options]
         missing = self.unnumbered.get(Prompt(kind="menu", text="", options=options).signature(), [])
         try:
-            d = await self._ask(SCORE, SCHEMA_SCORE, goal=goal, path=path or [], options=opts, unnumbered=missing)
-            got = {str(s["key"]): float(s["confidence"]) for s in d.get("scores", [])}
-            out = {o.key: min(1.0, max(0.0, got.get(o.key, 0.0))) for o in options}
+            cached = self._scores.get(goal, {})
+            if all(o.key in cached and cached[o.key][0] == o.label for o in options):
+                out = {o.key: cached[o.key][1] for o in options}  # 분류할 때 함께 받은 점수 (Gemini 재호출 없음)
+            else:
+                d = await self._ask(SCORE, SCHEMA_SCORE, fast=True, goal=goal, path=path or [], options=opts, unnumbered=missing)
+                got = {str(s["key"]): float(s["confidence"]) for s in d.get("scores", [])}
+                out = {o.key: min(1.0, max(0.0, got.get(o.key, 0.0))) for o in options}
             # 목적과 같은 단어를 가진 선택지가 번호 없이 들렸으면 다른 번호를 누르지 않고 사용자에게 묻는다
             if any(_shares_word(goal, m) for m in missing) and not any(_shares_word(goal, o.label) for o in options):
                 out = {k: min(v, FAIL_SCORE) for k, v in out.items()}
             return out
         except Exception as e:
-            log.warning("score 실패, 사용자 재질문으로 전환: %s", e)
-            return {o.key: FAIL_SCORE for o in options}
+            # 실패 시: 선택지 이름이 목적에 그대로 들어 있는 선택지가 딱 하나면 그것만 일치로 보고, 아니면 사용자에게 묻는다
+            hit = None if any(_shares_word(goal, m) for m in missing) else direct_match(goal, options)
+            log.warning("score 실패 (%s), %s", e, f"직접 일치 '{hit}'" if hit else "사용자 재질문으로 전환")
+            return {o.key: (0.9 if o.key == hit else 0.1) for o in options} if hit else {o.key: FAIL_SCORE for o in options}
 
     async def answer_confirm(self, goal: str, prompt: Prompt) -> str | None:
         if prompt.critical:
@@ -407,13 +509,18 @@ class GeminiInterpreter:
                 return key
         try:
             opts = [{"key": o.key, "label": o.label} for o in prompt.options]
-            key = (await self._ask(CONFIRM, SCHEMA_KEY, goal=goal, ars=prompt.text, options=opts)).get("key")
+            key = (await self._ask(CONFIRM, SCHEMA_KEY, fast=True, goal=goal, ars=prompt.text, options=opts)).get("key")
             return key if key and any(o.key == key for o in prompt.options) else None
         except Exception as e:
             log.warning("answer_confirm 실패, 사용자 재질문: %s", e)
             return None
 
     async def merge_answer(self, goal: str, question: str, answer: str) -> str:
+        new = await self._merge_answer(goal, question, answer)
+        self.goal = new
+        return new
+
+    async def _merge_answer(self, goal: str, question: str, answer: str) -> str:
         self.last_answer = answer
         menu = self.last_menu
         opts = [{"key": o.key, "label": o.label, "category": o.category or o.label} for o in (menu.options if menu else [])]

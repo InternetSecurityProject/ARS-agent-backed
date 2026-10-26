@@ -18,7 +18,7 @@ class FakeClient:
     def __init__(self, replies: list[dict] | None = None, fail: bool = False) -> None:
         self.replies, self.fail, self.calls = list(replies or []), fail, []
 
-    async def generate(self, system: str, user: str, schema: dict) -> dict:
+    async def generate(self, system: str, user: str, schema: dict, **kw) -> dict:
         self.calls.append(user)
         if self.fail or not self.replies:
             raise RuntimeError("503")
@@ -167,17 +167,24 @@ def test_summarize_result_key_info():
 
 # 가상 ARS 전체 흐름 (서버 + GeminiInterpreter, Gemini 대신 가짜 응답) -----------------
 class KeywordClient:
-    """classify 는 실패시켜 규칙 기반 분류를 쓰고, score 는 선택지 이름별로 정한 값을 준다 (표에 없으면 0.05)."""
+    """분류는 규칙 기반 결과, 점수는 선택지 이름별로 정한 값 (표에 없으면 0.05) 을 Gemini 응답처럼 돌려준다."""
 
     def __init__(self, table: dict[str, float] | None = None, down: bool = False) -> None:
         self.table, self.down = table or {}, down
 
-    async def generate(self, system: str, user: str, schema: dict) -> dict:
+    async def generate(self, system: str, user: str, schema: dict, **kw) -> dict:
         import json
         import re
 
-        if self.down or "kind" in schema["properties"]:
+        if self.down:
             raise RuntimeError("503")
+        if "kind" in schema["properties"]:  # 분류는 규칙 기반 결과를 Gemini 응답처럼 돌려준다
+            ars = re.search(r"<ars>\n(.*?)\n</ars>", user, re.S).group(1)
+            p = rule_classify(ars)
+            return {"kind": p.kind, "options": [{"key": o.key, "label": o.label, "category": o.label} for o in p.options],
+                    "unnumbered": [], "back_key": p.back_key, "home_key": p.home_key, "repeat_key": p.repeat_key,
+                    "agent_key": p.agent_key, "label": p.label, "terminator": p.terminator, "critical": p.critical,
+                    "scores": [{"key": o.key, "confidence": self.table.get(o.label, 0.05)} for o in p.options]}
         if "scores" in schema["properties"]:
             opts = json.loads(re.search(r"<options>\n(.*?)\n</options>", user, re.S).group(1))
             return {"scores": [{"key": o["key"], "confidence": self.table.get(o["label"], 0.05)} for o in opts]}
@@ -265,3 +272,71 @@ def test_real_nhis_rule_fallback():
     p = rule_classify("건강보험증 발급은 1번, 상담사 연결은 0번, 다시 듣기는 별표 전 단계는 우물 정자를 눌러주십시오.")
     assert p.kind == "menu" and p.repeat_key == "*" and p.back_key == "#"
     assert rule_classify("고객님의 주민등록번호 앞 여섯자리와 체업 버튼을 눌러주십시오.").kind == "sensitive"
+
+
+# 속도 개선·채연님 요청 (2026-10-26) ------------------------------------------------
+def _menu(options, **kw):
+    d = {"kind": "menu", "options": options, "unnumbered": [], "back_key": None, "home_key": None, "repeat_key": None,
+         "agent_key": None, "label": None, "terminator": None, "critical": False}
+    d.update(kw)
+    return d
+
+
+def test_classify_and_score_in_one_call_and_cache():
+    fake = FakeClient([_menu([{"key": "3", "label": "잔액조회", "category": "잔액 조회"},
+                              {"key": "5", "label": "카드 업무", "category": "카드 업무"}],
+                             scores=[{"key": "3", "confidence": 0.9}, {"key": "5", "confidence": 0.1}])])
+    interp = GeminiInterpreter(fake)
+    interp.goal = "통장 잔액"
+    text = "잔액조회는 3번, 카드 업무는 5번을 눌러 주십시오."
+    p = run(interp.classify(text))
+    assert run(interp.score("통장 잔액", p.options)) == {"3": 0.9, "5": 0.1}
+    run(interp.classify(text))                      # 같은 안내 다시 듣기
+    assert len(fake.calls) == 1                     # Gemini 는 한 번만 불렸다
+
+
+def test_decide_calls_use_short_timeout_without_retry():
+    seen = []
+
+    class Spy(FakeClient):
+        async def generate(self, system, user, schema, **kw):
+            seen.append(kw)
+            raise RuntimeError("timeout")
+
+    interp = GeminiInterpreter(Spy())
+    run(interp.classify("잔액조회는 3번을 눌러 주십시오."))
+    assert seen[0] == {"timeout_s": interp.decide_timeout_s, "retries": 0}
+    assert interp.decide_timeout_s == 4.0
+
+
+def test_symbol_options_kept_when_model_drops_them():
+    """채연님 2번: KB 첫 메뉴의 '빠른 말 또는 쉬운 말 서비스는 샵 버튼'."""
+    text = "잔액 조회는 3번, 빠른 말 또는 쉬운 말 서비스는 샵 버튼 거래 내역 조회는 4번을 눌러주십시오."
+    reply = _menu([{"key": "3", "label": "잔액 조회", "category": "잔액 조회"},
+                   {"key": "4", "label": "거래 내역 조회", "category": "거래내역 조회"}])
+    p = run(GeminiInterpreter(FakeClient([reply])).classify(text))
+    assert "#" in [o.key for o in p.options]
+
+
+def test_native_korean_numbers_after_topic_marker():
+    """채연님 3번: '문의는 한 번' → 1번, '다시 한 번 눌러' 는 그대로."""
+    assert normalize_keys("카드 문의는 한 번, 상담원은 두 번") == "카드 문의는 1번, 상담원은 2번"
+    assert normalize_keys("다시 한 번 눌러 주십시오") == "다시 한 번 눌러 주십시오"
+
+
+def test_duplicate_key_is_suspicious_not_silently_dropped():
+    """채연님 4번: 같은 번호가 두 선택지에 붙으면 둘 다 빼고, 목적이 거기 맞으면 누르지 않는다."""
+    text = "카드 분실 신고는 1번, 결제일 변경은 1번, 상담원 연결은 0번을 눌러 주십시오."
+    reply = _menu([{"key": "1", "label": "카드 분실 신고", "category": "카드 분실 신고"},
+                   {"key": "1", "label": "결제일 변경", "category": "카드 결제일 변경"},
+                   {"key": "0", "label": "상담원 연결", "category": "상담원 연결"}])
+    interp = GeminiInterpreter(FakeClient([reply, {"scores": [{"key": "0", "confidence": 0.6}]}]))
+    p = run(interp.classify(text))
+    assert [o.key for o in p.options] == ["0"]
+    assert max(run(interp.score("카드 분실 신고하고 싶어", p.options)).values()) < 0.5
+
+
+def test_score_failure_uses_exact_name_match():
+    opts = [Option("1", "증명서 발급"), Option("2", "건강보험증 발급"), Option("3", "고지서 발급")]
+    s = run(GeminiInterpreter(FakeClient(fail=True)).score("건강보험증을 발급받고 싶다", opts))
+    assert s["2"] >= 0.5 and s["1"] < 0.3

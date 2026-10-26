@@ -286,7 +286,9 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 - 안내에 실제로 나온 번호만 선택지로 인정 (번호 추측 금지)
 - 재질문 답변의 번호(`삼 번이요`)·대명사(`그거`)는 직전 메뉴 선택지와 지나온 경로로 해석
 - 확인 질문의 명확한 `네`/`아니요` 답변은 LLM 없이 규칙으로 처리 (중요 선택 제외)
-- Gemini 실패·시간 초과 시 1회 재시도, 이후 번호를 고르지 않음 (`classify` 는 규칙 기반 분류, `score` 는 0.40 → 재질문)
+- 속도: 목적을 알면 `classify` 때 점수까지 한 번에 받고 `score` 는 그 값을 돌려줌 (Gemini 1회), 같은 안내를 다시 들으면 저장한 결과 사용
+- 번호를 눌러야 하는 판단은 최대 `GEMINI_DECIDE_TIMEOUT_S`(기본 4초)만 기다리고 재시도하지 않음. 실패 시 `classify` 는 규칙 기반 분류, `score` 는 선택지 이름이 목적에 그대로 있는 선택지 하나만 일치, 없으면 0.40 → 재질문
+- `*`·`#` 업무 선택지(빠른 말 서비스 등)는 모델이 빠뜨려도 규칙으로 채움, `~는 한 번` 등 고유어 번호 처리, 같은 번호가 두 선택지에 붙으면 둘 다 제외하고 재질문
 - 민감정보 요청은 모델이 놓쳐도 규칙으로 한 번 더 확인
 - 시험: `python -m pytest -q test_gemini_interpreter.py` (Gemini 호출 없음)
 - `.env` 에서 Gemini 해석기를 켠 상태로 `test_flows.py` 를 돌리면 목 데이터 기준 시험이 실패하므로 `INTERPRETER=interpreter:MockInterpreter python -m pytest -q test_flows.py` 로 실행
