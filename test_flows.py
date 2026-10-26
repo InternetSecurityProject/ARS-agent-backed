@@ -976,7 +976,7 @@ def test_stale_menu_heard_before_key_is_not_decided_again():
         s, call = await manual("카드 결제일 바꾸고 싶어", clarify_expire_s=5, clarify_drop_s=10)
         t0 = time.monotonic()
         await s.on_paragraph(ROOT, started_at=t0)                    # 판단 → 카드 업무(5)
-        assert call.keys == ["5"] and s.last_key_at > t0
+        assert call.keys == ["5"] and s.last_key_at >= t0            # Windows 는 monotonic 이 16ms 단위라 같을 수 있다
         replay_started = s.last_key_at - 0.5                         # 키보다 먼저 시작된 같은 메뉴(재생)
         await s.on_paragraph(ROOT, started_at=replay_started)
         assert call.keys == ["5"]                                    # 두 번 누르지 않는다
