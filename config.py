@@ -40,14 +40,20 @@ class Settings:
     # 통화 백엔드: clawops(실제 발신) / sim(가상 ARS)
     backend: str = field(default_factory=lambda: _env("CALL_BACKEND", "clawops"))
     clawops_from: str = field(default_factory=lambda: _env("CLAWOPS_FROM", ""))
+    # DTMF 전송: inband(톤을 통화 음성에 섞음, 실통화 확인됨) / sdk(ClawOps 미디어 채널 DTMF 이벤트)
+    dtmf_mode: str = field(default_factory=lambda: _env("DTMF_MODE", "inband"))
     sim_tree: str = field(default_factory=lambda: _env("SIM_TREE", str(HERE / "sim_kb.json")))
     sim_speed: float = field(default_factory=lambda: float(_env("SIM_SPEED", "1.0")))
     sim_audio: bool = field(default_factory=lambda: _env("SIM_AUDIO", "1") == "1")
+    # 음성 가상 ARS: 안내를 TTS 소리로 보내 STT·DTMF 톤까지 실통화와 같은 경로로 시험 (Windows)
+    sim_voice: bool = field(default_factory=lambda: _env("SIM_VOICE", "0") == "1")
 
     # 음성 인식: whisper(로컬) / none
     stt: str = field(default_factory=lambda: _env("STT", "whisper"))
-    whisper_model: str = field(default_factory=lambda: _env("WHISPER_MODEL", "small"))
+    whisper_model: str = field(default_factory=lambda: _env("WHISPER_MODEL", "kimthegarden/whisper-small-ko-low-qual-voice-ct2"))
     whisper_device: str = field(default_factory=lambda: _env("WHISPER_DEVICE", "cpu"))
+    # ARS 가 말하는 동안 단락 앞부분을 미리 인식 (단락이 끝난 뒤 인식 시간 단축)
+    stt_prefetch: bool = field(default_factory=lambda: _env("STT_PREFETCH", "1") == "1")
 
     # AI 슬롯필링(팀원 담당). 기본은 목 데이터(MockInterpreter). "모듈:클래스" 형식으로 교체한다.
     interpreter: str = field(default_factory=lambda: _env("INTERPRETER", "interpreter:MockInterpreter"))

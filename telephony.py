@@ -89,9 +89,10 @@ class _Leg:
 class ClawOpsCall:
     provides_transcripts = False
 
-    def __init__(self, session, handlers: CallHandlers) -> None:
+    def __init__(self, session, handlers: CallHandlers, dtmf_mode: str = "inband") -> None:
         self.session = session
         self.handlers = handlers
+        self.dtmf_mode = dtmf_mode
         self._tone_until = 0.0
         self._hung_up = False
 
@@ -108,6 +109,10 @@ class ClawOpsCall:
         leg = self.leg
         if not (leg and leg.call):
             raise RuntimeError("통화가 연결되지 않았습니다")
+        if self.dtmf_mode == "sdk":
+            # 미디어 채널의 DTMF 이벤트로 전송 (톤을 음성에 섞지 않음). 송출 시간은 톤 방식과 같게 잡는다
+            await self.session.send_dtmf_sequence(keys)
+            return len(dtmf_ulaw(keys)) / 8000
         tone = dtmf_ulaw(keys)
         dur = len(tone) / 8000
         self._tone_until = time.monotonic() + dur + 0.05  # 톤 송출 중 마이크 음성 차단
@@ -125,8 +130,13 @@ class ClawOpsBackend:
     LEGS: dict[str, _Leg] = {}
     CALLS: dict[str, ClawOpsCall] = {}
 
-    def __init__(self, from_number: str) -> None:
+    # 서버가 알리는 미연결 종료 상태 → 세션 종료 사유 (명세 3.2)
+    FAIL_REASON = {"busy": "busy", "no-answer": "no_answer", "no_answer": "no_answer", "rejected": "no_answer",
+                   "timeout": "no_answer", "canceled": "local_hangup", "failed": "failed"}
+
+    def __init__(self, from_number: str, dtmf_mode: str = "inband") -> None:
         self.from_number = "".join(ch for ch in from_number if ch.isdigit())
+        self.dtmf_mode = dtmf_mode
         self.agent = None
 
     async def start(self) -> None:
@@ -149,7 +159,8 @@ class ClawOpsBackend:
             c = self.CALLS.pop(call.call_id, None)
             if c:
                 r = str(reason).lower()
-                code = "busy" if "busy" in r else "no_answer" if ("answer" in r or "timeout" in r) else "failed"
+                code = self.FAIL_REASON.get(r) or ("busy" if "busy" in r else "no_answer" if "answer" in r else "failed")
+                log.info("발신 실패 (%s → %s)", r, code)
                 await c.handlers.on_end(code)
 
         @self.agent.on("call_end")
@@ -174,7 +185,7 @@ class ClawOpsBackend:
 
     async def dial(self, to: str, handlers: CallHandlers) -> ClawOpsCall:
         session = await self.agent.call(to, timeout=40)
-        c = ClawOpsCall(session, handlers)
+        c = ClawOpsCall(session, handlers, self.dtmf_mode)
         self.CALLS[session.call_id] = c
         log.info("발신 %s → %s (call_id=%s)", self.from_number, to, session.call_id)
         return c
@@ -250,7 +261,10 @@ class SimCall:
             await self._say("입력이 없어 통화를 종료합니다.")
             await self._remote_end()
             return
-        await self._say("입력 시간이 초과되었습니다.")
+        log.info("가상 ARS 입력 대기 초과 %d회 (%s)", self.repeats, self.node_id)
+        await self._say(self.tree.get("timeout_say", "입력 시간이 초과되었습니다."))
+        if gen != self._input_gen or self.ended:
+            return  # 안내 도중 키를 받아 다른 메뉴로 넘어갔다. 그 메뉴를 다시 재생하지 않는다
         await self._play_node()
 
     async def _remote_end(self) -> None:
@@ -326,17 +340,26 @@ class SimCall:
 
 
 class SimBackend:
-    def __init__(self, tree_path: str, speed: float = 1.0, audio: bool = True) -> None:
+    def __init__(self, tree_path: str, speed: float = 1.0, audio: bool = True, voice: bool = False) -> None:
         self.tree = json.loads(Path(tree_path).read_text(encoding="utf-8"))
-        self.speed, self.audio = speed, audio
+        self.speed, self.audio, self.voice = speed, audio, voice
 
     async def start(self) -> None:
-        log.info("가상 ARS 사용: %s", self.tree.get("name"))
+        log.info("가상 ARS 사용: %s%s", self.tree.get("name"), " (음성)" if self.voice else "")
+        if self.voice:
+            from sim_voice import prepare
+
+            await asyncio.to_thread(prepare, self.tree)
 
     async def stop(self) -> None:
         pass
 
     async def dial(self, to: str, handlers: CallHandlers) -> SimCall:
-        c = SimCall(self.tree, handlers, self.speed, self.audio)
+        if self.voice:
+            from sim_voice import VoiceSimCall
+
+            c: SimCall = VoiceSimCall(self.tree, handlers, self.speed)
+        else:
+            c = SimCall(self.tree, handlers, self.speed, self.audio)
         c._spawn(c.answer())
         return c

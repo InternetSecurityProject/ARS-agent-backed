@@ -18,6 +18,7 @@ from pathlib import Path
 from fastapi import FastAPI, Header, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
+from audio import FrameChunker, Segmenter
 from config import Settings, settings as default_settings
 from interpreter import load_interpreter
 from navigator import Navigator
@@ -26,16 +27,33 @@ from stt import make_recognizer
 from telephony import ClawOpsBackend, SimBackend
 
 log = logging.getLogger("ars.app")
+_PREFETCH_TASKS: set[asyncio.Task] = set()
 HERE = Path(__file__).parent
 
 
 def build_deps(st: Settings) -> Deps:
-    backend = (SimBackend(st.sim_tree, st.sim_speed, st.sim_audio) if st.backend == "sim"
-               else ClawOpsBackend(st.clawops_from))
-    recognizer = make_recognizer("none" if st.backend == "sim" else st.stt, st.whisper_model, st.whisper_device)
+    backend = (SimBackend(st.sim_tree, st.sim_speed, st.sim_audio, st.sim_voice) if st.backend == "sim"
+               else ClawOpsBackend(st.clawops_from, st.dtmf_mode))
+    recognizer = make_recognizer(stt_kind(st), st.whisper_model, st.whisper_device, st.vad_rms)
+    prefetch = getattr(recognizer, "prefetch", None)
+    if prefetch and st.stt_prefetch:
+        # ARS 가 말하는 동안 단락 앞부분을 미리 인식한다 (Segmenter 가 쉼마다 넘김)
+        def on_chunk(prefix: bytes, start: int) -> None:
+            t = asyncio.get_running_loop().create_task(prefetch(prefix, start))
+            _PREFETCH_TASKS.add(t)  # 작업이 끝나기 전에 사라지지 않게 참조를 둔다
+            t.add_done_callback(_PREFETCH_TASKS.discard)
+
+        Segmenter.on_chunk = staticmethod(on_chunk)
+    else:
+        Segmenter.on_chunk = None
     interp = load_interpreter(st.interpreter)
     nav = Navigator(interp, st.match_threshold, st.margin, st.max_revisit, st.max_presses, st.low_threshold)
     return Deps(st, backend, recognizer, interp, nav)
+
+
+def stt_kind(st: Settings) -> str:
+    """가상 ARS 는 문장을 직접 주므로 인식하지 않는다. 음성 가상 ARS 는 실통화와 같이 인식한다."""
+    return "none" if st.backend == "sim" and not st.sim_voice else st.stt
 
 
 def create_app(st: Settings | None = None) -> FastAPI:
@@ -148,6 +166,7 @@ def create_app(st: Settings | None = None) -> FastAPI:
                 await ws.send_bytes(frame)
 
         down = asyncio.create_task(downlink())
+        chunker = FrameChunker()  # 연결마다 나머지를 이어 붙인다
         try:
             while True:
                 msg = await ws.receive()
@@ -155,8 +174,8 @@ def create_app(st: Settings | None = None) -> FastAPI:
                     break
                 data = msg.get("bytes")
                 if data:
-                    for i in range(0, len(data) - len(data) % 160, 160):
-                        await s.mic_audio(data[i:i + 160])
+                    for frame in chunker.feed(data):
+                        await s.mic_audio(frame)
         except (WebSocketDisconnect, RuntimeError):
             pass
         finally:
@@ -172,7 +191,7 @@ def create_app(st: Settings | None = None) -> FastAPI:
     async def health():
         a = manager.active()
         ex = getattr(deps.interp, "goal_examples", None)
-        return {"backend": st.backend, "stt": "none" if st.backend == "sim" else st.stt, "interpreter": st.interpreter,
+        return {"backend": st.backend, "stt": stt_kind(st), "sim_voice": st.sim_voice, "interpreter": st.interpreter,
                 "mock_goals": ex() if ex else [], "active_session": a.id if a else None}
 
     return app
@@ -181,6 +200,8 @@ def create_app(st: Settings | None = None) -> FastAPI:
 def main() -> None:
     ap = argparse.ArgumentParser(description="ARS 자동화 API 서버")
     ap.add_argument("--sim", action="store_true", help="가상 ARS 로 실행")
+    ap.add_argument("--sim-voice", action="store_true", help="음성 가상 ARS (TTS 안내 → STT, DTMF 톤 인식)")
+    ap.add_argument("--sim-tree", help="가상 ARS 메뉴 트리 (예: sim_nhis.json)")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--debug", action="store_true")
@@ -189,11 +210,15 @@ def main() -> None:
                         format="%(asctime)s %(name)s %(message)s", datefmt="%H:%M:%S")
     logging.getLogger("clawops").setLevel(logging.INFO if a.debug else logging.WARNING)
     st = Settings()
-    if a.sim:
+    if a.sim or a.sim_voice:
         st.backend = "sim"
+    if a.sim_voice:
+        st.sim_voice = True
+    if a.sim_tree:
+        st.sim_tree = a.sim_tree
     import uvicorn
 
-    log.info("백엔드=%s STT=%s 해석기=%s", st.backend, "none" if st.backend == "sim" else st.stt, st.interpreter)
+    log.info("백엔드=%s%s STT=%s 해석기=%s", st.backend, "(음성)" if st.sim_voice else "", stt_kind(st), st.interpreter)
     uvicorn.run(create_app(st), host=a.host, port=a.port, log_level="info")
 
 
