@@ -21,6 +21,8 @@ SPEED = 0.01  # 안내 길이를 1/100 로 줄인다
 def make_settings(**kw) -> Settings:
     st = Settings()
     st.backend, st.sim_speed, st.sim_audio = "sim", SPEED, False
+    # .env 의 INTERPRETER/STT 설정과 무관하게 항상 모의 해석기로 시험한다 (실제 AI 호출 없음)
+    st.interpreter, st.stt = "interpreter:MockInterpreter", "none"
     st.no_response_s, st.clarify_expire_s, st.clarify_drop_s, st.user_key_hold_s = 5, 0.3, 0.6, 0.2
     for k, v in kw.items():
         setattr(st, k, v)
