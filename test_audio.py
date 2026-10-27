@@ -12,7 +12,7 @@ import random
 from clawops.agent._audio import pcm16_to_ulaw, ulaw_to_pcm16
 
 from audio import FRAME, Segmenter, detect_dtmf, dtmf_ulaw, hum_ulaw
-from stt import _clean
+from stt import _clean, _plausible
 from telephony import ClawOpsBackend
 
 
@@ -187,3 +187,23 @@ def test_stt_native_number_keys_in_menu():
     assert _clean("잔액조회는 세 번, 거래내역조회는 네 번") == "잔액조회는 3번, 거래내역조회는 4번"
     assert _clean("한 번 더 눌러 주세요") == "한 번 더 눌러 주세요"  # 메뉴 안내 형태가 아니면 그대로
     assert _clean("이번 달 결제 예정 금액은 두 번 나누어") == "이번 달 결제 예정 금액은 두 번 나누어"
+
+
+def test_stt_drops_made_up_segments():
+    from types import SimpleNamespace as Seg
+
+    real = Seg(no_speech_prob=0.05, compression_ratio=1.4, avg_logprob=-0.3)  # ARS 안내를 받아 적은 조각
+    assert _plausible(real)
+    # 잡음에서 지어낸 조각: 말이 아니라고 판단 / "일어나서 일어나서 …" 반복 / 확신 없음
+    assert not _plausible(Seg(no_speech_prob=0.8, compression_ratio=1.5, avg_logprob=-0.5))
+    assert not _plausible(Seg(no_speech_prob=0.1, compression_ratio=5.2, avg_logprob=-0.2))
+    assert not _plausible(Seg(no_speech_prob=0.3, compression_ratio=1.6, avg_logprob=-1.4))
+
+
+def test_whisper_uses_voice_activity_filter_by_default(monkeypatch):
+    from stt import WhisperRecognizer
+
+    monkeypatch.delenv("STT_VAD", raising=False)
+    assert WhisperRecognizer().vad is True  # 말소리 없는 구간은 인식하지 않는다 (잡음에서 문장을 지어내지 않게)
+    monkeypatch.setenv("STT_VAD", "0")
+    assert WhisperRecognizer().vad is False

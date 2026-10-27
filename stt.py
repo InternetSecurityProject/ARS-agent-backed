@@ -62,6 +62,14 @@ def _clean(text: str) -> str:
     return text
 
 
+def _plausible(seg) -> bool:
+    """Whisper 조각이 실제 말을 받아 적은 것으로 보이는지. 지어낸 문장의 특징을 걸러낸다.
+    - no_speech_prob 이 높음: 말이 아닌 소리로 판단
+    - compression_ratio 가 높음: "일어나서 일어나서 …" 같은 반복
+    - avg_logprob 이 아주 낮음: 확신 없이 만든 문장"""
+    return seg.no_speech_prob < 0.6 and seg.compression_ratio < 2.4 and seg.avg_logprob > -1.0
+
+
 class Recognizer(Protocol):
     is_local: bool
 
@@ -85,6 +93,7 @@ class WhisperRecognizer:
     def __init__(self, model: str = "small", device: str = "cpu", beam_size: int = 1, quiet_rms: float = 500) -> None:
         self._name, self._device, self._beam = model, device, beam_size
         self.quiet_rms = quiet_rms
+        self.vad = os.environ.get("STT_VAD", "1") == "1"  # 말소리 없는 구간 잘라내기 (Silero VAD, faster-whisper 내장)
         self._model = None
         self._lock = asyncio.Lock()
         self._prefix: list[tuple[int, bytes, str]] = []  # 미리 인식 결과 (끝 위치, 앞부분 해시, 누적 문장)
@@ -106,12 +115,13 @@ class WhisperRecognizer:
         pcm = np.frombuffer(ulaw8k_to_pcm16k(ulaw8k), dtype=np.int16).astype(np.float32) / 32768.0
         # 이어 붙일 조각이면 앞 조각의 인식 문장을 문맥으로 준다
         prompt = f"{ARS_PROMPT} {context[-120:]}" if context else ARS_PROMPT
-        segs, _ = model.transcribe(pcm, language="ko", beam_size=self._beam, vad_filter=False,
+        # 말소리가 없는 구간(무음·회선 잡음·딸깍·숨소리·DTMF 잔향)은 음성 감지(Silero VAD)로 잘라내고 인식하지 않는다.
+        # 잘라내지 않으면 Whisper 가 어휘 힌트(ARS_PROMPT)를 닮은 문장("…번에 연결해 주십시오")을 지어내 AI 가 메뉴로 볼 수 있다
+        segs, _ = model.transcribe(pcm, language="ko", beam_size=self._beam, vad_filter=self.vad,
+                                   vad_parameters={"min_silence_duration_ms": 500, "speech_pad_ms": 300},
                                    initial_prompt=prompt, condition_on_previous_text=False,
                                    temperature=0.0, without_timestamps=True)
-        # 말소리가 아닐 가능성이 높은 구간(대기 음악·잡음)은 버린다
-        keep = [s.text.strip() for s in segs if not (s.no_speech_prob > 0.6 and s.avg_logprob < -0.8)]
-        return _clean(" ".join(keep))
+        return _clean(" ".join(s.text.strip() for s in segs if _plausible(s)))
 
     async def warmup(self) -> None:
         await asyncio.to_thread(self._load)
