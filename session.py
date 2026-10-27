@@ -80,6 +80,22 @@ def _digit_count(s: str) -> int:
     return len(re.sub(r"[^0-9공영일이삼사오육칠팔구]", "", s))
 
 
+def key_name(key: str) -> str:
+    """키를 읽는 말: 3 → '3번', * → '별표', # → '샵'."""
+    return {"*": "별표", "#": "샵"}.get(key, f"{key}번")
+
+
+def caption_text(p: Prompt, text: str) -> str:
+    """앱에 보내는 자막(caption.text). 앱은 해석 없이 그대로 보여 주므로 서버가 보여 줄 형태로 만든다.
+    선택지가 있는 안내(메뉴·확인 질문)는 STT 원문 대신 AI 가 뽑은 선택지 목록으로 압축한다:
+    "잔액조회 3번 · 거래내역조회 4번 · 상담직원 연결 0번 · 다시 듣기 별표". 그 밖의 안내(결과·오류·일반 안내)는 원문 그대로다.
+    결과 요약(summarize_result)은 captions 를 입력으로 쓰므로 결과 안내는 원문을 유지해야 한다."""
+    opts = p.all_options() if p.options else []
+    if not opts:
+        return text
+    return " · ".join(f"{o.label} {key_name(o.key)}" for o in opts)
+
+
 def mask_digits(text: str, length: int | None = None) -> tuple[str, bool]:
     """ARS 가 입력값을 다시 읽어 주는 문장에서 숫자열을 가린다.
     length 를 주면 사용자가 입력한 자릿수와 같은 숫자열만 가린다 (금액·날짜 같은 다른 숫자는 남긴다)."""
@@ -460,7 +476,7 @@ class Session:
                 self.secure_errors = 0
         self.current_fresh = True if p.kind in ("menu", "confirm") else self.current_fresh
         if p.kind not in ("sensitive", "input_error"):
-            cap = {"step": self.step + 1, "speaker": "ars", "text": text, "at": now_iso()}
+            cap = {"step": self.step + 1, "speaker": "ars", "text": caption_text(p, text), "at": now_iso()}
             self.captions.append(cap)
             self.publish("caption", cap)
 
