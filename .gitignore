@@ -18,3 +18,6 @@ _to_delete/
 
 # 음성 가상 ARS 합성 음성 캐시
 .sim_audio/
+
+# 메뉴 평가 측정 중간 파일 (확정 결과는 docs/evals 에 보관)
+confidence_scores.json
