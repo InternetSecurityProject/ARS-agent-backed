@@ -48,7 +48,7 @@ class Settings:
     # 음성 가상 ARS: 안내를 TTS 소리로 보내 STT·DTMF 톤까지 실통화와 같은 경로로 시험 (Windows)
     sim_voice: bool = field(default_factory=lambda: _env("SIM_VOICE", "0") == "1")
 
-    # 음성 인식: whisper(로컬) / none
+    # 음성 인식: whisper(로컬) / openai / rtzr / clova / gemini / qwen / none (후보 엔진 설정은 stt_engines.py, .env.example)
     stt: str = field(default_factory=lambda: _env("STT", "whisper"))
     whisper_model: str = field(default_factory=lambda: _env("WHISPER_MODEL", "kimthegarden/whisper-small-ko-low-qual-voice-ct2"))
     whisper_device: str = field(default_factory=lambda: _env("WHISPER_DEVICE", "cpu"))

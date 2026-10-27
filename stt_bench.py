@@ -7,6 +7,11 @@ ARS 안내 문장을 전화 음질(8kHz, 약한 잡음)로 만든 시험 음성�
   python stt_bench.py --models small kimthegarden/whisper-small-ko-low-qual-voice-ct2              # CPU
   python stt_bench.py --device cuda --models small kimthegarden/whisper-small-ko-low-qual-voice-ct2 large-v3-turbo   # NVIDIA GPU
   python stt_bench.py --models large-v3-turbo --wav audio_check.wav     # 녹음 파일 인식 (정답 없음)
+  python stt_bench.py --models rtzr clova gemini openai whisper:large-v3-turbo   # 후보 엔진 (.env 의 키·모델 설정)
+  python stt_bench.py --device cuda --models qwen                                # Qwen3-ASR (QWEN_ASR_MODEL 등)
+
+--models 의 이름: rtzr / clova / gemini / openai / qwen 은 해당 STT 엔진(stt_engines.py), 그 밖의 이름(또는 whisper:이름)은
+Whisper 모델 이름이다. 외부 엔진(rtzr·clova·gemini·openai)은 시험 음성을 외부 API 로 전송한다 (시험 음성에는 개인정보가 없다).
 
 시험 음성: 기본은 저장소의 bench_clips/ (WAV + clips.json, 개인정보 없음, 어느 운영체제에서나 실행).
   bench_clips/ 는 Windows 한국어 TTS(Heami)로 만든다: python stt_bench.py --make-clips bench_clips
@@ -116,6 +121,16 @@ def cer(ref: str, hyp: str) -> float:
     return d[len(h)] / max(1, len(r))
 
 
+ENGINES = ("rtzr", "clova", "gemini", "openai", "qwen")
+
+
+def engine_of(name: str) -> tuple[str, str]:
+    """--models 의 이름 → (STT 종류, Whisper 모델 이름). 엔진 이름이 아니면 Whisper 모델 이름으로 본다."""
+    if name in ENGINES:
+        return name, ""
+    return "whisper", name.removeprefix("whisper:")
+
+
 def device_name(device: str) -> str:
     if device == "cuda":
         try:
@@ -154,9 +169,12 @@ async def main() -> None:
     print(f"장치: {device_name(args.device)} / 시험 음성 {len(clips)}개, 합계 {total_audio:.0f}초")
     summary = []
     for name in args.models:
-        rec = make_recognizer("whisper", name, args.device)
+        kind, model = engine_of(name)
+        rec = make_recognizer(kind, model, args.device)
         t0 = time.monotonic()
-        await rec.warmup()
+        warm = getattr(rec, "warmup", None)  # 외부 API 엔진은 모델 로드가 없다 (리턴제로는 토큰 발급)
+        if warm:
+            await warm()
         load = time.monotonic() - t0
         await rec.recognize(clips[0][1][:8000 * 3])  # 첫 인식은 장치 준비 시간이 섞이므로 재지 않는다
         print(f"\n=== {name} (로드 {load:.1f}s) ===")
