@@ -340,3 +340,66 @@ def test_score_failure_uses_exact_name_match():
     opts = [Option("1", "증명서 발급"), Option("2", "건강보험증 발급"), Option("3", "고지서 발급")]
     s = run(GeminiInterpreter(FakeClient(fail=True)).score("건강보험증을 발급받고 싶다", opts))
     assert s["2"] >= 0.5 and s["1"] < 0.3
+
+
+# 맞는 선택지가 없을 때 (프롬프트 v0.4) ---------------------------------------------
+NO_MATCH_MENU = "증명서 발급은 1번, 고지서 발급은 2번, 상담사 연결은 0번, 이전 메뉴는 별표를 눌러 주십시오."
+
+
+def _no_match_reply():
+    return _menu([{"key": "1", "label": "증명서 발급", "category": "증명서 발급"},
+                  {"key": "2", "label": "고지서 발급", "category": "고지서 발급"},
+                  {"key": "0", "label": "상담사 연결", "category": "상담원 연결"}], back_key="*", agent_key="0",
+                 scores=[{"key": "1", "confidence": 0.1}, {"key": "2", "confidence": 0.1}, {"key": "0", "confidence": 0.5}])
+
+
+def test_no_match_on_first_menu_goes_to_agent():
+    """첫 메뉴에서 맞는 업무가 없으면 돌아갈 곳이 없으므로 상담원 연결."""
+    interp = GeminiInterpreter(FakeClient([_no_match_reply()]))
+    interp.goal = "자동차 사고 접수"
+    p = run(interp.classify(NO_MATCH_MENU))
+    s = run(interp.score("자동차 사고 접수", p.options))
+    assert s["0"] >= 0.5 and max(s["1"], s["2"]) < 0.3
+
+
+def test_no_match_in_sub_menu_checks_previous_step_first():
+    """하위 메뉴에서 맞는 업무가 없고 이전 메뉴 키가 있으면 상담원보다 이전 단계 확인이 먼저."""
+    first = _menu([{"key": "3", "label": "보험료 조회", "category": "보험료 조회"}],
+                  scores=[{"key": "3", "confidence": 0.7}])
+    interp = GeminiInterpreter(FakeClient([first, _no_match_reply()]))
+    interp.goal = "자동차 사고 접수"
+    run(interp.classify("보험료 조회는 3번을 눌러 주십시오."))
+    p = run(interp.classify(NO_MATCH_MENU))
+    s = run(interp.score("자동차 사고 접수", p.options))
+    assert max(s.values()) < 0.3   # 서버가 이전 단계의 다른 선택지를 확인한다
+
+
+def test_agent_request_is_not_lowered():
+    interp = GeminiInterpreter(FakeClient([_no_match_reply()]))
+    interp.goal = "상담사 연결해줘"
+    p = run(interp.classify(NO_MATCH_MENU))
+    interp._scores["상담사 연결해줘"]["0"] = ("상담사 연결", 0.9)
+    assert run(interp.score("상담사 연결해줘", p.options))["0"] == 0.9
+
+
+def test_prompts_have_no_institution_specific_examples():
+    import gemini_interpreter as g
+    text = "".join([g.COMMON, g.CLASSIFY, g.SCORE, g.CLASSIFY_SCORE, g.MERGE, g.HANDOFF])
+    for word in ("KB", "국민은행", "자기앞수표", "카드값", "빠른 말", "잔액조회"):
+        assert word not in text
+
+
+def test_result_followed_by_menu_numbers_is_result():
+    """잔액 안내 뒤 '송금은 1번…' 이 붙어도 결과다 (v0.4 비교 평가에서 잔액 조회 3번을 다시 누른 사례)."""
+    text = ("현재 잔액은 2만 7856원, 출금 가능액은 2만 7856원 다시 듣기는 영 번 송금은 일 번 "
+            "잔액 조회는 3번, 거래 내역 조회는 4번 다른 서비스는 샵버등.")
+    reply = _menu([{"key": "1", "label": "송금", "category": "송금"}, {"key": "3", "label": "잔액 조회", "category": "잔액 조회"}])
+    assert run(GeminiInterpreter(FakeClient([reply])).classify(text)).kind == "result"
+
+
+def test_out_of_hours_caught_when_model_says_info():
+    text = ("고객님의 고지서 발급을 위해서는 상담사 연결이 필요합니다. 저희 고객센터 업무 시간은 평일 오전 9시부터 6시까지이며, "
+            "현재는 팩스 및 일부 조회 발급 서비스만 가능합니다. 이용해 주셔서 감사합니다.")
+    reply = {"kind": "info", "options": [], "unnumbered": [], "back_key": None, "home_key": None, "repeat_key": None,
+             "agent_key": None, "label": None, "terminator": None, "critical": False}
+    assert run(GeminiInterpreter(FakeClient([reply])).classify(text)).kind == "out_of_hours"
