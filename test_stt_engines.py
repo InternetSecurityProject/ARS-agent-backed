@@ -53,8 +53,10 @@ ENV_KEYS = ["RTZR_CLIENT_ID", "RTZR_CLIENT_SECRET", "RTZR_MODEL", "RTZR_KEYWORDS
 
 @pytest.fixture
 def clean_env(monkeypatch):
-    for k in ENV_KEYS:
+    for k in ENV_KEYS + ["QWEN_ASR_LANGUAGE"]:
         monkeypatch.delenv(k, raising=False)
+    # Qwen3-ASR 패키지(torch 등)는 이 시험 환경에 없어도 된다. 패키지 확인 자체는 test_qwen_missing_packages_* 에서 본다
+    monkeypatch.setattr(E.QwenASRRecognizer, "missing_packages", staticmethod(lambda backend, adapter="": []))
     return monkeypatch
 
 
@@ -576,3 +578,152 @@ def test_external_engine_skips_secure_readback():
 
     run(go())
     assert seen == []
+
+
+# ---------------------------------------------------------------------------
+# 공통 규칙 보강 (2026-10-27)
+# ---------------------------------------------------------------------------
+def test_external_engines_have_no_prefetch():
+    """미리 인식(prefetch)은 app.build_deps 가 Segmenter 에 연결하며 session 의 민감정보 구간 검사를 거치지 않는다.
+    외부 엔진에 prefetch 가 생기면 ARS 가 입력값을 다시 읽어 주는 음성이 외부로 나가므로, 외부 엔진에는 두지 않는다."""
+    import stt
+
+    for cls in (E.RtzrRecognizer, E.ClovaSpeechRecognizer, E.GeminiAudioRecognizer, stt.OpenAIRecognizer):
+        assert cls.is_local is False
+        assert not hasattr(cls, "prefetch"), cls.__name__
+
+
+def test_qwen_language_option(clean_env):
+    assert make_recognizer("qwen").language == "Korean"  # 기본: 모델 카드 평가와 같은 조건
+    clean_env.setenv("QWEN_ASR_LANGUAGE", "")
+    assert make_recognizer("qwen").language is None  # 비우면 자동 판별 (무음이면 'language None' → 빈 결과)
+    calls = []
+
+    class FakeQwenModel:
+        def transcribe(self, audio, context="", language=None):
+            calls.append(language)
+            return [types.SimpleNamespace(language="", text="")]
+
+    rec = E.QwenASRRecognizer(language="")
+    rec._model = FakeQwenModel()
+    assert run(rec.recognize(AUDIO)) == "" and calls == [None]
+
+
+def test_rtzr_hard_limit_when_auth_hangs():
+    """토큰 발급 응답이 오지 않아도 STT_TIMEOUT_S + 2초 안에 빈 결과로 끝난다 (단락 처리가 멈추지 않음)."""
+    async def hang(_req):
+        await asyncio.sleep(30)
+        return httpx.Response(200, json={})
+
+    async def go():
+        rec = E.RtzrRecognizer("id", SECRET, ws_url="ws://127.0.0.1:9/x", timeout_s=0.3,
+                               http=httpx.AsyncClient(transport=httpx.MockTransport(hang)))
+        loop = asyncio.get_running_loop()
+        t0 = loop.time()
+        text = await rec.recognize(AUDIO)
+        return text, loop.time() - t0
+
+    text, dt = run(go())
+    assert text == "" and dt < 3
+
+
+# ---------------------------------------------------------------------------
+# OpenAI (기존 엔진. 제한 시간만 추가)
+# ---------------------------------------------------------------------------
+def _openai_rec(monkeypatch, create, timeout_s=10.0):
+    pytest.importorskip("openai")
+    import stt
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    rec = stt.OpenAIRecognizer("gpt-4o-transcribe", timeout_s=timeout_s)
+    monkeypatch.setattr(rec.client.audio.transcriptions, "create", create)
+    return rec
+
+
+def test_openai_request_and_result(monkeypatch):
+    seen = {}
+
+    async def create(**kw):
+        seen.update(kw)
+        return types.SimpleNamespace(text="본 뱅킹은 7번")
+
+    rec = _openai_rec(monkeypatch, create)
+    assert run(rec.recognize(AUDIO)) == "폰뱅킹은 7번"
+    assert seen["model"] == "gpt-4o-transcribe" and seen["language"] == "ko"
+    assert wav_info(seen["file"].getvalue()) == (16000, 1, 2 * len(AUDIO))
+    assert run(rec.recognize(b"")) == ""
+
+
+def test_openai_timeout_returns_empty(monkeypatch, caplog):
+    async def slow(**kw):
+        await asyncio.sleep(5)
+
+    rec = _openai_rec(monkeypatch, slow, timeout_s=0.2)
+    with caplog.at_level(logging.WARNING, logger="ars.stt"):
+        assert run(asyncio.wait_for(rec.recognize(AUDIO), 3)) == ""
+    assert "TimeoutError" in caplog.text
+
+
+def test_openai_timeout_setting(clean_env, monkeypatch):
+    pytest.importorskip("openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    clean_env.setenv("STT_TIMEOUT_S", "4")
+    clean_env.setenv("OPENAI_STT_MODEL", "")
+    rec = make_recognizer("openai")
+    assert rec.timeout_s == 4.0 and rec.model == "gpt-4o-transcribe"
+
+
+# ---------------------------------------------------------------------------
+# 비교 도구 (stt_bench) 로 엔진을 돌린다: 저장소 시험 음성 bench_clips 사용
+# ---------------------------------------------------------------------------
+def test_bench_runs_engine_over_repo_clips(monkeypatch, capsys):
+    """stt_bench 가 엔진 이름으로 엔진을 만들고, warmup 이 없는 엔진도 시험 음성 19개를 끝까지 인식해 요약 표를 낸다."""
+    import stt_bench
+
+    meta = json.loads((stt_bench.CLIPS / "clips.json").read_text(encoding="utf-8"))["clips"]
+    answer = {stt_bench.pcm16_to_ulaw(stt_bench.read_pcm(stt_bench.CLIPS / m["file"])): m["text"] for m in meta}
+    made = []
+
+    class Echo:  # 시험 음성마다 정답 문장을 돌려주는 가짜 외부 엔진 (warmup 없음)
+        is_local = False
+
+        async def recognize(self, ulaw8k):
+            return answer.get(ulaw8k, "")
+
+    def fake_make(kind, model="small", device="cpu", quiet_rms=500):
+        made.append((kind, model, device))
+        return Echo()
+
+    monkeypatch.setattr(stt_bench, "make_recognizer", fake_make)
+    monkeypatch.setattr(sys, "argv", ["stt_bench.py", "--models", "gemini", "whisper:large-v3-turbo", "--quiet",
+                                      "--device", "cpu"])
+    run(stt_bench.main())
+    out = capsys.readouterr().out
+    assert made == [("gemini", "", "cpu"), ("whisper", "large-v3-turbo", "cpu")]
+    assert "시험 음성 19개" in out
+    assert "| gemini | 0.0% |" in out and "| whisper:large-v3-turbo | 0.0% |" in out
+
+
+def test_qwen_missing_packages_fail_at_startup(clean_env):
+    clean_env.setattr(E.QwenASRRecognizer, "missing_packages", staticmethod(lambda backend, adapter="": ["torch"]))
+    with pytest.raises(RuntimeError, match="pip install qwen-asr torch"):
+        make_recognizer("qwen")
+    clean_env.setenv("QWEN_ASR_MODEL", "Qwen/Qwen3-ASR-1.7B-hf")
+    clean_env.setenv("QWEN_ASR_ADAPTER", "Playedwell03/qwen3-asr-1.7b-119ko-v5")
+    with pytest.raises(RuntimeError, match=r'transformers>=5.13" torch peft'):
+        make_recognizer("qwen")
+
+
+def test_qwen_missing_packages_check(monkeypatch):
+    """모듈을 불러오지 않고 설치 여부와 transformers 버전을 확인한다."""
+    import importlib.metadata
+    import importlib.util
+
+    installed = {"torch", "transformers"}
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object() if name in installed else None)
+    monkeypatch.setattr(importlib.metadata, "version", lambda name: "4.57.6")
+    check = E.QwenASRRecognizer.missing_packages
+    assert check("qwen-asr") == ["qwen_asr"]
+    assert check("hf") == ["transformers>=5.13"]
+    monkeypatch.setattr(importlib.metadata, "version", lambda name: "5.21.0")
+    assert check("hf") == [] and check("hf", "a/b") == ["peft"]

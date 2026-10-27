@@ -38,7 +38,7 @@ from urllib.parse import urlencode
 from clawops.agent._audio import ulaw_to_pcm16
 
 from audio import ulaw8k_to_pcm16k
-from stt import _clean
+from stt import _clean, stt_timeout_s
 
 log = logging.getLogger("ars.stt")
 
@@ -90,8 +90,9 @@ _RTZR_KEYWORD = re.compile(r"^[가-힣 ]{1,20}(?::-?\d+(?:\.\d+)?)?$")
 
 
 def rtzr_keywords(raw: str) -> str:
-    """'별표,우물정자:2' 형식의 키워드 목록을 검사한다. RTZR 규칙(한글·공백만, 20자 이하, 100개 이하,
-    가중치 -5~5)에 맞지 않는 항목은 버리고 경고한다. 연결 거부를 막기 위해서다."""
+    """'별표,우물정자:2' 형식의 키워드 목록을 검사한다. 맞지 않는 항목은 버리고 경고한다 (연결 거부 방지).
+    20자 이하·100개 이하·가중치 -5~5 는 리턴제로 연동 클라이언트(livekit-plugins-rtzr)와 같은 규칙이다.
+    한글·공백만 허용하는 것은 공식 문서로 확인하지 못해 보수적으로 둔 제한이다 (영문·숫자 키워드가 필요하면 실측 후 완화)."""
     out = []
     for item in (x.strip() for x in raw.split(",")):
         if not item:
@@ -163,7 +164,10 @@ class RtzrRecognizer:
             return ""
         t0 = time.monotonic()
         try:
-            text = await self._stream(ulaw_to_pcm16(ulaw8k), t0 + self.timeout_s)
+            # 응답 대기는 _stream 안에서 제한 시간까지 받은 확정 문장을 쓰고 끝낸다.
+            # 토큰 발급·연결·전송이 멈추는 경우까지 막기 위해 전체를 조금 더 긴 시간으로 한 번 더 제한한다
+            text = await asyncio.wait_for(self._stream(ulaw_to_pcm16(ulaw8k), t0 + self.timeout_s),
+                                          self.timeout_s + 2)
         except Exception as e:
             from websockets.exceptions import InvalidStatus
 
@@ -342,18 +346,23 @@ class QwenASRRecognizer:
       qwen-asr  원본 형식 체크포인트 (기본 TeamUNIVA/qwen3_asr_1.7b_ko).
                 pip install qwen-asr torch  (qwen-asr 가 transformers==4.57.6 을 고정)
       hf        transformers 기본 형식(-hf) 체크포인트와 LoRA 어댑터 (예: Qwen/Qwen3-ASR-1.7B-hf
-                + Playedwell03/qwen3-asr-1.7b-119ko-v5). pip install "transformers>=5.13" peft torch
+                + Playedwell03/qwen3-asr-1.7b-119ko-v5). pip install "transformers>=5.13" torch (어댑터를 쓰면 peft 추가)
+    필요한 패키지가 없으면 서버 시작 시 RuntimeError 로 알린다 (설치 명령 포함).
     QWEN_ASR_ADAPTER 를 지정하거나 모델 이름이 -hf 로 끝나면 hf, 그 밖에는 qwen-asr 로 로드한다 (QWEN_ASR_BACKEND 로 지정 가능).
     QWEN_ASR_CONTEXT: 어휘 힌트(시스템 프롬프트). 기본은 없음. 119 LoRA 는 힌트를 주면 정확도가 떨어진다고 모델 카드에 명시되어 있다.
+    QWEN_ASR_LANGUAGE: 기본 Korean (모델 카드 평가와 같은 조건). 비우면 언어를 지정하지 않는다. 이때 모델은 말소리가 없으면
+      'language None' 을 출력하고 빈 결과가 된다. 언어를 지정하면 이 출력이 막혀 무음에서도 문장을 만들 수 있으므로,
+      무음 환각 비교 실험에서 두 조건을 함께 잰다 (설계안 문서 참고).
     WHISPER_DEVICE 와 같은 장치 설정(cpu/cuda)을 쓴다. 1.7B 모델은 CPU(라즈베리파이)에서는 실시간 인식이 어렵다.
     """
 
     is_local = True
-    LANGUAGE = "Korean"
 
     def __init__(self, model: str = "TeamUNIVA/qwen3_asr_1.7b_ko", *, adapter: str = "", device: str = "cpu",
-                 backend: str = "", context: str = "", max_new_tokens: int = 256) -> None:
+                 backend: str = "", context: str = "", language: str | None = "Korean",
+                 max_new_tokens: int = 256) -> None:
         self.model_name, self.adapter, self.device, self.context = model, adapter, device, context
+        self.language = language or None  # None: 자동 판별 (무음이면 빈 결과)
         self.backend = backend or ("hf" if adapter or model.endswith("-hf") else "qwen-asr")
         if self.backend not in ("hf", "qwen-asr"):
             raise ValueError("QWEN_ASR_BACKEND 는 hf 또는 qwen-asr")
@@ -364,12 +373,36 @@ class QwenASRRecognizer:
         self._processor = None
         self._lock = asyncio.Lock()
 
+    @staticmethod
+    def missing_packages(backend: str, adapter: str = "") -> list[str]:
+        """설치되지 않은 패키지 목록 (모듈을 불러오지 않고 확인). 서버 시작 시 make_engine 이 확인한다."""
+        import importlib.util
+        from importlib.metadata import PackageNotFoundError, version
+
+        need = ["torch"] + (["qwen_asr"] if backend == "qwen-asr" else ["transformers"]) + (["peft"] if adapter else [])
+        missing = [m for m in need if importlib.util.find_spec(m) is None]
+        if backend == "hf" and "transformers" not in missing:
+            try:  # Qwen3ASRForConditionalGeneration 은 transformers 5.13 부터 들어 있다
+                major, minor = (int(x) for x in version("transformers").split(".")[:2])
+                if (major, minor) < (5, 13):
+                    missing.append("transformers>=5.13")
+            except (PackageNotFoundError, ValueError):
+                pass
+        return missing
+
+    @staticmethod
+    def _dtype(torch, device: str):
+        """GPU 는 bfloat16(지원하지 않는 GPU 는 float16), CPU 는 float32."""
+        if not device.startswith("cuda"):
+            return torch.float32
+        return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+
     def _load(self):
         if self._model is not None:
             return self._model
         import torch
 
-        dtype = torch.bfloat16 if self.device.startswith("cuda") else torch.float32
+        dtype = self._dtype(torch, self.device)
         log.info("Qwen3-ASR 모델 로드: %s%s (%s, %s)", self.model_name,
                  f" + {self.adapter}" if self.adapter else "", self.backend, self.device)
         if self.backend == "qwen-asr":
@@ -381,7 +414,8 @@ class QwenASRRecognizer:
             from transformers import AutoProcessor, Qwen3ASRForConditionalGeneration
 
             self._processor = AutoProcessor.from_pretrained(self.model_name)
-            m = Qwen3ASRForConditionalGeneration.from_pretrained(self.model_name, dtype=dtype, device_map=self.device)
+            # device_map 은 accelerate 가 필요하므로 쓰지 않고 장치 하나로 옮긴다
+            m = Qwen3ASRForConditionalGeneration.from_pretrained(self.model_name, dtype=dtype).to(self.device)
             self._device, self._dtype = m.device, m.dtype  # PEFT 로 감싸기 전 값 (입력 텐서 이동용)
             if self.adapter:
                 from peft import PeftModel
@@ -397,12 +431,12 @@ class QwenASRRecognizer:
         model = self._load()
         pcm = np.frombuffer(ulaw8k_to_pcm16k(ulaw8k), dtype=np.int16).astype(np.float32) / 32768.0
         if self.backend == "qwen-asr":
-            out = model.transcribe(audio=(pcm, 16000), context=self.context, language=self.LANGUAGE)
+            out = model.transcribe(audio=(pcm, 16000), context=self.context, language=self.language)
             return out[0].text if out else ""
         import torch
 
         proc = self._processor
-        inputs = proc.apply_transcription_request(audio=pcm, language=self.LANGUAGE, prompt=self.context or None)
+        inputs = proc.apply_transcription_request(audio=pcm, language=self.language, prompt=self.context or None)
         inputs = inputs.to(self._device, self._dtype)
         with torch.inference_mode():
             ids = model.generate(**inputs, max_new_tokens=self.max_new_tokens)
@@ -433,7 +467,7 @@ KINDS = ("rtzr", "clova", "gemini", "qwen")
 
 def make_engine(kind: str, device: str = "cpu"):
     """.env 값으로 후보 엔진을 만든다. stt.make_recognizer 가 호출한다."""
-    timeout = _env_float("STT_TIMEOUT_S", DEFAULT_TIMEOUT_S)
+    timeout = stt_timeout_s()
     if kind == "rtzr":
         cid, secret = _require("RTZR_CLIENT_ID", "RTZR_CLIENT_SECRET")
         return RtzrRecognizer(cid, secret, model=_env_str("RTZR_MODEL", "sommers_ko"),
@@ -451,7 +485,16 @@ def make_engine(kind: str, device: str = "cpu"):
         thinking = os.environ.get("GEMINI_STT_THINKING", "MINIMAL").strip()
         return GeminiAudioRecognizer(key, model, thinking=thinking, timeout_s=timeout)
     if kind == "qwen":
-        return QwenASRRecognizer(_env_str("QWEN_ASR_MODEL", "TeamUNIVA/qwen3_asr_1.7b_ko"),
-                                 adapter=_env_str("QWEN_ASR_ADAPTER"), device=device,
-                                 backend=_env_str("QWEN_ASR_BACKEND"), context=_env_str("QWEN_ASR_CONTEXT"))
+        # 'QWEN_ASR_LANGUAGE=' 처럼 비워 두면 언어를 지정하지 않는다 (없으면 Korean)
+        rec = QwenASRRecognizer(_env_str("QWEN_ASR_MODEL", "TeamUNIVA/qwen3_asr_1.7b_ko"),
+                                adapter=_env_str("QWEN_ASR_ADAPTER"), device=device,
+                                backend=_env_str("QWEN_ASR_BACKEND"), context=_env_str("QWEN_ASR_CONTEXT"),
+                                language=os.environ.get("QWEN_ASR_LANGUAGE", "Korean").strip())
+        missing = rec.missing_packages(rec.backend, rec.adapter)
+        if missing:
+            cmd = ("pip install qwen-asr torch" if rec.backend == "qwen-asr"
+                   else 'pip install "transformers>=5.13" torch' + (" peft" if rec.adapter else ""))
+            raise RuntimeError(f"STT=qwen ({rec.backend} 방식)에 필요한 패키지가 없습니다: {', '.join(missing)}. "
+                               f"설치: {cmd} (qwen-asr 와 transformers 5 는 가상환경을 나눈다)")
+        return rec
     raise ValueError(f"알 수 없는 STT: {kind}")

@@ -110,6 +110,7 @@
 | 입력 대기 중 `revise_goal` | 요청 유지, 목적만 변경 | `test_revise_goal_before_first_key` (일반), 코드 `keep_secure` |
 | 입력 대기 중 상대가 끊음 | `user_input_timeout` | `test_remote_hangup_while_waiting_for_user_is_user_input_timeout` |
 | 외부 STT 사용 시 되읽기 구간 | 인식하지 않는다 (`is_local=False`: openai·rtzr·clova·gemini) | `test_external_engine_skips_secure_readback` (`test_stt_engines.py`) |
+| 외부 STT 와 미리 인식(prefetch) | 외부 엔진에는 미리 인식을 두지 않는다. 미리 인식은 `app.build_deps` 가 Segmenter 에 직접 연결하여 위 검사를 거치지 않기 때문이다 | `test_external_engines_have_no_prefetch` |
 
 ### D. 다시 말하기 (`revise_goal`)
 
@@ -186,7 +187,7 @@
 | 최대 통화 시간(600초) | `max_duration` 으로 종료 | `test_max_call_duration_ends_call` |
 | STT 엔진 필수 키 없음 (rtzr·clova·gemini) | 서버 시작 시 `RuntimeError` 로 알린다 (통화마다 빈 인식이 나오는 것을 막음) | `test_missing_keys_fail_at_startup` |
 | STT 인식 실패 (HTTP 오류·오류 응답·인증 실패·로컬 모델 오류) | 그 단락은 빈 결과. 경고 로그(키 가림). 이후 동작은 G 의 "키 전송 뒤 소리는 났으나 인식 문장이 없음" 과 같다 | `test_clova_failure_returns_empty`, `test_gemini_failure_returns_empty`, `test_rtzr_server_error_returns_empty_and_hides_secret`, `test_qwen_failure_returns_empty` |
-| STT 응답 지연 (`STT_TIMEOUT_S` 초과) | 빈 결과 (HTTP 엔진은 전체 응답 시간으로 제한) | `test_gemini_timeout_returns_empty` |
+| STT 응답 지연 (`STT_TIMEOUT_S` 초과) | 빈 결과 (HTTP 엔진·OpenAI 는 전체 응답 시간으로 제한, 리턴제로는 토큰 발급·연결이 멈춰도 `STT_TIMEOUT_S`+2초에 종료) | `test_gemini_timeout_returns_empty`, `test_openai_timeout_returns_empty`, `test_rtzr_hard_limit_when_auth_hangs` |
 | 리턴제로: 마지막 응답 뒤 서버가 연결을 닫지 않음 | 제한 시간까지 받은 확정 문장을 쓴다 | `test_rtzr_keeps_finals_when_server_does_not_close` |
 | 리턴제로: 토큰 만료 임박·거부(401) | 만료 10분 전 재발급, 401 이면 토큰을 버리고 다음 단락에서 재발급 | `test_rtzr_refreshes_expiring_token`, `test_rtzr_unauthorized_clears_token` |
 | 후보 엔진을 통화 흐름에 연결 | 단락 인식 → 메뉴 판단 → 키 전송이 Whisper 와 같게 동작 | `test_http_engine_drives_session`, `test_rtzr_engine_drives_session` |

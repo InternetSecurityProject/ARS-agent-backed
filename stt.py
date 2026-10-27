@@ -164,13 +164,16 @@ class OpenAIRecognizer:
 
     is_local = False
 
-    def __init__(self, model: str = "gpt-4o-transcribe") -> None:
+    def __init__(self, model: str = "gpt-4o-transcribe", timeout_s: float = 10.0) -> None:
         from openai import AsyncOpenAI
 
-        self.model = model
-        self.client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"), max_retries=1)
+        self.model, self.timeout_s = model, timeout_s
+        # SDK 기본 제한 시간은 길다(10분). 응답이 늦으면 단락 처리 전체가 멈추므로 다른 엔진과 같은 STT_TIMEOUT_S 로 제한한다
+        self.client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"), max_retries=1, timeout=timeout_s)
 
     async def recognize(self, ulaw8k: bytes) -> str:
+        if not ulaw8k:
+            return ""
         buf = io.BytesIO()
         with wave.open(buf, "wb") as w:
             w.setnchannels(1)
@@ -180,19 +183,26 @@ class OpenAIRecognizer:
         buf.name = "ars.wav"
         buf.seek(0)
         try:
-            r = await self.client.audio.transcriptions.create(model=self.model, file=buf, language="ko",
-                                                              prompt=ARS_PROMPT)
+            # SDK 의 timeout 은 연결·읽기 단계별 제한이고 재시도도 있으므로 전체 시간은 wait_for 로 제한한다
+            r = await asyncio.wait_for(self.client.audio.transcriptions.create(
+                model=self.model, file=buf, language="ko", prompt=ARS_PROMPT), self.timeout_s)
         except Exception as e:
-            log.warning("STT 실패: %s", e)
+            log.warning("STT 실패: %s", str(e) or type(e).__name__)
             return ""
         return _clean(r.text)
+
+
+def stt_timeout_s() -> float:
+    """단락 하나의 인식 제한 시간 (.env STT_TIMEOUT_S, 기본 10초). 외부 API 엔진에 공통으로 쓴다."""
+    v = os.environ.get("STT_TIMEOUT_S", "").strip()
+    return float(v) if v else 10.0
 
 
 def make_recognizer(kind: str, model: str = "small", device: str = "cpu", quiet_rms: float = 500) -> Recognizer:
     if kind == "whisper":
         return WhisperRecognizer(model, device, int(os.environ.get("WHISPER_BEAM", "1")), quiet_rms)
     if kind == "openai":
-        return OpenAIRecognizer(os.environ.get("OPENAI_STT_MODEL", "gpt-4o-transcribe"))
+        return OpenAIRecognizer(os.environ.get("OPENAI_STT_MODEL", "").strip() or "gpt-4o-transcribe", stt_timeout_s())
     if kind in ("rtzr", "clova", "gemini", "qwen"):
         from stt_engines import make_engine  # 후보 엔진은 선택했을 때만 불러온다
 
