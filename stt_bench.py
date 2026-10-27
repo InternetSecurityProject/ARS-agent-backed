@@ -1,25 +1,34 @@
 """
 STT 모델 비교 (실통화 없음)
 
-ARS 안내 문장을 Windows 한국어 TTS(Heami)로 합성하고 전화 음질(8kHz μ-law, 약한 잡음)로 바꿔
-Whisper 모델별 인식 결과·문자 오류율(CER)·처리 시간을 비교한다. 실제 ARS 음성과는 다르므로 참고용이며,
-실통화 녹음(api_check.py --audio 의 WAV)으로도 비교할 수 있다.
+ARS 안내 문장을 전화 음질(8kHz, 약한 잡음)로 만든 시험 음성으로 Whisper 모델별 인식 결과·문자 오류율(CER)·처리 시간을 비교한다.
+실제 ARS 음성과는 다르므로 참고용이며, 실통화 녹음(api_check.py --audio 의 WAV)으로도 비교할 수 있다.
 
-  python stt_bench.py --models small large-v3-turbo
+  python stt_bench.py --models small kimthegarden/whisper-small-ko-low-qual-voice-ct2              # CPU
+  python stt_bench.py --device cuda --models small kimthegarden/whisper-small-ko-low-qual-voice-ct2 large-v3-turbo   # NVIDIA GPU
   python stt_bench.py --models large-v3-turbo --wav audio_check.wav     # 녹음 파일 인식 (정답 없음)
-  python stt_bench.py --models rtzr clova gemini openai qwen whisper:large-v3-turbo --wav audio_check.wav
+  python stt_bench.py --models rtzr clova gemini openai whisper:large-v3-turbo   # 후보 엔진 (.env 의 키·모델 설정)
+  python stt_bench.py --device cuda --models qwen                                # Qwen3-ASR (QWEN_ASR_MODEL 등)
 
-  --models 의 이름: rtzr / clova / gemini / openai / qwen 은 해당 엔진(.env 의 키·모델 설정 사용),
-  그 밖의 이름(또는 whisper:이름)은 Whisper 모델 이름이다.
+--models 의 이름: rtzr / clova / gemini / openai / qwen 은 해당 STT 엔진(stt_engines.py), 그 밖의 이름(또는 whisper:이름)은
+Whisper 모델 이름이다. 외부 엔진(rtzr·clova·gemini·openai)은 시험 음성을 외부 API 로 전송한다 (시험 음성에는 개인정보가 없다).
+
+시험 음성: 기본은 저장소의 bench_clips/ (WAV + clips.json, 개인정보 없음, 어느 운영체제에서나 실행).
+  bench_clips/ 는 Windows 한국어 TTS(Heami)로 만든다: python stt_bench.py --make-clips bench_clips
+결과 마지막의 요약 표를 그대로 공유하면 장치(CPU·GPU)별로 비교할 수 있다.
 """
 
 from __future__ import annotations
 
 import argparse
+import array
 import asyncio
 import json
+import logging
 import os
+import platform
 import random
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -29,10 +38,11 @@ from pathlib import Path
 
 from clawops.agent._audio import pcm16_to_ulaw
 
-import config  # noqa: F401  (.env 로드: 엔진 키·모델 설정)
+import config  # noqa: F401  .env 로드 (WHISPER_DEVICE 기본값)
 from stt import make_recognizer
 
 HERE = Path(__file__).parent
+CLIPS = HERE / "bench_clips"
 
 EXTRA = [
     "국민건강보험공단입니다. 자격 및 보험료 관련 문의는 1번, 건강검진 안내는 2번, 상담사 연결은 9번을 눌러 주십시오.",
@@ -56,29 +66,48 @@ def tts_wav(text: str, path: Path) -> None:
     subprocess.run(["powershell", "-NoProfile", "-Command", ps], check=True)
 
 
-def wav_to_ulaw(path: Path, noise: float = 0.0) -> bytes:
+def read_pcm(path: Path) -> bytes:
     with wave.open(str(path), "rb") as w:
-        if w.getframerate() != 8000 or w.getsampwidth() != 2:
+        if w.getframerate() != 8000 or w.getsampwidth() != 2 or w.getnchannels() != 1:
             raise SystemExit(f"{path}: 8kHz 16bit mono WAV 만 지원")
-        pcm = bytearray(w.readframes(w.getnframes()))
-    if noise:
-        import array
-
-        a = array.array("h", bytes(pcm))
-        for i in range(len(a)):
-            a[i] = max(-32768, min(32767, a[i] + int(random.gauss(0, noise))))
-        pcm = bytearray(a.tobytes())
-    return pcm16_to_ulaw(bytes(pcm))
+        return w.readframes(w.getnframes())
 
 
-ENGINES = ("rtzr", "clova", "gemini", "openai", "qwen")
+def add_noise(pcm: bytes, level: float, seed: int) -> bytes:
+    rnd = random.Random(seed)  # 어느 컴퓨터에서 만들어도 같은 잡음
+    a = array.array("h", pcm)
+    for i in range(len(a)):
+        a[i] = max(-32768, min(32767, a[i] + int(rnd.gauss(0, level))))
+    return a.tobytes()
 
 
-def engine_of(name: str) -> tuple[str, str]:
-    """--models 의 이름 → (STT 종류, Whisper 모델 이름)."""
-    if name in ENGINES:
-        return name, ""
-    return "whisper", name.removeprefix("whisper:")
+def bench_texts() -> list[str]:
+    texts = []
+    for name in ("sim_kb.json", "sim_kb_real.json"):
+        tree = json.loads((HERE / name).read_text(encoding="utf-8"))
+        nodes = tree["nodes"].values() if name == "sim_kb.json" else [tree["nodes"]["root"]]  # 실제 KB 첫 메뉴(29초)
+        texts += [n["say"] for n in nodes]
+    return texts + EXTRA
+
+
+def make_clips(out: Path, noise: float) -> None:
+    """시험 음성 묶음을 만든다 (Windows 전용). 전화 음질 8kHz + 고정 잡음으로 저장한다."""
+    out.mkdir(parents=True, exist_ok=True)
+    meta = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for i, text in enumerate(bench_texts()):
+            src = Path(tmp) / f"{i}.wav"
+            tts_wav(text, src)
+            name = f"clip{i:02d}.wav"
+            with wave.open(str(out / name), "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(8000)
+                w.writeframes(add_noise(read_pcm(src), noise, seed=i))
+            meta.append({"file": name, "text": text})
+    (out / "clips.json").write_text(json.dumps({"noise": noise, "clips": meta}, ensure_ascii=False, indent=1),
+                                    encoding="utf-8")
+    print(f"시험 음성 {len(meta)}개 저장: {out}")
 
 
 def cer(ref: str, hyp: str) -> float:
@@ -92,50 +121,86 @@ def cer(ref: str, hyp: str) -> float:
     return d[len(h)] / max(1, len(r))
 
 
+ENGINES = ("rtzr", "clova", "gemini", "openai", "qwen")
+
+
+def engine_of(name: str) -> tuple[str, str]:
+    """--models 의 이름 → (STT 종류, Whisper 모델 이름). 엔진 이름이 아니면 Whisper 모델 이름으로 본다."""
+    if name in ENGINES:
+        return name, ""
+    return "whisper", name.removeprefix("whisper:")
+
+
+def device_name(device: str) -> str:
+    if device == "cuda":
+        try:
+            import ctranslate2
+
+            return f"cuda (GPU {ctranslate2.get_cuda_device_count()}개)"
+        except Exception as e:  # GPU 를 쓸 수 없으면 모델 로드에서 오류가 난다
+            return f"cuda (확인 실패: {e})"
+    return f"cpu ({os.cpu_count()}코어, {platform.processor() or platform.machine()})"
+
+
 async def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--models", nargs="+", default=["small", "large-v3-turbo"])
-    ap.add_argument("--wav", help="인식할 8kHz WAV (지정 시 TTS 생략)")
-    ap.add_argument("--noise", type=float, default=300.0, help="합성 음성에 더할 잡음 크기 (PCM 표준편차)")
+    ap = argparse.ArgumentParser(description="STT 모델 비교 (실통화 없음)")
+    ap.add_argument("--models", nargs="+", default=["small", "kimthegarden/whisper-small-ko-low-qual-voice-ct2"])
+    ap.add_argument("--device", default=os.environ.get("WHISPER_DEVICE", "cpu"), choices=["cpu", "cuda"],
+                    help="cpu / cuda (NVIDIA GPU). 기본: .env 의 WHISPER_DEVICE")
+    ap.add_argument("--clips", default=str(CLIPS), help="시험 음성 폴더 (WAV + clips.json)")
+    ap.add_argument("--wav", help="인식할 8kHz WAV 하나 (정답 없음)")
+    ap.add_argument("--make-clips", metavar="DIR", help="시험 음성 묶음을 만든다 (Windows 한국어 TTS)")
+    ap.add_argument("--noise", type=float, default=300.0, help="--make-clips 때 더할 잡음 크기 (PCM 표준편차)")
+    ap.add_argument("--quiet", action="store_true", help="문장별 결과 없이 요약만 출력")
     args = ap.parse_args()
+    logging.disable(logging.INFO)
 
+    if args.make_clips:
+        make_clips(Path(args.make_clips), args.noise)
+        return
     if args.wav:
-        clips = [("", wav_to_ulaw(Path(args.wav)))]
+        clips = [("", pcm16_to_ulaw(read_pcm(Path(args.wav))))]
     else:
-        tree = json.loads((HERE / "sim_kb.json").read_text(encoding="utf-8"))
-        texts = [n["say"] for n in tree["nodes"].values()] + EXTRA
-        tmp = Path(tempfile.mkdtemp())
-        clips = []
-        for i, t in enumerate(texts):
-            p = tmp / f"{i}.wav"
-            tts_wav(t, p)
-            clips.append((t, wav_to_ulaw(p, args.noise)))
+        folder = Path(args.clips)
+        meta = json.loads((folder / "clips.json").read_text(encoding="utf-8"))["clips"]
+        clips = [(m["text"], pcm16_to_ulaw(read_pcm(folder / m["file"]))) for m in meta]
 
+    total_audio = sum(len(u) for _, u in clips) / 8000
+    print(f"장치: {device_name(args.device)} / 시험 음성 {len(clips)}개, 합계 {total_audio:.0f}초")
+    summary = []
     for name in args.models:
-        rec = make_recognizer(*engine_of(name), os.environ.get("WHISPER_DEVICE", "cpu"))
+        kind, model = engine_of(name)
+        rec = make_recognizer(kind, model, args.device)
         t0 = time.monotonic()
-        warm = getattr(rec, "warmup", None)
+        warm = getattr(rec, "warmup", None)  # 외부 API 엔진은 모델 로드가 없다 (리턴제로는 토큰 발급)
         if warm:
             await warm()
-        print(f"\n=== {name} (로드 {time.monotonic() - t0:.1f}s) ===")
-        total_cer, total_t, total_audio = 0.0, 0.0, 0.0
+        load = time.monotonic() - t0
+        await rec.recognize(clips[0][1][:8000 * 3])  # 첫 인식은 장치 준비 시간이 섞이므로 재지 않는다
+        print(f"\n=== {name} (로드 {load:.1f}s) ===")
+        cers, times = [], []
         for ref, ulaw in clips:
             t0 = time.monotonic()
             hyp = await rec.recognize(ulaw)
             dt = time.monotonic() - t0
+            times.append(dt)
             sec = len(ulaw) / 8000
-            total_t, total_audio = total_t + dt, total_audio + sec
             if ref:
                 c = cer(ref, hyp)
-                total_cer += c
-                print(f"[{dt:4.1f}s/{sec:4.1f}s CER {c:4.0%}] {hyp}")
-                if c > 0.05:
-                    print(f"{'':22}정답: {ref}")
-            else:
-                print(f"[{dt:4.1f}s/{sec:4.1f}s] {hyp}")
-        if clips[0][0]:
-            print(f"평균 CER {total_cer / len(clips):.1%}, 처리 {total_t:.1f}s / 음성 {total_audio:.1f}s "
-                  f"(실시간 대비 {total_t / total_audio:.2f}배)")
+                cers.append(c)
+                if not args.quiet:
+                    print(f"[{dt:4.2f}s/{sec:4.1f}s CER {c:4.0%}] {hyp}")
+                    if c > 0.05:
+                        print(f"{'':24}정답: {ref}")
+            elif not args.quiet:
+                print(f"[{dt:4.2f}s/{sec:4.1f}s] {hyp}")
+        summary.append((name, statistics.mean(cers) if cers else None, statistics.median(times), max(times), sum(times)))
+
+    print(f"\n## 요약 ({device_name(args.device)}, 시험 음성 {len(clips)}개 {total_audio:.0f}초)")
+    print("| 모델 | 문자 오류율 | 단락당 인식 시간 (중앙값) | 최대 | 전체 처리 |")
+    print("| --- | --- | --- | --- | --- |")
+    for name, c, med, mx, tot in summary:
+        print(f"| {name} | {'—' if c is None else f'{c:.1%}'} | {med:.2f}초 | {mx:.2f}초 | {tot:.1f}초 |")
 
 
 if __name__ == "__main__":
