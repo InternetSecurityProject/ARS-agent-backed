@@ -18,3 +18,6 @@ _to_delete/
 
 # 음성 가상 ARS 합성 음성 캐시
 .sim_audio/
+
+# STT 비교용 시험 음성 (합성 음성, 개인정보 없음)은 저장소에 둔다
+!bench_clips/*.wav
