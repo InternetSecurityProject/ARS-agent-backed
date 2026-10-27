@@ -7,6 +7,10 @@ Whisper 모델별 인식 결과·문자 오류율(CER)·처리 시간을 비교�
 
   python stt_bench.py --models small large-v3-turbo
   python stt_bench.py --models large-v3-turbo --wav audio_check.wav     # 녹음 파일 인식 (정답 없음)
+  python stt_bench.py --models rtzr clova gemini openai qwen whisper:large-v3-turbo --wav audio_check.wav
+
+  --models 의 이름: rtzr / clova / gemini / openai / qwen 은 해당 엔진(.env 의 키·모델 설정 사용),
+  그 밖의 이름(또는 whisper:이름)은 Whisper 모델 이름이다.
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import random
 import subprocess
 import sys
@@ -24,6 +29,7 @@ from pathlib import Path
 
 from clawops.agent._audio import pcm16_to_ulaw
 
+import config  # noqa: F401  (.env 로드: 엔진 키·모델 설정)
 from stt import make_recognizer
 
 HERE = Path(__file__).parent
@@ -65,6 +71,16 @@ def wav_to_ulaw(path: Path, noise: float = 0.0) -> bytes:
     return pcm16_to_ulaw(bytes(pcm))
 
 
+ENGINES = ("rtzr", "clova", "gemini", "openai", "qwen")
+
+
+def engine_of(name: str) -> tuple[str, str]:
+    """--models 의 이름 → (STT 종류, Whisper 모델 이름)."""
+    if name in ENGINES:
+        return name, ""
+    return "whisper", name.removeprefix("whisper:")
+
+
 def cer(ref: str, hyp: str) -> float:
     r = [c for c in ref if not c.isspace() and c not in ".,"]
     h = [c for c in hyp if not c.isspace() and c not in ".,"]
@@ -96,9 +112,11 @@ async def main() -> None:
             clips.append((t, wav_to_ulaw(p, args.noise)))
 
     for name in args.models:
-        rec = make_recognizer("whisper", name, "cpu")
+        rec = make_recognizer(*engine_of(name), os.environ.get("WHISPER_DEVICE", "cpu"))
         t0 = time.monotonic()
-        await rec.warmup()
+        warm = getattr(rec, "warmup", None)
+        if warm:
+            await warm()
         print(f"\n=== {name} (로드 {time.monotonic() - t0:.1f}s) ===")
         total_cer, total_t, total_audio = 0.0, 0.0, 0.0
         for ref, ulaw in clips:

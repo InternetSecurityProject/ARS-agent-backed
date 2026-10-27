@@ -7,6 +7,7 @@ Recognizer 프로토콜을 구현하면 다른 STT 로 교체할 수 있다.
 
   STT=whisper  로컬 faster-whisper (WHISPER_MODEL: 기본 한국어 small 모델, small / medium / large-v3-turbo ...)
   STT=openai   OpenAI 음성 인식 API (OPENAI_STT_MODEL, 기본 gpt-4o-transcribe). 외부 STT 이므로 is_local=False
+  STT=rtzr / clova / gemini / qwen   비교용 후보 엔진 (stt_engines.py)
   STT=none     인식하지 않음 (가상 ARS)
 """
 
@@ -192,4 +193,8 @@ def make_recognizer(kind: str, model: str = "small", device: str = "cpu", quiet_
         return WhisperRecognizer(model, device, int(os.environ.get("WHISPER_BEAM", "1")), quiet_rms)
     if kind == "openai":
         return OpenAIRecognizer(os.environ.get("OPENAI_STT_MODEL", "gpt-4o-transcribe"))
+    if kind in ("rtzr", "clova", "gemini", "qwen"):
+        from stt_engines import make_engine  # 후보 엔진은 선택했을 때만 불러온다
+
+        return make_engine(kind, device)
     return NullRecognizer()

@@ -1,6 +1,6 @@
-작성일: 2026-10-25
+작성일: 2026-10-25 (2026-10-27 STT 후보 엔진 항목 추가)
 
-본 문서는 통화 중 발생할 수 있는 사용자 입력과 ARS 반응의 경우의 수를 나열하고, 각 경우에 대한 서버(`session.py`)의 처리와 이를 확인하는 자동 시험(`test_flows.py`)을 대응시킨 점검표이다. 서버 동작을 바꿀 때는 해당 행의 처리와 시험을 함께 갱신한다. 명세 조항 번호는 API 명세서 v0.3 기준이다.
+본 문서는 통화 중 발생할 수 있는 사용자 입력과 ARS 반응의 경우의 수를 나열하고, 각 경우에 대한 서버(`session.py`)의 처리와 이를 확인하는 자동 시험(`test_flows.py`)을 대응시킨 점검표이다. STT 엔진 관련 시험은 `test_stt_engines.py` 에 있다. 서버 동작을 바꿀 때는 해당 행의 처리와 시험을 함께 갱신한다. 명세 조항 번호는 API 명세서 v0.3 기준이다.
 
 ---
 
@@ -109,7 +109,7 @@
 | 입력 대기 중 ARS 가 메뉴로 돌아감 | 입력 요청을 닫고 그 메뉴를 판단한다 | `test_secure_request_closes_when_ars_returns_to_menu` |
 | 입력 대기 중 `revise_goal` | 요청 유지, 목적만 변경 | `test_revise_goal_before_first_key` (일반), 코드 `keep_secure` |
 | 입력 대기 중 상대가 끊음 | `user_input_timeout` | `test_remote_hangup_while_waiting_for_user_is_user_input_timeout` |
-| 외부 STT 사용 시 되읽기 구간 | 인식하지 않는다 (`is_local=False`) | — (코드 `_stt_worker`) |
+| 외부 STT 사용 시 되읽기 구간 | 인식하지 않는다 (`is_local=False`: openai·rtzr·clova·gemini) | `test_external_engine_skips_secure_readback` (`test_stt_engines.py`) |
 
 ### D. 다시 말하기 (`revise_goal`)
 
@@ -184,6 +184,12 @@
 | 키 전송 실패 (AI 경로) | 예외 없이 멈추고 종료는 `_on_end` 가 처리 | `test_key_send_failure_is_409_for_user_and_harmless_for_ai` |
 | 발신 실패·무응답·통화 중 | `failed` / `no_answer` / `busy` | `test_dial_failures_map_to_end_reasons`, `test_clawops_backend_wiring` (연결부) |
 | 최대 통화 시간(600초) | `max_duration` 으로 종료 | `test_max_call_duration_ends_call` |
+| STT 엔진 필수 키 없음 (rtzr·clova·gemini) | 서버 시작 시 `RuntimeError` 로 알린다 (통화마다 빈 인식이 나오는 것을 막음) | `test_missing_keys_fail_at_startup` |
+| STT 인식 실패 (HTTP 오류·오류 응답·인증 실패·로컬 모델 오류) | 그 단락은 빈 결과. 경고 로그(키 가림). 이후 동작은 G 의 "키 전송 뒤 소리는 났으나 인식 문장이 없음" 과 같다 | `test_clova_failure_returns_empty`, `test_gemini_failure_returns_empty`, `test_rtzr_server_error_returns_empty_and_hides_secret`, `test_qwen_failure_returns_empty` |
+| STT 응답 지연 (`STT_TIMEOUT_S` 초과) | 빈 결과 (HTTP 엔진은 전체 응답 시간으로 제한) | `test_gemini_timeout_returns_empty` |
+| 리턴제로: 마지막 응답 뒤 서버가 연결을 닫지 않음 | 제한 시간까지 받은 확정 문장을 쓴다 | `test_rtzr_keeps_finals_when_server_does_not_close` |
+| 리턴제로: 토큰 만료 임박·거부(401) | 만료 10분 전 재발급, 401 이면 토큰을 버리고 다음 단락에서 재발급 | `test_rtzr_refreshes_expiring_token`, `test_rtzr_unauthorized_clears_token` |
+| 후보 엔진을 통화 흐름에 연결 | 단락 인식 → 메뉴 판단 → 키 전송이 Whisper 와 같게 동작 | `test_http_engine_drives_session`, `test_rtzr_engine_drives_session` |
 
 ### I. 채널과 세션
 
