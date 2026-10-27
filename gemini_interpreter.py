@@ -175,6 +175,8 @@ def direct_match(goal: str, options: list[Option]) -> str | None:
     return hits[0] if len(hits) == 1 else None
 
 
+_AGENT = re.compile(r"상담\s?(?:원|사|직원)")  # '긴급 상담 및 보안 관련 상담' 같은 업무 이름은 상담원 연결이 아니다
+_CONSENT = re.compile(r"(?:수집|이용|제공|활용).{0,15}동의|약관.{0,10}동의|동의(?:하시면|는)\s*[0-9]")
 _GENERIC = {"발급", "조회", "신청", "업무", "안내", "서비스", "문의", "연결", "변경", "확인"}
 
 
@@ -241,7 +243,7 @@ SCORE = COMMON + """
 CONFIRM = COMMON + """
 할 일: ARS 확인 질문에 사용자 목적만으로 분명하게 답할 수 있으면 누를 key 를 고르고, 아니면 key=null.
 - 입력한 값이 맞는지 묻는 질문, 사용자의 명시적 확인이 필요한 질문은 null (사용자에게 묻습니다).
-- 결제·송금·해지·가입 등 결과가 큰 행위는 항상 null."""
+- 결제·송금·해지·가입 등 결과가 큰 행위, 개인정보 수집·약관 동의는 항상 null."""
 
 MERGE = COMMON + """
 할 일: 서버가 사용자에게 다시 물은 질문(<question>)과 사용자 답변(<answer>)을 원래 목적(<goal>)에 반영해, 다음 메뉴 판단에 쓸 새 목적 한 문장을 만듭니다.
@@ -446,6 +448,21 @@ class GeminiInterpreter:
                 if o.key in ("*", "#") and o.key not in nav and all(x.key != o.key for x in p.options):
                     p.options.append(o)
         if p.kind in ("menu", "confirm"):
+            # 같은 번호가 다른 선택지에 두 번 들리면(STT 오류 의심) 모델이 하나로 합쳐도 그 번호는 누르지 않는다
+            seen: dict[str, set[str]] = {}
+            for label, key in _OPTION.findall(norm):
+                seen.setdefault(key, set()).add(_norm(re.sub(r"^(?:번\s*|그리고\s*|또는\s*|및\s*|,\s*)+", "", label.strip())))
+            dup_keys = {k for k, labels in seen.items() if len(labels) > 1}
+            if dup_keys & {o.key for o in p.options}:
+                log.warning("안내에 같은 번호가 두 번 들림 (STT 오류 의심): %s", sorted(dup_keys))
+                missing += [o.label for o in p.options if o.key in dup_keys]
+                p.options = [o for o in p.options if o.key not in dup_keys]
+                if not p.options:
+                    p.kind = "info"
+            # 개인정보 수집·약관 동의는 사용자가 직접 정한다 (서버가 critical_action 으로 묻는다)
+            if _CONSENT.search(norm):
+                p.critical = True
+        if p.kind in ("menu", "confirm"):
             self.last_menu = p
             self._menus[p.signature()] = p
             if norm.strip() not in self._heard:
@@ -516,13 +533,18 @@ class GeminiInterpreter:
         return "이전 단계 확인"
 
     def _apply_no_match(self, goal: str, options: list[Option], out: dict[str, float]) -> dict[str, float]:
-        agent = [o.key for o in options if re.search(r"상담", f"{o.label}{o.category or ''}")]
+        agent = [o.key for o in options if _AGENT.search(f"{o.label} {o.category or ''}")]
         if not agent or "상담" in goal:
             return out
         task = [v for k, v in out.items() if k not in agent]
+        out = dict(out)
+        if task and max(task) >= 0.5:
+            # 맞는 업무 선택지가 있으면 상담원 연결이 그 선택을 가로막지 않게 낮춘다 (1·2위 차이 부족으로 재질문 방지)
+            for k in agent:
+                out[k] = min(out[k], 0.3)
+            return out
         if task and max(task) >= 0.3:
             return out
-        out = dict(out)
         policy = self._no_match_policy(options)
         if policy == "상담원 연결":
             out[agent[0]] = max(out[agent[0]], 0.6)

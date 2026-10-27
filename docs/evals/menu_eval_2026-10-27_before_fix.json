@@ -1,0 +1,5706 @@
+[
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_main",
+  "goal": "건강보험증 발급받고 싶어",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "9": 0.1,
+   "1": 0.6,
+   "2": 1.0,
+   "3": 0.2,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 9995,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_main",
+  "goal": "보험증 새로 받으려고요",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "9": 0.1,
+   "1": 0.6,
+   "2": 0.9,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 5991,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_main",
+  "goal": "자격득실확인서 떼고 싶어",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "9": 0.1,
+   "1": 0.85,
+   "2": 0.4,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.2,
+   "8": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 5589,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_main",
+  "goal": "건강보험료 고지서 다시 받고 싶어",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "9": 0.1,
+   "1": 0.2,
+   "2": 0.2,
+   "3": 0.9,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.2,
+   "7": 0.2,
+   "8": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 5813,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_main",
+  "goal": "작년에 못 받은 건강검진 추가로 신청할래",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "9": 0.1,
+   "1": 0.1,
+   "2": 0.2,
+   "3": 0.1,
+   "4": 0.95,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 8323,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_main",
+  "goal": "의료급여 진료 확인번호 받으려고",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "9": 0.1,
+   "1": 0.3,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 1.0,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 19270,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_main",
+  "goal": "아까 보낸 팩스 잘 들어갔는지 확인",
+  "expected": [
+   "6"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "9": 0.1,
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.95,
+   "7": 0.3,
+   "8": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 4649,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_main",
+  "goal": "신고서 양식 팩스로 받고 싶어",
+  "expected": [
+   "7"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "9": 0.1,
+   "1": 0.2,
+   "2": 0.2,
+   "3": 0.2,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.3,
+   "7": 0.9,
+   "8": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 6052,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_main",
+  "goal": "공단 앱 설치 링크 문자로 받고 싶어",
+  "expected": [
+   "8"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "9": 0.2,
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.95,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 5069,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_main",
+  "goal": "내 보험료 얼마 나오는지 계산해 보고 싶어",
+  "expected": [
+   "#"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "9": 0.1,
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.1,
+   "#": 0.95
+  },
+  "confirm": null,
+  "ms": 3609,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_main",
+  "goal": "화면 보면서 처리하고 싶어",
+  "expected": [
+   "9"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "9": 0.95,
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.2,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 17262,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_main",
+  "goal": "서류 좀 떼려고",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "9": 0.1,
+   "1": 0.85,
+   "2": 0.8,
+   "3": 0.7,
+   "4": 0.2,
+   "5": 0.2,
+   "6": 0.1,
+   "7": 0.5,
+   "8": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 6464,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_main",
+  "goal": "자동차 보험 가입하고 싶어",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "9": 0.1,
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.1,
+   "#": 0.3
+  },
+  "confirm": null,
+  "ms": 10896,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_cert_user",
+  "goal": "증명서 떼려고",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1
+  },
+  "confirm": null,
+  "ms": 5766,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_cert_user",
+  "goal": "저는 일흔 살이고 증명서가 필요해요",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.5,
+   "2": 0.1
+  },
+  "confirm": null,
+  "ms": 5588,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_cert_user",
+  "goal": "장애인 등록은 안 했고 마흔 살이야, 증명서 떼려고",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.2
+  },
+  "confirm": null,
+  "ms": 5038,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_bill_type",
+  "goal": "건강보험이랑 연금보험 고지서 둘 다 받고 싶어",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.95,
+   "2": 0.4,
+   "3": 0.4
+  },
+  "confirm": null,
+  "ms": 4690,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_bill_type",
+  "goal": "건강보험 고지서만 받으면 돼",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.7,
+   "2": 0.95,
+   "3": 0.2
+  },
+  "confirm": null,
+  "ms": 9883,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_bill_type",
+  "goal": "국민연금 고지서 받으려고",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.85,
+   "2": 0.2,
+   "3": 0.95
+  },
+  "confirm": null,
+  "ms": 3177,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_bill_type",
+  "goal": "고지서 받고 싶어",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.9,
+   "2": 0.85,
+   "3": 0.85
+  },
+  "confirm": null,
+  "ms": 8758,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_checkup_id",
+  "goal": "주민등록증으로 인증할게요",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.9,
+   "2": 0.2
+  },
+  "confirm": null,
+  "ms": 3267,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_checkup_id",
+  "goal": "운전면허증 갖고 있어",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.9
+  },
+  "confirm": null,
+  "ms": 3839,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_checkup_id",
+  "goal": "건강검진 추가 신청",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.6,
+   "2": 0.6
+  },
+  "confirm": null,
+  "ms": 2234,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_fax_forms",
+  "goal": "회사 입사해서 직장가입자 자격 취득 신고서 필요해",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.95,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.1,
+   "9": 0.1,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 4596,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_fax_forms",
+  "goal": "퇴사해서 자격 상실 신고서 받아야 해",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.95,
+   "3": 0.4,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.1,
+   "9": 0.1,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 5357,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_fax_forms",
+  "goal": "부모님을 피부양자로 올리는 서류",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 0.2,
+   "3": 0.95,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.1,
+   "9": 0.2,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 3917,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_fax_forms",
+  "goal": "보험료 더 낸 거 돌려받는 신청서",
+  "expected": [
+   "8"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.2,
+   "8": 0.95,
+   "9": 0.1,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 6557,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_fax_forms",
+  "goal": "무상 거주 사실 확인서 팩스로",
+  "expected": [
+   "9"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.1,
+   "9": 0.95,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 7701,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_fax_forms",
+  "goal": "사업장 주소가 바뀌어서 변경 신고서가 필요해",
+  "expected": [
+   "6"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.3,
+   "5": 0.2,
+   "6": 0.95,
+   "7": 0.3,
+   "8": 0.1,
+   "9": 0.1,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 3582,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_fax_forms",
+  "goal": "팩스 보낸 결과 확인할래",
+  "expected": [
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.1,
+   "9": 0.1,
+   "0": 0.9
+  },
+  "confirm": null,
+  "ms": 4966,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_fax_forms",
+  "goal": "건강보험증 발급",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 0.2,
+   "3": 0.2,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.1,
+   "9": 0.1,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 3853,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_qual",
+  "goal": "건강보험증 발급받고 싶어",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.95,
+   "2": 0.2,
+   "3": 0.1,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 15939,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_qual",
+  "goal": "회사 그만둬서 자격 상실 문의하려고",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.95,
+   "3": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 3883,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_qual",
+  "goal": "해외 나갔다 와서 출입국 신고 문의",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.3,
+   "3": 0.95,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 3021,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_qual",
+  "goal": "상담사랑 직접 통화하고 싶어",
+  "expected": [
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "0": 0.9
+  },
+  "confirm": null,
+  "ms": 1697,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_qual",
+  "goal": "건강검진 결과 확인하고 싶어",
+  "expected": [
+   null,
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.3,
+   "3": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 7289,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_address",
+  "goal": "건강보험증 회사로 받고 싶어",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 0.9
+  },
+  "confirm": null,
+  "ms": 1966,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_address",
+  "goal": "지역가입자라 집 주소로 받을게",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.8,
+   "2": 0.2
+  },
+  "confirm": null,
+  "ms": 2311,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_address",
+  "goal": "건강보험증 발급받고 싶어",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.8,
+   "2": 0.8
+  },
+  "confirm": null,
+  "ms": 5400,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_app_phone",
+  "goal": "앱 설치 문자 지금 전화한 폰으로 받을래",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.9,
+   "2": 0.2
+  },
+  "confirm": null,
+  "ms": 2337,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "국민건강보험공단",
+  "menu": "nhis_app_phone",
+  "goal": "엄마 휴대폰으로 앱 설치 문자 보내고 싶어",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 0.8
+  },
+  "confirm": null,
+  "ms": 3781,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_main",
+  "goal": "통장 잔액 알고 싶어",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "*": 0.1,
+   "8": 0.1,
+   "0": 0.2,
+   "#": 0.1,
+   "3": 0.95,
+   "4": 0.2,
+   "5": 0.1,
+   "7": 0.4,
+   "9": 0.1
+  },
+  "confirm": null,
+  "ms": 3577,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_main",
+  "goal": "내 계좌에 돈 얼마 있어",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "*": 0.1,
+   "8": 0.1,
+   "0": 0.2,
+   "#": 0.1,
+   "3": 0.95,
+   "4": 0.3,
+   "5": 0.1,
+   "7": 0.4,
+   "9": 0.1
+  },
+  "confirm": null,
+  "ms": 3486,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_main",
+  "goal": "최근 거래내역 보고 싶어",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "*": 0.1,
+   "8": 0.1,
+   "0": 0.2,
+   "#": 0.1,
+   "3": 0.4,
+   "4": 0.95,
+   "5": 0.2,
+   "7": 0.3,
+   "9": 0.1
+  },
+  "confirm": null,
+  "ms": 6190,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_main",
+  "goal": "체크카드 잃어버렸어",
+  "expected": [
+   "*"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "*": 0.95,
+   "8": 0.1,
+   "0": 0.2,
+   "#": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.6,
+   "7": 0.1,
+   "9": 0.1
+  },
+  "confirm": null,
+  "ms": 3339,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_main",
+  "goal": "보이스피싱 당한 것 같아",
+  "expected": [
+   "*"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "*": 0.95,
+   "8": 0.1,
+   "0": 0.6,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "7": 0.1,
+   "9": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 16946,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_main",
+  "goal": "청년미래적금 알아보려고",
+  "expected": [
+   "8"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "*": 0.1,
+   "8": 0.95,
+   "0": 0.2,
+   "#": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "7": 0.1,
+   "9": 0.1
+  },
+  "confirm": null,
+  "ms": 2451,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_main",
+  "goal": "상담원 연결해줘",
+  "expected": [
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "*": 0.1,
+   "8": 0.1,
+   "0": 0.9,
+   "#": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "7": 0.1,
+   "9": 0.1
+  },
+  "confirm": null,
+  "ms": 4414,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_main",
+  "goal": "말이 너무 빨라서 천천히 듣고 싶어",
+  "expected": [
+   "#"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "*": 0.1,
+   "8": 0.1,
+   "0": 0.6,
+   "#": 0.9,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "7": 0.1,
+   "9": 0.1
+  },
+  "confirm": null,
+  "ms": 6287,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_main",
+  "goal": "자기앞수표 조회하려고",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "*": 0.1,
+   "8": 0.1,
+   "0": 0.6,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "7": 0.1,
+   "9": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 4309,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_main",
+  "goal": "폰뱅킹으로 이체한도 확인",
+  "expected": [
+   "7"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "*": 0.1,
+   "8": 0.1,
+   "0": 0.6,
+   "3": 0.2,
+   "4": 0.2,
+   "5": 0.1,
+   "7": 0.7,
+   "9": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 7611,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_main",
+  "goal": "I need English service",
+  "expected": [
+   "9"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "*": 0.0,
+   "8": 0.0,
+   "0": 0.2,
+   "#": 0.0,
+   "3": 0.0,
+   "4": 0.0,
+   "5": 0.0,
+   "7": 0.0,
+   "9": 0.95
+  },
+  "confirm": null,
+  "ms": 4888,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_main",
+  "goal": "돈 좀 보내려고",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "*": 0.1,
+   "8": 0.1,
+   "0": 0.6,
+   "3": 0.2,
+   "4": 0.2,
+   "5": 0.1,
+   "7": 0.2,
+   "9": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 11762,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_main",
+  "goal": "자동차 보험 가입하고 싶어",
+  "expected": [
+   null,
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "*": 0.1,
+   "8": 0.1,
+   "0": 0.6,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "7": 0.1,
+   "9": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 13208,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_balance_way",
+  "goal": "카톡으로 받아볼게",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.95,
+   "2": 0.1
+  },
+  "confirm": null,
+  "ms": 4298,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_balance_way",
+  "goal": "전화로 계속 잔액 들을래",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.9
+  },
+  "confirm": null,
+  "ms": 4110,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_balance_way",
+  "goal": "외화 환전하고 싶어",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1
+  },
+  "confirm": null,
+  "ms": 1719,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_card_etc",
+  "goal": "자기앞수표 조회",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 1.0,
+   "2": 0.1,
+   "3": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 4183,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_card_etc",
+  "goal": "거래 알림 문자 서비스 신청",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.7,
+   "3": 0.1
+  },
+  "confirm": null,
+  "ms": 13050,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_card_etc",
+  "goal": "카드 관련해서 물어볼 게 있어",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.9,
+   "#": 0.3
+  },
+  "confirm": null,
+  "ms": 1894,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_card_etc",
+  "goal": "통장 잔액 알고 싶어",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 17739,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_card_ask",
+  "goal": "신용카드 문의하려고",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.9,
+   "2": 0.2,
+   "#": 0.3
+  },
+  "confirm": null,
+  "ms": 6591,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_card_ask",
+  "goal": "체크카드 결제일 문의",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.85,
+   "2": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 3768,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_card_ask",
+  "goal": "현금카드 문의",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 1.0,
+   "#": 0.2
+  },
+  "confirm": null,
+  "ms": 2153,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민카드",
+  "menu": "kbcard_main",
+  "goal": "카드 잃어버렸어",
+  "expected": [
+   "8"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "8": 0.95,
+   "#": 0.2,
+   "1": 0.3,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.3,
+   "5": 0.2
+  },
+  "confirm": null,
+  "ms": 3311,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민카드",
+  "menu": "kbcard_main",
+  "goal": "카드 정지시키고 싶어",
+  "expected": [
+   "8"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "8": 0.95,
+   "#": 0.1,
+   "1": 0.3,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1
+  },
+  "confirm": null,
+  "ms": 1993,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민카드",
+  "menu": "kbcard_main",
+  "goal": "가게 카드 단말기 정산 문의",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "8": 0.1,
+   "1": 0.1,
+   "2": 0.85,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 8671,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민카드",
+  "menu": "kbcard_main",
+  "goal": "법인카드 기업회원 문의",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "8": 0.1,
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.9,
+   "4": 0.2,
+   "5": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 10186,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민카드",
+  "menu": "kbcard_main",
+  "goal": "카드 없는데 새로 발급받고 싶어",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "8": 0.1,
+   "#": 0.2,
+   "1": 0.5,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.85,
+   "5": 0.4
+  },
+  "confirm": null,
+  "ms": 4789,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민카드",
+  "menu": "kbcard_main",
+  "goal": "KB Pay 충전 문의",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "8": 0.1,
+   "1": 0.5,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.4,
+   "5": 0.85,
+   "#": 0.4
+  },
+  "confirm": null,
+  "ms": 17509,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민카드",
+  "menu": "kbcard_nonmember",
+  "goal": "신청한 카드 언제 나와",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.95,
+   "2": 0.6,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 2274,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민카드",
+  "menu": "kbcard_nonmember",
+  "goal": "카드 발급 신청하고 싶어",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.5,
+   "2": 0.9,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 3153,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민카드",
+  "menu": "kbcard_nonmember",
+  "goal": "이번 달 카드값 얼마야",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.95,
+   "4": 0.2,
+   "5": 0.5,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 3691,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민카드",
+  "menu": "kbcard_nonmember",
+  "goal": "카드 한도 얼마 남았는지",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.4,
+   "4": 0.95,
+   "5": 0.3,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 4520,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민카드",
+  "menu": "kbcard_nonmember",
+  "goal": "어제 결제한 내역 확인",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.4,
+   "4": 0.1,
+   "5": 0.85,
+   "0": 0.6
+  },
+  "confirm": null,
+  "ms": 7373,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민카드",
+  "menu": "kbcard_nonmember",
+  "goal": "상담원이랑 얘기할래",
+  "expected": [
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "0": 0.9
+  },
+  "confirm": null,
+  "ms": 4367,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민카드",
+  "menu": "kbcard_nonmember",
+  "goal": "카드 해지하고 싶어",
+  "expected": [
+   null,
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 0.3,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "0": 0.6
+  },
+  "confirm": null,
+  "ms": 4014,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_phone",
+  "goal": "국민은행 쓰는 친구한테 송금",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.9,
+   "2": 0.2,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1
+  },
+  "confirm": null,
+  "ms": 5429,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_phone",
+  "goal": "신한은행 계좌로 돈 보내고 싶어",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.9,
+   "3": 0.2,
+   "4": 0.2,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1
+  },
+  "confirm": null,
+  "ms": 7425,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_phone",
+  "goal": "단축번호 등록",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.9,
+   "4": 0.2,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1
+  },
+  "confirm": null,
+  "ms": 4113,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_phone",
+  "goal": "자동이체 등록하고 싶어",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.9,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1
+  },
+  "confirm": null,
+  "ms": 2659,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_phone",
+  "goal": "이체한도가 얼마인지 확인",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.3,
+   "5": 0.95,
+   "6": 0.1,
+   "7": 0.1
+  },
+  "confirm": null,
+  "ms": 2761,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_phone",
+  "goal": "SMS 인증 서비스 해지",
+  "expected": [
+   "6"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.95,
+   "7": 0.4
+  },
+  "confirm": null,
+  "ms": 4888,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_phone",
+  "goal": "폰뱅킹 해지하려고",
+  "expected": [
+   "7"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.2,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.4,
+   "7": 0.95
+  },
+  "confirm": null,
+  "ms": 2696,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_phone",
+  "goal": "통장 잔액 알고 싶어",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1
+  },
+  "confirm": null,
+  "ms": 4378,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_transfer_type",
+  "goal": "가상계좌로 송금",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.95,
+   "2": 0.2,
+   "3": 0.1,
+   "4": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 7579,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_transfer_type",
+  "goal": "아파트 중도금 내야 해",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 0.95,
+   "3": 0.2,
+   "4": 0.3,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 4897,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_transfer_type",
+  "goal": "대출금 갚으려고",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 0.5,
+   "3": 0.95,
+   "4": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 4356,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_transfer_type",
+  "goal": "관리비 납부",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.4,
+   "3": 0.1,
+   "4": 1.0,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 7423,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_error_after",
+  "goal": "주민번호 다시 입력할게",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.9,
+   "3": 0.1,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 3404,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_error_after",
+  "goal": "상담 직원 연결해줘",
+  "expected": [
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "0": 0.9
+  },
+  "confirm": null,
+  "ms": 3475,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_error_after",
+  "goal": "다른 서비스 이용할래",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.95,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 2433,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_autopay",
+  "goal": "자동이체 신청",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.9,
+   "2": 0.2,
+   "3": 0.2,
+   "4": 0.2,
+   "5": 0.5,
+   "6": 0.5,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 2085,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_autopay",
+  "goal": "지로 대금 내려고",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 0.95,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.2,
+   "6": 0.2,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 2392,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_autopay",
+  "goal": "대학 등록금 납부",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.2,
+   "3": 0.99,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 8716,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_autopay",
+  "goal": "종합소득세 국세 납부",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.9,
+   "5": 0.1,
+   "6": 0.1,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 4259,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_autopay",
+  "goal": "다음 주에 보내지게 예약이체",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.5,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.9,
+   "6": 0.4,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 4336,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_autopay",
+  "goal": "지연이체 신청",
+  "expected": [
+   "6"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.4,
+   "6": 0.95,
+   "0": 0.6
+  },
+  "confirm": null,
+  "ms": 4361,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_limit",
+  "goal": "이체한도 얼마인지",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.95,
+   "2": 0.4,
+   "3": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 6461,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_limit",
+  "goal": "이체한도 줄이고 싶어",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 0.95,
+   "3": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 7648,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_limit",
+  "goal": "입금계좌 지정 내역 확인",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 1.0,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 4059,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_lost",
+  "goal": "보이스피싱 피해 신고하려고",
+  "expected": [
+   "7"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "7": 1.0,
+   "1": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 2083,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_lost",
+  "goal": "체크카드 잃어버렸어",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "7": 0.1,
+   "1": 0.9,
+   "3": 0.4,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 3631,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_lost",
+  "goal": "현금카드 분실 신고",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "7": 0.1,
+   "1": 0.4,
+   "3": 0.95,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 3102,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_lost",
+  "goal": "통장을 잃어버렸어",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "7": 0.1,
+   "1": 0.2,
+   "3": 0.2,
+   "4": 0.95,
+   "5": 0.1,
+   "6": 0.1,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 6753,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_lost",
+  "goal": "자기앞수표 분실",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "7": 0.1,
+   "1": 0.2,
+   "3": 0.2,
+   "4": 0.4,
+   "5": 1.0,
+   "6": 0.1,
+   "0": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 3612,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_lost",
+  "goal": "보안카드 분실 신고",
+  "expected": [
+   "6"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "7": 0.1,
+   "1": 0.2,
+   "3": 0.2,
+   "4": 0.2,
+   "5": 0.2,
+   "6": 0.99,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 2490,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_lost",
+  "goal": "카드 잃어버렸어",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "7": 0.1,
+   "1": 0.95,
+   "3": 0.8,
+   "4": 0.2,
+   "5": 0.1,
+   "6": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 6351,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_lost",
+  "goal": "외화 환전하고 싶어",
+  "expected": [
+   null,
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "7": 0.1,
+   "1": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "0": 0.6
+  },
+  "confirm": null,
+  "ms": 7995,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_fast",
+  "goal": "국민은행 계좌로 송금",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.95,
+   "2": 0.4,
+   "3": 0.1,
+   "4": 0.1,
+   "*": 0.1,
+   "0": 0.1,
+   "#": 0.2
+  },
+  "confirm": null,
+  "ms": 5130,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_fast",
+  "goal": "다른 은행으로 이체",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.95,
+   "3": 0.1,
+   "4": 0.1,
+   "*": 0.1,
+   "0": 0.1,
+   "#": 0.2
+  },
+  "confirm": null,
+  "ms": 2753,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_fast",
+  "goal": "대출 잔액 확인",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.9,
+   "4": 0.3,
+   "*": 0.1,
+   "0": 0.1,
+   "#": 0.3
+  },
+  "confirm": null,
+  "ms": 7073,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_fast",
+  "goal": "거래내역 조회",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.4,
+   "4": 0.95,
+   "*": 0.1,
+   "0": 0.2,
+   "#": 0.2
+  },
+  "confirm": null,
+  "ms": 5864,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "KB국민은행",
+  "menu": "kb_fast",
+  "goal": "분실 신고",
+  "expected": [
+   "*"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "*": 1.0,
+   "0": 0.1,
+   "#": 0.1
+  },
+  "confirm": null,
+  "ms": 2501,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "하나은행",
+  "menu": "hana_main",
+  "goal": "보이스피싱 신고",
+  "expected": [
+   "#"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "#": 0.95,
+   "77": 0.1,
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "0": 0.4,
+   "*": 0.1
+  },
+  "confirm": null,
+  "ms": 10362,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "하나은행",
+  "menu": "hana_main",
+  "goal": "대출 이자 납입 내역서 이메일로 받고 싶어",
+  "expected": [
+   "77"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "#": 0.1,
+   "77": 0.95,
+   "*": 0.1,
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.2,
+   "4": 0.3,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.2,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 3679,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "하나은행",
+  "menu": "hana_main",
+  "goal": "말 천천히 해주는 서비스",
+  "expected": [
+   "*"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "#": 0.1,
+   "77": 0.1,
+   "*": 0.9,
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 3818,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "하나은행",
+  "menu": "hana_main",
+  "goal": "하나은행 계좌로 송금",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "#": 0.0,
+   "77": 0.0,
+   "*": 0.0,
+   "1": 0.95,
+   "2": 0.4,
+   "3": 0.0,
+   "4": 0.0,
+   "5": 0.0,
+   "6": 0.0,
+   "7": 0.0,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 4433,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "하나은행",
+  "menu": "hana_main",
+  "goal": "다른 은행으로 송금하려고",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "#": 0.1,
+   "77": 0.1,
+   "*": 0.1,
+   "1": 0.3,
+   "2": 0.95,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.2,
+   "6": 0.1,
+   "7": 0.2,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 4314,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "하나은행",
+  "menu": "hana_main",
+  "goal": "통장 잔액 확인",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "#": 0.1,
+   "77": 0.2,
+   "*": 0.1,
+   "1": 0.2,
+   "2": 0.2,
+   "3": 0.9,
+   "4": 0.4,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.3,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 4921,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "하나은행",
+  "menu": "hana_main",
+  "goal": "거래내역 보고 싶어",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.2,
+   "4": 0.95,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "77": 0.3,
+   "0": 0.1,
+   "*": 0.1
+  },
+  "confirm": null,
+  "ms": 11277,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "하나은행",
+  "menu": "hana_main",
+  "goal": "하나카드 결제일 바꾸고 싶어",
+  "expected": [
+   "6"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "#": 0.1,
+   "77": 0.1,
+   "*": 0.1,
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.6,
+   "7": 0.1,
+   "0": 0.6
+  },
+  "confirm": null,
+  "ms": 4462,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "하나은행",
+  "menu": "hana_main",
+  "goal": "오픈뱅킹 서비스",
+  "expected": [
+   "7"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "#": 0.1,
+   "77": 0.1,
+   "*": 0.1,
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.2,
+   "6": 0.1,
+   "7": 1.0,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 5279,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "하나은행",
+  "menu": "hana_main",
+  "goal": "상담 직원 연결",
+  "expected": [
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "#": 0.1,
+   "77": 0.1,
+   "*": 0.1,
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "0": 0.9
+  },
+  "confirm": null,
+  "ms": 5280,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "하나은행",
+  "menu": "hana_main",
+  "goal": "돈 보내려고",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "#": 0.0,
+   "77": 0.1,
+   "*": 0.0,
+   "1": 0.9,
+   "2": 0.9,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.2,
+   "6": 0.1,
+   "7": 0.3,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 9467,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "하나은행",
+  "menu": "hana_after_balance",
+  "goal": "같은 계좌 날짜별 거래 조회",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.95,
+   "3": 0.2,
+   "0": 0.6
+  },
+  "confirm": null,
+  "ms": 2401,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "하나은행",
+  "menu": "hana_after_balance",
+  "goal": "다른 계좌 잔액도 볼래",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.95,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 3397,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "하나은행",
+  "menu": "hana_after_balance",
+  "goal": "상담원 연결",
+  "expected": [
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "0": 0.9
+  },
+  "confirm": null,
+  "ms": 17019,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_main",
+  "goal": "반품 소포 접수하고 싶어",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 1.0,
+   "2": 0.2,
+   "3": 0.1,
+   "5": 0.1,
+   "7": 0.1,
+   "0": 0.3
+  },
+  "confirm": null,
+  "ms": 5221,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_main",
+  "goal": "택배 어디쯤 왔는지 조회",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 0.9,
+   "3": 0.8,
+   "5": 0.1,
+   "7": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 4423,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_main",
+  "goal": "등기우편 배송 조회",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 0.9,
+   "3": 0.6,
+   "5": 0.1,
+   "7": 0.1,
+   "0": 0.3
+  },
+  "confirm": null,
+  "ms": 6805,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_main",
+  "goal": "해외로 보낸 EMS 조회",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.3,
+   "3": 0.95,
+   "5": 0.1,
+   "7": 0.1,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 6616,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_main",
+  "goal": "우체국 몇 시까지 해",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "5": 0.95,
+   "7": 0.1,
+   "0": 0.3
+  },
+  "confirm": null,
+  "ms": 6447,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_main",
+  "goal": "채팅 상담 예약",
+  "expected": [
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "5": 0.1,
+   "7": 0.1,
+   "0": 0.95
+  },
+  "confirm": null,
+  "ms": 7557,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_main",
+  "goal": "택배 조회하고 싶어",
+  "expected": [
+   null,
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.3,
+   "2": 0.9,
+   "3": 0.8,
+   "5": 0.1,
+   "7": 0.1,
+   "0": 0.3
+  },
+  "confirm": null,
+  "ms": 9901,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_info",
+  "goal": "편지 보내는 요금 얼마야",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.95,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "13": 0.3
+  },
+  "confirm": null,
+  "ms": 7207,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_info",
+  "goal": "우편번호 알고 싶어",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.95,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "13": 0.1
+  },
+  "confirm": null,
+  "ms": 6240,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_info",
+  "goal": "택배로 못 보내는 물건이 뭐야",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.95,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "13": 0.1
+  },
+  "confirm": null,
+  "ms": 6896,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_info",
+  "goal": "우체국 사칭 문자 받았어",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.95,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "13": 0.1
+  },
+  "confirm": null,
+  "ms": 5593,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_info",
+  "goal": "고객센터 운영 시간",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.95,
+   "6": 0.1,
+   "7": 0.1,
+   "13": 0.1
+  },
+  "confirm": null,
+  "ms": 7981,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_info",
+  "goal": "소포가 파손됐는데 손해배상",
+  "expected": [
+   "6"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.95,
+   "7": 0.1,
+   "13": 0.2
+  },
+  "confirm": null,
+  "ms": 9636,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_info",
+  "goal": "이사 가서 우편물 새 주소로 받고 싶어",
+  "expected": [
+   "7"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.95,
+   "13": 0.4
+  },
+  "confirm": null,
+  "ms": 8416,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_info",
+  "goal": "보낸 우편물 돌려받고 싶어",
+  "expected": [
+   "13"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.2,
+   "7": 0.2,
+   "13": 0.95
+  },
+  "confirm": null,
+  "ms": 13122,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_damage",
+  "goal": "국제우편 분실 손해배상",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.85
+  },
+  "confirm": null,
+  "ms": 5432,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "우체국",
+  "menu": "post_damage",
+  "goal": "국내 택배 파손 배상",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.8,
+   "2": 0.1
+  },
+  "confirm": null,
+  "ms": 7630,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_gyeonggi",
+  "goal": "수원 날씨 알려줘",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.9,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "99": 0.2,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 8794,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_gyeonggi",
+  "goal": "용인 날씨",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.95,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "99": 0.3,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 6563,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_gyeonggi",
+  "goal": "고양시 날씨",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.9,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "99": 0.2,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 7305,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_gyeonggi",
+  "goal": "남양주 오늘 비 와?",
+  "expected": [
+   "7"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.95,
+   "99": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 6818,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_gyeonggi",
+  "goal": "부산 날씨 알고 싶어",
+  "expected": [
+   "99"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "99": 0.4,
+   "0": 0.6
+  },
+  "confirm": null,
+  "ms": 11146,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_gyeonggi",
+  "goal": "기상청 상담사 연결",
+  "expected": [
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "99": 0.1,
+   "0": 0.9
+  },
+  "confirm": null,
+  "ms": 7207,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_suwon_group",
+  "goal": "수원 날씨 알려줘",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 1.0,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "99": 0.2,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 10577,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_suwon_group",
+  "goal": "군포 날씨",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 1.0,
+   "5": 0.1,
+   "99": 0.3,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 7950,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_suwon",
+  "goal": "수원 오늘 날씨",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.9,
+   "3": 0.3,
+   "5": 0.3,
+   "6": 0.1,
+   "7": 0.1,
+   "99": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 9356,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_suwon",
+  "goal": "다음 주 날씨까지 길게 알고 싶어",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "3": 0.3,
+   "5": 0.9,
+   "6": 0.1,
+   "7": 0.1,
+   "10": 0.1,
+   "99": 0.2,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 7266,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_suwon",
+  "goal": "바다 날씨 해상 정보",
+  "expected": [
+   "7"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "3": 0.2,
+   "5": 0.2,
+   "6": 0.6,
+   "7": 0.95,
+   "10": 0.1,
+   "99": 0.2,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 11135,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_suwon",
+  "goal": "태풍 특보 있는지",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "3": 0.95,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.2,
+   "10": 0.1,
+   "99": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 5124,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_suwon",
+  "goal": "지금 몇 도야",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.3,
+   "3": 0.85,
+   "5": 0.2,
+   "6": 0.1,
+   "7": 0.1,
+   "10": 0.1,
+   "99": 0.1,
+   "0": 0.6
+  },
+  "confirm": null,
+  "ms": 5911,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_buoy",
+  "goal": "경기도 서해안 파도 높이",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.9,
+   "2": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.1,
+   "9": 0.1,
+   "10": 0.1
+  },
+  "confirm": null,
+  "ms": 9532,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_buoy",
+  "goal": "제주도 바다 부이 정보",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "5": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "8": 0.4,
+   "9": 0.4
+  },
+  "confirm": null,
+  "ms": 19818,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_buoy",
+  "goal": "강원도 동해안",
+  "expected": [
+   "8"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.5,
+   "8": 0.95,
+   "9": 0.1,
+   "10": 0.1
+  },
+  "confirm": null,
+  "ms": 7636,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_buoy",
+  "goal": "신안 앞바다",
+  "expected": [
+   "10"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "5": 0.2,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.1,
+   "9": 0.1,
+   "10": 0.95
+  },
+  "confirm": null,
+  "ms": 19841,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_main",
+  "goal": "군대 가서 번호 일시정지",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.95,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.2,
+   "5": 0.1,
+   "6": 0.1
+  },
+  "confirm": null,
+  "ms": 2404,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_main",
+  "goal": "이번 달 휴대폰 요금 확인",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.9,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "6": 0.3
+  },
+  "confirm": null,
+  "ms": 17027,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_main",
+  "goal": "해외여행 가는데 로밍 신청",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.95,
+   "4": 0.6,
+   "5": 0.1,
+   "6": 0.1
+  },
+  "confirm": null,
+  "ms": 2988,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_main",
+  "goal": "휴대폰 잃어버렸어",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.3,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.9,
+   "5": 0.1,
+   "6": 0.1
+  },
+  "confirm": null,
+  "ms": 4016,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_main",
+  "goal": "선택약정 할인 신청",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.95,
+   "6": 0.1
+  },
+  "confirm": null,
+  "ms": 5197,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_main",
+  "goal": "소액결제 내역 확인",
+  "expected": [
+   "6"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.4,
+   "3": 0.1,
+   "4": 0.2,
+   "5": 0.1,
+   "6": 0.95
+  },
+  "confirm": null,
+  "ms": 5420,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_main",
+  "goal": "인터넷 설치 문의",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.6,
+   "5": 0.1,
+   "6": 0.1
+  },
+  "confirm": null,
+  "ms": 2321,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_bill",
+  "goal": "밀린 요금 내고 싶어",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.95,
+   "2": 0.3
+  },
+  "confirm": null,
+  "ms": 3440,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_bill",
+  "goal": "요금 자동이체로 바꾸고 싶어",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.95
+  },
+  "confirm": null,
+  "ms": 1658,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_bill",
+  "goal": "로밍 신청",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1
+  },
+  "confirm": null,
+  "ms": 3050,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_pay_method",
+  "goal": "카드로 낼게",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.9,
+   "2": 0.1
+  },
+  "confirm": null,
+  "ms": 2355,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_pay_method",
+  "goal": "통장에서 바로 빠져나가게",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.95
+  },
+  "confirm": null,
+  "ms": 1496,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_pay_method",
+  "goal": "요금 내고 싶어",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.85,
+   "2": 0.85
+  },
+  "confirm": null,
+  "ms": 1947,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_lost",
+  "goal": "폰 잃어버려서 정지",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.95,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.2
+  },
+  "confirm": null,
+  "ms": 1998,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_lost",
+  "goal": "통화가 자꾸 끊겨",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.9,
+   "3": 0.1,
+   "4": 0.1
+  },
+  "confirm": null,
+  "ms": 3215,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_lost",
+  "goal": "해외에서 로밍이 안 돼",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.2,
+   "3": 0.9,
+   "4": 0.1
+  },
+  "confirm": null,
+  "ms": 3917,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_lost",
+  "goal": "스미싱 문자 받았어",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.6,
+   "4": 0.95
+  },
+  "confirm": null,
+  "ms": 5507,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_paylog_month",
+  "goal": "지난달 결제 내역",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 0.2
+  },
+  "confirm": null,
+  "ms": 4671,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "CJ온스타일",
+  "menu": "cj_main",
+  "goal": "물건 주문하고 싶어",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.95,
+   "2": 0.3,
+   "3": 0.1,
+   "4": 0.1
+  },
+  "confirm": null,
+  "ms": 3819,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "CJ온스타일",
+  "menu": "cj_main",
+  "goal": "택배 언제 와",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 0.95,
+   "3": 0.1,
+   "4": 0.1
+  },
+  "confirm": null,
+  "ms": 6186,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "CJ온스타일",
+  "menu": "cj_main",
+  "goal": "산 거 반품하고 싶어",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.2,
+   "3": 0.95,
+   "4": 0.1
+  },
+  "confirm": null,
+  "ms": 6069,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "CJ온스타일",
+  "menu": "cj_main",
+  "goal": "할인 행사 문의",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.85
+  },
+  "confirm": null,
+  "ms": 5096,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "CJ온스타일",
+  "menu": "cj_main",
+  "goal": "회원 탈퇴하고 싶어",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.3,
+   "4": 0.1
+  },
+  "confirm": null,
+  "ms": 4141,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "CJ온스타일",
+  "menu": "cj_order_way",
+  "goal": "ARS로 바로 주문",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.9,
+   "2": 0.5
+  },
+  "confirm": null,
+  "ms": 3748,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "CJ온스타일",
+  "menu": "cj_order_way",
+  "goal": "상담원한테 주문할래",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 0.9
+  },
+  "confirm": null,
+  "ms": 4731,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "CJ온스타일",
+  "menu": "cj_order_way",
+  "goal": "주문하고 싶어",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.9,
+   "2": 0.8
+  },
+  "confirm": null,
+  "ms": 3816,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "현대홈쇼핑",
+  "menu": "hmall_consent",
+  "goal": "방송 상품 주문하고 싶어",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "confirm",
+  "scores": {
+   "1": 0.5,
+   "2": 0.1
+  },
+  "confirm": null,
+  "ms": 7559,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "현대홈쇼핑",
+  "menu": "hmall_prev_goods",
+  "goal": "마스터 케어 패키지 주문",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.95,
+   "2": 0.2,
+   "3": 0.2,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 4096,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "현대홈쇼핑",
+  "menu": "hmall_prev_goods",
+  "goal": "상담원 연결",
+  "expected": [
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "0": 0.9
+  },
+  "confirm": null,
+  "ms": 5221,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "현대홈쇼핑",
+  "menu": "hmall_prev_goods",
+  "goal": "주문한 거 배송 조회",
+  "expected": [
+   null,
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.2,
+   "2": 0.2,
+   "3": 0.2,
+   "0": 0.6
+  },
+  "confirm": null,
+  "ms": 5220,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_suwon_group",
+  "goal": "안양 날씨",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.9,
+   "99": 0.3,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 6564,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "기상청",
+  "menu": "kma_suwon",
+  "goal": "지진 났어?",
+  "expected": [
+   "10"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "3": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "10": 0.9,
+   "99": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 9009,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "LG유플러스",
+  "menu": "lgu_paylog_month",
+  "goal": "이번 달 소액결제 내역",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4
+  },
+  "confirm": null,
+  "ms": 20094,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "CJ온스타일",
+  "menu": "cj_main",
+  "goal": "주문 취소할래",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.5,
+   "2": 0.5,
+   "3": 0.95,
+   "4": 0.1
+  },
+  "confirm": null,
+  "ms": 7064,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "현대홈쇼핑",
+  "menu": "hmall_prev_goods",
+  "goal": "앰플 스타터 패키지",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 336,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_mode",
+  "goal": "버튼 눌러서 처리할게",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4
+  },
+  "confirm": null,
+  "ms": 363,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_mode",
+  "goal": "AI 상담사랑 얘기할래",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.9,
+   "3": 0.1
+  },
+  "confirm": null,
+  "ms": 7593,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_mode",
+  "goal": "화면 보면서 하는 디지털 ARS",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.9
+  },
+  "confirm": null,
+  "ms": 392,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_mode",
+  "goal": "잔액 조회하고 싶어",
+  "expected": [
+   null,
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4
+  },
+  "confirm": null,
+  "ms": 348,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_quick",
+  "goal": "보이스피싱 당해서 신고",
+  "expected": [
+   "331"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "3": 0.4,
+   "0": 0.4,
+   "#": 0.4,
+   "*": 0.4
+  },
+  "confirm": null,
+  "ms": 371,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_quick",
+  "goal": "카드 분실 사고신고",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "3": 0.9,
+   "0": 0.1,
+   "#": 0.1,
+   "*": 0.1
+  },
+  "confirm": null,
+  "ms": 325,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_quick",
+  "goal": "상담원 연결",
+  "expected": [
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "3": 0.1,
+   "0": 0.9,
+   "#": 0.1,
+   "*": 0.1
+  },
+  "confirm": null,
+  "ms": 359,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_quick",
+  "goal": "안내를 천천히 듣고 싶어",
+  "expected": [
+   "12"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "3": 0.4,
+   "0": 0.4,
+   "#": 0.4,
+   "*": 0.4
+  },
+  "confirm": null,
+  "ms": 399,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_quick",
+  "goal": "농협 계좌로 이체",
+  "expected": [
+   "111"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "331": 0.1,
+   "3": 0.1,
+   "0": 0.6,
+   "#": 0.1,
+   "12": 0.1,
+   "111": 0.9,
+   "112": 0.3,
+   "211": 0.1,
+   "218": 0.1,
+   "*": 0.1
+  },
+  "confirm": null,
+  "ms": 8317,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_quick",
+  "goal": "다른 은행으로 송금",
+  "expected": [
+   "112"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "3": 0.4,
+   "0": 0.4,
+   "111": 0.4,
+   "112": 0.4,
+   "211": 0.4,
+   "218": 0.4,
+   "#": 0.4,
+   "*": 0.4
+  },
+  "confirm": null,
+  "ms": 5441,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_quick",
+  "goal": "내 계좌 잔고 확인해 줘",
+  "expected": [
+   "211"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "3": 0.4,
+   "0": 0.4,
+   "#": 0.4,
+   "*": 0.4
+  },
+  "confirm": null,
+  "ms": 378,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_quick",
+  "goal": "입출금 거래내역 보고 싶어",
+  "expected": [
+   "218"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "331": 0.4,
+   "3": 0.4,
+   "0": 0.4,
+   "12": 0.4,
+   "111": 0.4,
+   "112": 0.4,
+   "211": 0.4,
+   "218": 0.4,
+   "#": 0.4,
+   "*": 0.4
+  },
+  "confirm": null,
+  "ms": 7809,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_quick",
+  "goal": "지방세 납부하고 싶어",
+  "expected": [
+   null,
+   "*"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "3": 0.4,
+   "0": 0.4,
+   "#": 0.4,
+   "*": 0.4
+  },
+  "confirm": null,
+  "ms": 396,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_main",
+  "goal": "지방세 내려고",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "5": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 371,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_main",
+  "goal": "조회하고 싶어",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "5": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 342,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_main",
+  "goal": "사고신고",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.9,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "9": 0.1,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 310,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_main",
+  "goal": "환율 외국어 상담",
+  "expected": [
+   "7"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.9,
+   "9": 0.1,
+   "0": 0.3
+  },
+  "confirm": null,
+  "ms": 17249,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_main",
+  "goal": "텔레뱅킹 비밀번호 바꾸고 싶어",
+  "expected": [
+   "9"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "5": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 351,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_main",
+  "goal": "상담원 연결",
+  "expected": [
+   "0"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "5": 0.1,
+   "6": 0.1,
+   "7": 0.1,
+   "9": 0.1,
+   "0": 0.9
+  },
+  "confirm": null,
+  "ms": 360,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_pay",
+  "goal": "다른 사람한테 이체",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "8": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 404,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_pay",
+  "goal": "대출 이자 갚으려고",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "8": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 339,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_pay",
+  "goal": "자동차세 지방세 납부",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "8": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 361,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_pay",
+  "goal": "종합소득세 국세 납부",
+  "expected": [
+   "6"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.4,
+   "6": 0.95,
+   "7": 0.1,
+   "8": 0.3,
+   "9": 0.1,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 6063,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_pay",
+  "goal": "대학 등록금 내기",
+  "expected": [
+   "7"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "8": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 375,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_pay",
+  "goal": "전기요금 납부",
+  "expected": [
+   "8"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "8": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 394,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_pay",
+  "goal": "내일 보내지게 예약이체",
+  "expected": [
+   "9"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "8": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 347,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_fund",
+  "goal": "농협 계좌로 송금",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4,
+   "8": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 393,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_fund",
+  "goal": "국민은행 계좌로 이체",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4,
+   "8": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 347,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_fund",
+  "goal": "어제 이체한 내역 확인",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4,
+   "8": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 389,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_fund",
+  "goal": "결혼식 축의금 경조금 이체",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4,
+   "8": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 375,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_fund",
+  "goal": "퇴직연금 이체",
+  "expected": [
+   "8"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.1,
+   "8": 0.9,
+   "0": 0.1
+  },
+  "confirm": null,
+  "ms": 420,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_txn_type",
+  "goal": "입금된 것만 보고 싶어",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "*": 0.4
+  },
+  "confirm": null,
+  "ms": 350,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_txn_type",
+  "goal": "출금 내역만",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "*": 0.4
+  },
+  "confirm": null,
+  "ms": 379,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_txn_type",
+  "goal": "입출금 전체 거래내역",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "*": 0.4
+  },
+  "confirm": null,
+  "ms": 330,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_period",
+  "goal": "오늘 거래한 것",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4
+  },
+  "confirm": null,
+  "ms": 417,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_period",
+  "goal": "최근 일주일",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.9,
+   "4": 0.1,
+   "5": 0.1
+  },
+  "confirm": null,
+  "ms": 380,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_period",
+  "goal": "한 달치 거래내역",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4
+  },
+  "confirm": null,
+  "ms": 323,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_period",
+  "goal": "지난달 5일부터 10일까지",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4
+  },
+  "confirm": null,
+  "ms": 354,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_info",
+  "goal": "이체한도 바꾸고 싶어",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "5": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 381,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_info",
+  "goal": "입출금 알림 문자 신청",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "5": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 373,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_info",
+  "goal": "텔레뱅킹 가입 방법 안내",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "5": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 381,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_pw_limit",
+  "goal": "이체 비밀번호 처음 등록",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "8": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 399,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_pw_limit",
+  "goal": "이체 비밀번호 변경",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "8": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 424,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_pw_limit",
+  "goal": "하루 이체한도 늘리고 싶어",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "8": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 381,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_pw_limit",
+  "goal": "한 번에 보낼 수 있는 한도 변경",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "8": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 366,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_pw_limit",
+  "goal": "이사해서 주소 변경",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.1,
+   "2": 0.1,
+   "3": 0.1,
+   "4": 0.1,
+   "5": 0.9,
+   "6": 0.1,
+   "7": 0.1,
+   "8": 0.1,
+   "9": 0.1,
+   "0": 0.2
+  },
+  "confirm": null,
+  "ms": 2768,
+  "timeout": false,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_pw_limit",
+  "goal": "통장 비밀번호 바꾸기",
+  "expected": [
+   "7"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "8": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 352,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_pw_limit",
+  "goal": "다른 은행 OTP 등록",
+  "expected": [
+   "8"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "8": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 374,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_pw_limit",
+  "goal": "텔레뱅킹 해지",
+  "expected": [
+   "9"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "8": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 364,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_pw_limit",
+  "goal": "이체한도 바꾸고 싶어",
+  "expected": [
+   null
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4,
+   "6": 0.4,
+   "7": 0.4,
+   "8": 0.4,
+   "9": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 376,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_alert",
+  "goal": "입출금 알림 신청",
+  "expected": [
+   "1"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 414,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_alert",
+  "goal": "알림 서비스 끊고 싶어",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 390,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_alert",
+  "goal": "알림 받을 계좌 하나 추가",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 337,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_alert",
+  "goal": "알림 받는 전화번호 바꾸기",
+  "expected": [
+   "5"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "5": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 401,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_guide",
+  "goal": "텔레뱅킹 가입하려면 어떻게 해",
+  "expected": [
+   "2"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 343,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_guide",
+  "goal": "약관 듣고 싶어",
+  "expected": [
+   "3"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 336,
+  "timeout": true,
+  "error": null
+ },
+ {
+  "org": "NH농협은행",
+  "menu": "nh_guide",
+  "goal": "음성인식 사용법",
+  "expected": [
+   "4"
+  ],
+  "run": 1,
+  "kind": "menu",
+  "scores": {
+   "1": 0.4,
+   "2": 0.4,
+   "3": 0.4,
+   "4": 0.4,
+   "0": 0.4
+  },
+  "confirm": null,
+  "ms": 354,
+  "timeout": true,
+  "error": null
+ }
+]

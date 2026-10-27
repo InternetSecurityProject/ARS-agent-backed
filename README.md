@@ -344,6 +344,7 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 - `*`·`#` 업무 선택지(빠른 말 서비스 등)는 모델이 빠뜨려도 규칙으로 채움, `~는 한 번` 등 고유어 번호 처리, 같은 번호가 두 선택지에 붙으면 둘 다 제외하고 재질문
 - 민감정보 요청은 모델이 놓쳐도 규칙으로 한 번 더 확인
 - 시험: `python -m pytest -q test_gemini_interpreter.py` (Gemini 호출 없음)
+- 메뉴 선택 평가: `python confidence_eval.py collect|report|sweep` (Notion ARS 원문 10개 기관·요청 254개, `ars_menu_cases.py`). 결과·확신도 기준 제안은 [docs/menu-eval-results.md](docs/menu-eval-results.md)
 - 프롬프트 비교: `python prompt_eval.py` (실제 Gemini, 시험 사례 31개). 변경 기록·전후 결과는 [docs/prompt-changelog.md](docs/prompt-changelog.md)
 - 맞는 선택지가 없으면 하위 메뉴는 이전 단계 확인, 첫 메뉴·돌아갈 키 없음·이미 확인한 경우는 상담원 연결로 이어감 (프롬프트 v0.4)
 - `.env` 에서 Gemini 해석기를 켠 상태로 `test_flows.py` 를 돌리면 목 데이터 기준 시험이 실패하므로 `INTERPRETER=interpreter:MockInterpreter python -m pytest -q test_flows.py` 로 실행
