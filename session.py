@@ -16,7 +16,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from audio import VALID_KEYS, Segmenter
+from audio import FRAME, VALID_KEYS, Segmenter, rms
 from config import Settings
 from interpreter import Interpreter, Option, Prompt
 from navigator import Layer, NavState, Navigator
@@ -68,6 +68,8 @@ END_TEXT = {
 # 입력값 되읽기: "입력하신 번호는 123456, 맞으면 1번" 처럼 입력 표현과 확인 표현이 함께 있는 안내
 _READBACK_RE = re.compile(r"(입력하신|누르신|입력한).*(맞으|맞습니까|확인|정확)|(맞으|맞습니까|확인|정확).*(입력하신|누르신|입력한)")
 _DIGITS_RE = re.compile(r"[0-9][0-9\s,\-]{2,}[0-9]|(?:[공영일이삼사오육칠팔구]\s*){4,}")
+_NO_ANSWER_RE = re.compile(r"틀|아니|다시|재입력|취소|정정|수정")  # 되읽기 확인에서 '아니요' 쪽 선택지 이름
+_SPOKEN_RUN_RE = re.compile(r"(?:[공영일이삼사오육칠팔구]\s*){6,}")  # 한국어 숫자를 여섯 자 이상 이어 읽음 (금액·시각은 이렇게 읽지 않는다)
 
 
 def _obj(word: str) -> str:
@@ -78,6 +80,22 @@ def _obj(word: str) -> str:
 
 def _digit_count(s: str) -> int:
     return len(re.sub(r"[^0-9공영일이삼사오육칠팔구]", "", s))
+
+
+def key_name(key: str) -> str:
+    """키를 읽는 말: 3 → '3번', * → '별표', # → '샵'."""
+    return {"*": "별표", "#": "샵"}.get(key, f"{key}번")
+
+
+def caption_text(p: Prompt, text: str) -> str:
+    """앱에 보내는 자막(caption.text). 앱은 해석 없이 그대로 보여 주므로 서버가 보여 줄 형태로 만든다.
+    선택지가 있는 안내(메뉴·확인 질문)는 STT 원문 대신 AI 가 뽑은 선택지 목록으로 압축한다:
+    "잔액조회 3번 · 거래내역조회 4번 · 상담직원 연결 0번 · 다시 듣기 별표". 그 밖의 안내(결과·오류·일반 안내)는 원문 그대로다.
+    결과 요약(summarize_result)은 captions 를 입력으로 쓰므로 결과 안내는 원문을 유지해야 한다."""
+    opts = p.all_options() if p.options else []
+    if not opts:
+        return text
+    return " · ".join(f"{o.label} {key_name(o.key)}" for o in opts)
 
 
 def mask_digits(text: str, length: int | None = None) -> tuple[str, bool]:
@@ -177,6 +195,8 @@ class Session:
         self.seg_started_at: float | None = None  # 지금 듣고 있는 단락의 소리가 시작된 시각
         self.last_send_secure = False        # 마지막으로 보낸 키가 민감정보 입력값인지
         self.secure_len: int | None = None   # 마지막 민감정보 입력의 자릿수 (값은 저장하지 않는다)
+        self.secure_label: str = "입력 번호"   # 마지막 민감정보 요청의 항목명 (되읽기 확인 단계의 경로 표시용)
+        self.secure_sent_at = 0.0
         self.secure_errors = 0               # 민감정보 입력 뒤 연속 입력 오류 횟수
         self.queued_key: str | None = None   # 이전 계층 복귀 중 마지막으로 누른 대기열 키 (입력 오류 시 재전송)
         self.closed = False                  # ended 이벤트를 보냄. 이후에는 이벤트를 보내지 않는다
@@ -387,9 +407,22 @@ class Session:
             del item
             try:
                 if self.secure_window and not self.d.recognizer.is_local:
-                    continue  # 외부 STT 에는 입력값을 다시 읽어 주는 구간을 보내지 않는다
+                    # 외부 STT 에는 입력값을 다시 읽어 주는 구간을 보내지 않는다. 문장을 받지 못하면 구간을 닫을 계기가 없으므로
+                    # 입력 전송 뒤 secure_skip_s 가 지나면 구간을 닫고 다시 인식한다 (그 사이의 되읽기 확인은 사용자가 소리를 듣고 직접 누른다)
+                    if time.monotonic() - self.secure_sent_at < self.s.secure_skip_s:
+                        continue
+                    log.info("외부 STT: 되읽기 건너뛰기 %.0f초가 지나 인식을 재개한다", self.s.secure_skip_s)
+                    self.secure_window = False
+                voiced = sum(1 for i in range(0, len(seg) - FRAME + 1, FRAME) if rms(seg[i:i + FRAME]) > self.s.vad_rms) * FRAME / 8000
+                if voiced < self.s.min_voiced_s:
+                    # 키 전송(DTMF)에 끊긴 조각·딸깍음·잔향. 인식하면 "콩" 같은 글자가 자막으로 남는다 (설계안 2.4)
+                    log.info("소리 %.2f초뿐인 단락은 인식하지 않는다", voiced)
+                    continue
                 text = await self.d.recognizer.recognize(seg)
                 del seg
+                if text and len(re.sub(r"[^가-힣0-9A-Za-z]", "", text)) < 3:
+                    log.info("두 글자 이하 인식 결과는 버린다: %s", text)
+                    continue
                 if text:
                     await self.on_paragraph(text, started_at)
             except Exception:
@@ -425,27 +458,42 @@ class Session:
         if not stale:
             self.key_outstanding = False
 
-        if self.secure_window:
+        # 되읽기 구간이 닫혔더라도 "입력하신 … 맞으면" 문장에 한국어 숫자를 길게 읽는 부분이 있으면 입력값 되읽기로 본다
+        readback = bool(_READBACK_RE.search(text)) and (self.secure_window or bool(_SPOKEN_RUN_RE.search(text)))
+        if self.secure_window or readback:
             # ARS 가 입력값을 다시 읽어 주는 안내("입력하신 번호는 … 맞으면 1번")는 숫자를 가린 뒤 판단만 하고 자막으로 보내지 않는다
-            if _READBACK_RE.search(text):
+            if readback:
                 masked, _ = mask_digits(text)
-                p = await self._ai("classify", interp.classify(masked), Prompt(kind="info", text=masked))
+                # 판단(Gemini)·자막·로그에는 숫자를 가린 문장을 쓴다. 사용자에게 묻는 문구만 원문을 그대로 쓴다:
+                # 사용자가 입력한 값이 맞게 전달됐는지 화면에서 확인하려면 되읽힌 숫자를 봐야 한다 (사용자 결정 2026-10-27).
+                # 서버는 이 문장을 저장하지 않으며, 요청이 닫히면 사라진다
+                shown = text
                 del text
+                p = await self._ai("classify", interp.classify(masked), Prompt(kind="info", text=masked))
+                if p.kind in ("menu", "confirm"):
+                    p.readback_of = self.secure_label  # 경로 표시용: 어떤 입력을 확인한 단계인지
                 if p.kind == "sensitive":
                     await self._ask_secure(p)
                 elif p.kind in ("menu", "confirm"):
                     self.current, self.current_fresh = p, True
                     if self.agent_active:
-                        await self._ask(p, "unknown_prompt", p.options,
-                                        "ARS 가 입력하신 번호가 맞는지 묻고 있습니다. 맞으면 해당 번호를 골라 주세요.")
+                        await self._ask(p, "unknown_prompt", p.options, shown)  # 되읽힌 숫자를 포함한 원문으로 묻는다
                 return
-            # 되읽기 문장이 아니어도, 입력한 자릿수와 같은 숫자열이 들리면 입력값으로 보고 가린다 (금액·날짜는 자릿수가 달라 남는다)
+            # 되읽기 문장이 아니어도, 입력한 자릿수와 같은 숫자열이 들리면 입력값으로 보고 가린다 (금액·날짜는 자릿수가 달라 남는다).
+            # 인식이 한두 글자 틀려 자릿수가 달라져도, 한국어 숫자를 여섯 자 이상 이어 읽는 것은 입력값 되읽기이므로 가린다
             text, hit = mask_digits(text, self.secure_len)
-            if hit:
-                log.info("민감정보 입력 뒤 같은 자릿수의 숫자열을 가렸다")
-            self.secure_window = False
+            text, hit2 = _SPOKEN_RUN_RE.subn(lambda m: "*" * _digit_count(m.group()), text)
+            if hit or hit2:
+                log.info("민감정보 입력 뒤 숫자열을 가렸다")
+            closing_secure = True
+        else:
+            closing_secure = False
 
         p = await self._ai("classify", interp.classify(text), Prompt(kind="info", text=text))
+        if closing_secure and (p.kind != "info" or hit or hit2):
+            # 되읽기 구간은 메뉴·결과·입력 요청처럼 다음 단계가 분명한 안내가 와야 닫는다.
+            # "잠시만 기다려 주십시오" 같은 짧은 안내로 닫으면, 그 뒤에 오는 실제 되읽기 문장의 숫자가 가려지지 않는다
+            self.secure_window = False
         if p.kind == "input_error" and (not replying or stale):
             # 우리가 보낸 키에 대한 반응이 아닌 '입력 시간이 초과되었습니다'·'잘못 누르셨습니다'(사용자 응답 대기 중
             # ARS 의 대기 시간 경과 등)는 입력 오류가 아니라 ARS 의 안내일 뿐이다 (명세 5.2)
@@ -460,7 +508,7 @@ class Session:
                 self.secure_errors = 0
         self.current_fresh = True if p.kind in ("menu", "confirm") else self.current_fresh
         if p.kind not in ("sensitive", "input_error"):
-            cap = {"step": self.step + 1, "speaker": "ars", "text": text, "at": now_iso()}
+            cap = {"step": self.step + 1, "speaker": "ars", "text": caption_text(p, text), "at": now_iso()}
             self.captions.append(cap)
             self.publish("caption", cap)
 
@@ -591,7 +639,8 @@ class Session:
             return
         # 메뉴·확인 질문을 판단하기 시작하면 selecting (명세 3.1).
         # 결과에 따라 listening(키 전송)·awaiting_user(재질문)·ended(not_found) 로 넘어간다
-        self.set_status("selecting")
+        if p.kind != "confirm":
+            self.set_status("selecting")  # 확인 질문은 답을 정한 뒤에만 selecting (대부분 사용자에게 묻게 되어 상태가 깜빡인다)
         try:
             await self._decide_inner(p, arrived)
         except ApiError as e:
@@ -606,6 +655,7 @@ class Session:
             if self.ended or self.hangup_seen:
                 return  # 판단하는 동안 통화가 끊겼다
             if key:
+                self.set_status("selecting")
                 await self._press(key, "ai", p)
             else:
                 await self._ask(p, "unknown_prompt", p.options)
@@ -677,6 +727,9 @@ class Session:
                 self.layers.append(Layer(p, keys, actor))
         self.step += 1
         label = p.label_of(keys) if p else keys
+        if p is not None and getattr(p, "readback_of", None) and any(o.key == keys for o in p.options):
+            # 입력값 되읽기 확인 단계: 경로에는 "확인" 같은 답이 아니라 무엇을 확인했는지 남긴다
+            label = f"{p.readback_of} {'재입력' if _NO_ANSWER_RE.search(label) else '확인'}"
         names = [o.label for o in (p.options if p else [])]
         if label == keys:
             text = f"{keys} 입력"  # 안내에서 듣지 못한 키 (직접 선택)
@@ -738,7 +791,7 @@ class Session:
                               + "원하시는 업무를 조금 더 자세히 말씀해 주세요.",
             "critical_action": "결제·계약·해지처럼 중요한 단계입니다. 진행하려면 화면에서 번호를 직접 골라 주세요.",
             "loop": "같은 메뉴가 반복되고 있습니다. 원하시는 업무를 조금 더 자세히 말씀해 주세요.",
-            "unknown_prompt": f"ARS 가 이렇게 묻습니다. \"{p.text[:60]}\" 어떻게 답할까요?",
+            "unknown_prompt": p.text,  # 안내문 그대로 보여 준다 (앞뒤 설명을 붙이거나 자르지 않는다)
             "input_rejected": "번호가 계속 인식되지 않습니다. 원하시는 메뉴를 말씀하거나 직접 골라 주세요.",
         }
         req = self._new_request("clarification", self.s.clarify_expire_s, reason=reason,
@@ -784,6 +837,8 @@ class Session:
     async def _ask_secure(self, p: Prompt) -> None:
         self.secure_window = True
         label = p.label or "요청 정보"
+        # "주민등록번호 앞 6자리"·"계좌 비밀번호 네 자리" → "주민등록번호"·"계좌 비밀번호" (경로에 보일 항목명)
+        self.secure_label = re.sub(r"\s*(?:앞|뒤)?\s*(?:[0-9]+|[한두세네]|다섯|여섯|일곱|여덟|아홉|열\s?[한두세네]?)\s*자리\s*$", "", label).strip() or label
         req = self._new_request("secure_input", self.s.secure_expire_s, label=label, ars_prompt=p.text,
                                 terminator=p.terminator,
                                 message=f"{label}{_obj(label)} 직접 눌러 주세요. 입력하신 번호는 저장되지 않습니다.")
@@ -894,6 +949,7 @@ class Session:
         term = req.get("terminator") or ""
         keys = digits if (term and digits.endswith(term)) else digits + term  # 사용자가 종료 키까지 누른 경우 중복하지 않는다
         self.secure_len = _digit_count(digits)  # 자릿수만 기억한다 (되읽기 마스킹용)
+        self.secure_sent_at = time.monotonic()  # 외부 STT 는 이 뒤 secure_skip_s 동안 음성을 보내지 않는다
         del digits
         self.pending = None
         await self._send_keys(keys)  # 메모리에서 톤으로 변환하여 전송

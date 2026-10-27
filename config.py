@@ -66,8 +66,9 @@ class Settings:
     match_threshold: float = 0.50        # 이 값 이상이면 일치
     low_threshold: float = 0.30          # 이 값 이상 일치 기준 미만이면 불확실(low_confidence 재질문), 미만이면 불일치
     margin: float = 0.10
-    max_revisit: int = 2
-    max_presses: int = 5
+    # 반복 판정 (명세 6.3). 지나온 메뉴에 다시 도착한 횟수 / 키 전송 횟수가 이 값에 이르면 사용자에게 묻는다. 0 이면 끔
+    max_revisit: int = field(default_factory=lambda: int(_env("MAX_REVISIT", "3")))
+    max_presses: int = field(default_factory=lambda: int(_env("MAX_PRESSES", "10")))
 
     # 시간 기준 (초)
     no_response_s: float = 8.0           # 키 전송 후 ARS 가 소리를 내지 않을 때 (7장 3항)
@@ -78,6 +79,15 @@ class Settings:
     # 상대가 끊은 뒤 마지막 안내 인식·결과 요약을 기다리는 최대 시간 (7장 7항). AI 요약 최악 응답(제한 6초 × 재시도 2회 = 12초)보다 길게.
     # 넘기면 결과 안내 원문으로 요약을 대신하여 summary → ended 를 보낸다
     hangup_flush_s: float = 15.0
+    # 단락의 유음(소리) 길이가 이보다 짧으면(초) 인식하지 않는다. 키 전송에 끊긴 조각·딸깍음이 글자로 남는 것을 막는다 (설계안 2.4)
+    min_voiced_s: float = field(default_factory=lambda: float(_env("MIN_VOICED_S", "0.4")))
+    # 키 전송 뒤 이 시간(초) 안에 끝난 일반 안내는 키에 잘린 조각으로 보고 자막으로 보내지 않는다 (판단은 한다)
+    post_key_caption_s: float = field(default_factory=lambda: float(_env("POST_KEY_CAPTION_S", "3")))
+    # STT=gemini 일 때 받아쓰기와 분류·점수를 Gemini 한 번으로 처리 (1=켬). 안내 종료 → 판단 지연이 호출 한 번만큼 준다.
+    # 0 이면 원래 구조(받아쓰기 호출 + 해석기 호출)
+    gemini_stt_combined: bool = field(default_factory=lambda: _env("GEMINI_STT_COMBINED", "0") == "1")
+    # 외부 STT(openai·rtzr·clova·gemini) 사용 시 민감정보 입력 뒤 음성을 보내지 않는 시간(초). 되읽기가 외부로 나가지 않게 한다
+    secure_skip_s: float = field(default_factory=lambda: float(_env("SECURE_SKIP_S", "20")))
     max_call_s: int = 600
 
 

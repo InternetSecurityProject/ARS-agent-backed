@@ -67,6 +67,37 @@ def normalize_keys(text: str) -> str:
     return out
 
 
+# 선택지 이름 끝에 붙은 키 표현 ("맞으면 1번", "발급을 원하시면 1번", "분실신고는 별표") 을 뗀다.
+# 모델이 확인 안내의 문장 조각을 label 로 돌려주면 경로·자막에 "맞으면 1번 (1번)" 처럼 번호가 두 번 보이기 때문이다
+_TRAILING_KEY = re.compile(r"(?:(?<=[가-힣A-Za-z])(?:은|는|으로|로))?\s+(?:[0-9]\s?번|별표|샵(?:\s?버튼)?|우물\s?정자)(?:을|를|은|는|이|가)?\s*$")
+
+
+def clean_label(label: str) -> str:
+    """선택지 이름에서 끝의 키 표현을 제거한다. 전부 지워지면 원문을 그대로 둔다."""
+    out = _TRAILING_KEY.sub("", label).strip(" ,.")
+    return out or label
+
+
+_COND_END = re.compile(r"(으시면|시면|으면|면|시려면|려면)$")
+
+
+def confirm_label(label: str) -> str:
+    """확인 질문 선택지 이름. 모델이 '맞으면'·'발급을 원하시면' 같은 조건문 조각을 주면 동작 이름으로 바꾼다.
+    긍정 쪽은 '확인', 부정 쪽은 '다시 입력'. '발급을 원하시면' 처럼 대상이 있으면 '발급 진행'."""
+    cond = bool(_COND_END.search(label))
+    core = _COND_END.sub("", label).strip()
+    short = len(core.replace(" ", "")) <= 3  # '맞음'·'예'·'틀림'·'아니요' 처럼 예/아니요 낱말뿐인 이름
+    if _NO_LABEL.search(label) and (cond or short):
+        return "취소" if "취소" in label else "다시 입력"
+    if _YES_LABEL.search(label) and short:
+        return "확인"
+    if cond:
+        m = re.search(r"([가-힣]+)(?:을|를)\s*(?:원하|진행하|계속하|신청하|하)$", core)
+        if m:
+            return f"{m.group(1)} 진행"
+    return label
+
+
 def _key_in_text(key: str, text: str) -> bool:
     """선택지 번호가 안내 문장에 실제로 나왔는지 (번호 추측 방지)."""
     if key in ("*", "#"):
@@ -213,6 +244,9 @@ kind (하나만):
 - 메뉴 이름은 들렸지만 번호가 없거나 잘린 선택지 이름은 unnumbered 에 적습니다 (없으면 빈 목록).
 - '~로 발송됩니다', '발급되었습니다', '접수되었습니다', '금액은 ~원입니다'처럼 업무 결과를 알리면 다시 듣기·전 단계 선택지가 함께 있어도 result 입니다.
 - 이미 입력한 값이 맞는지만 묻는 안내는 sensitive 가 아니라 confirm 입니다.
+- 두 선택지가 서로 다른 대상이나 방법을 고르는 것이면(예: 집 주소로 받기 / 회사 주소로 받기) confirm 이 아니라 menu 이고,
+  label 은 ARS 가 말한 그 대상·방법의 이름입니다. confirm 은 같은 일을 할지 말지(예/아니요)만 묻는 경우입니다.
+- label 에는 번호와 '~면' 같은 조건문을 넣지 않습니다. 이 안내에 없는 이름을 지어내지 않습니다.
 - critical 은 결제·송금·이체·계약 체결·가입·해지의 최종 승인 단계일 때만 true.
 - kind=sensitive 일 때 label 은 입력 항목명(예: '주민등록번호 앞 6자리'), terminator 는 입력 뒤 누를 키(없으면 null). 그 외에는 둘 다 null."""
 
@@ -395,6 +429,28 @@ class GeminiInterpreter:
             log.warning("summarize_goal 대체: %s", e)
         return f"'{goal.strip()}' 업무를 찾아 드릴게요."
 
+    # 음성 직접 판단 (STT=gemini + GEMINI_STT_COMBINED=1) ---------------------------------
+    #   GeminiAudioRecognizer 가 녹음과 함께 아래 지시문·스키마로 한 번에 받아쓰기+분류·점수를 받고, prime() 으로 캐시에 넣는다.
+    #   classify() 는 캐시를 먼저 보므로 구조는 그대로이고 Gemini 호출만 하나 준다. 끄면 원래대로 두 번 부른다
+    AUDIO_EXTRA = ("\n- 입력은 문장이 아니라 ARS 안내 녹음입니다. 먼저 들리는 그대로 한국어로 받아 적어 transcript 에 넣고"
+                   " (누르라는 번호는 아라비아 숫자, 들리지 않은 말은 적지 않음, 말소리가 없으면 빈 문자열),"
+                   " 그 받아 적은 문장을 <ars> 로 삼아 아래 규칙대로 분류하고 점수를 냅니다.")
+
+    def audio_request(self) -> tuple[str, dict, str]:
+        """(system 지시문, 응답 스키마, 텍스트 블록) — 녹음과 함께 보낼 받아쓰기+분류·점수 요청."""
+        schema = json.loads(json.dumps(SCHEMA_CLASSIFY_SCORE))
+        schema["properties"]["transcript"] = {"type": "string"}
+        schema["required"] = list(schema.get("required", [])) + ["transcript"]
+        blocks = {"goal": self.goal or "", "path": self.last_path}
+        user = "\n".join(_block(k, v) for k, v in blocks.items())
+        return CLASSIFY_SCORE + self.AUDIO_EXTRA, schema, user
+
+    def prime(self, text: str, d: dict) -> None:
+        """음성 직접 판단 결과를 캐시에 넣는다 (이 문장의 classify 가 Gemini 를 다시 부르지 않게)."""
+        if len(self._cache) > 64:
+            self._cache.clear()
+        self._cache[(normalize_keys(text), self.goal or "")] = d
+
     async def classify(self, text: str) -> Prompt:
         norm = normalize_keys(text)
         goal = self.goal or ""
@@ -449,7 +505,7 @@ class GeminiInterpreter:
         dup: list[str] = []   # 같은 번호가 다른 선택지에 두 번 붙은 경우 (STT 오류 의심) → 둘 다 빼고 번호 없는 선택지로 본다
         for o in d.get("options") or []:
             k = key_ok(o.get("key"))
-            label = str(o.get("label") or k).strip()
+            label = clean_label(str(o.get("label") or k).strip())
             if not k:
                 continue
             same = next((x for x in opts if x.key == k), None)
@@ -466,6 +522,8 @@ class GeminiInterpreter:
         opts = [o for o in opts if o.key not in (nav["back_key"], nav["home_key"], nav["repeat_key"])]
         if nav["agent_key"] and all(o.key != nav["agent_key"] for o in opts):
             nav["agent_key"] = None
+        if kind == "confirm":
+            opts = [Option(o.key, confirm_label(o.label), o.category) for o in opts]
         if kind in ("menu", "confirm") and not opts:
             kind = "info"  # 번호가 확인된 선택지가 없으면 판단하지 않고 다음 안내를 기다린다
         term = d.get("terminator")

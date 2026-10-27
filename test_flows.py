@@ -24,6 +24,8 @@ def make_settings(**kw) -> Settings:
     # .env 의 INTERPRETER/STT 설정과 무관하게 항상 모의 해석기로 시험한다 (실제 AI 호출 없음)
     st.interpreter, st.stt = "interpreter:MockInterpreter", "none"
     st.no_response_s, st.clarify_expire_s, st.clarify_drop_s, st.user_key_hold_s = 5, 0.3, 0.6, 0.2
+    st.min_voiced_s = 0.0  # 시험 음성은 0.3초 짜리가 많다. 짧은 단락 제거는 전용 시험에서만 켠다
+    st.post_key_caption_s = 0.0  # 키 전송 직후 자막 생략도 전용 시험에서만 켠다
     for k, v in kw.items():
         setattr(st, k, v)
     return st
@@ -584,9 +586,9 @@ def test_input_rejected_needs_two_consecutive_errors():
 
 
 def test_loop_after_two_revisits():
-    """키 전송 결과로 지나온 메뉴에 다시 도착하는 상황이 2회 발생하면 loop 재질문"""
+    """키 전송 결과로 지나온 메뉴에 다시 도착하는 상황이 max_revisit(여기선 2)회 발생하면 loop 재질문 (기본값은 3, 0 이면 끔)"""
     async def go():
-        s, call = await manual("카드 결제일 바꾸고 싶어", clarify_expire_s=5, clarify_drop_s=10)
+        s, call = await manual("카드 결제일 바꾸고 싶어", clarify_expire_s=5, clarify_drop_s=10, max_revisit=2)
         await s.on_paragraph(ROOT)      # 첫 도착 → 5
         await s.on_paragraph(ROOT)      # 다시 도착 1회 → 아직 반복 아님 → 5
         assert s.pending is None and call.keys == ["5", "5"]
@@ -672,7 +674,7 @@ def test_no_repeat_key_while_next_menu_is_long():
         assert call.keys == ["3"]
         await speak(s, 0)                                            # 안내 끝 → 인식 → ARS로 계속(2)
         await wait_for(s, lambda s: call.keys == ["3", "2"])
-        assert [c["text"] for c in s.captions] == [ROOT, BAL]
+        assert len(s.captions) == 2 and "잔액조회 3번" in s.captions[0]["text"] and "ARS" in s.captions[1]["text"]  # 두 안내가 섞이지 않음
     run(go())
 
 
@@ -793,6 +795,22 @@ def test_agent_connected_status_comes_before_handoff_summary():
         statuses = [e["data"]["status"] for e in s.hub.history if e["event"] == "status_changed"]
         assert names.index("summary") > names.index("status_changed") and statuses[-1] == "connected_to_agent"
         assert s.summary["kind"] == "handoff" and s.summary["handoff_script"]
+    run(go())
+
+
+def test_menu_caption_is_condensed_to_options_and_other_captions_keep_text():
+    """자막(caption.text)은 앱이 해석 없이 그대로 보여 준다. 선택지가 있는 안내는 STT 원문 대신
+    'AI 가 뽑은 선택지 이름 + 키' 목록으로 보내고, 결과·일반 안내는 원문을 보낸다 (결과 요약 입력 유지)."""
+    async def go():
+        s, call = await manual("이번 달 카드 대금 알고 싶어", clarify_expire_s=5, clarify_drop_s=10)
+        await s.on_paragraph(ROOT)
+        menu = s.captions[-1]["text"]
+        assert menu != ROOT and " · " in menu and "카드 업무 5번" in menu and len(menu) < len(ROOT)
+        assert menu == s.hub.history[-1]["data"]["text"] if s.hub.history[-1]["event"] == "caption" else True
+        await s.on_paragraph(CARD)
+        await s.on_paragraph(BILL)
+        assert s.captions[-1]["text"] == BILL                        # 결과 안내는 원문 (요약 입력)
+        assert "352,000" in s.summary["summary"]
     run(go())
 
 
@@ -1033,7 +1051,7 @@ def test_stale_menu_heard_before_key_is_not_decided_again():
         replay_started = s.last_key_at - 0.5                         # 키보다 먼저 시작된 같은 메뉴(재생)
         await s.on_paragraph(ROOT, started_at=replay_started)
         assert call.keys == ["5"]                                    # 두 번 누르지 않는다
-        assert s.captions[-1]["text"] == ROOT                        # 자막은 남긴다
+        assert s.captions[-1]["text"] == s.captions[0]["text"] != ROOT  # 자막은 남긴다 (메뉴는 선택지 요약으로)
         await s.on_paragraph(CARD, started_at=time.monotonic())      # 키 이후 시작된 다음 메뉴 → 판단
         assert call.keys == ["5", "3"]
     run(go())
@@ -1549,3 +1567,95 @@ def test_live_asks_goal_before_dialing(monkeypatch, capsys):
     assert live.ask_goal("http://x", "15889999", answers("")) == ("15889999", None)      # 입력 없이 끝나면 발신하지 않음
     out = capsys.readouterr().out
     assert " 3) 결제 관련" in out and "목적을 입력해야 전화를 걸 수 있습니다." in out and '"결제 관련" 목적의 전화를 겁니다' in out
+
+
+def test_secure_window_survives_short_notice_and_masks_late_readback():
+    """민감정보를 보낸 뒤 '잠시만 기다려 주십시오' 같은 짧은 안내가 먼저 오고 되읽기가 그다음에 와도,
+    되읽기의 숫자는 가려지고 자막·요청 문구에 숫자가 남지 않는다 (2026-10-27 건강보험공단 실통화에서 숫자가 그대로 보인 문제)."""
+    async def go():
+        s, call = await secure_pending()
+        req = s.pending
+        await s.action({"type": "secure_input", "request_id": req["request_id"], "digits": "9501011234567"})
+        await s.on_paragraph("잠시만 기다려 주십시오.")
+        assert s.secure_window                                        # 짧은 안내로는 구간을 닫지 않는다
+        readback = "입력하신 주민등록번호는 구 오 공 일 공 일 일 이 삼 사 오 육 칠 입니다. 맞으면 1번, 틀리면 2번을 눌러 주십시오."
+        from interpreter import _norm
+        masked = "입력하신 주민등록번호는 ************* 입니다. 맞으면 1번, 틀리면 2번을 눌러 주십시오."
+        s.d.interp.prompts[_norm(masked)] = (masked, {"kind": "confirm",
+            "options": [{"key": "1", "label": "맞으면"}, {"key": "2", "label": "틀리면"}]})
+        await s.on_paragraph(readback)
+        assert "구 오 공 일" not in str(s.captions) and "9501011234567" not in str(vars(s))   # 자막·저장에는 숫자가 없다
+        assert s.pending is not None and s.pending["kind"] == "clarification"   # 맞는지 사용자에게 묻는다
+        assert s.pending["message"] == readback                                 # 묻는 문구만 되읽힌 숫자 그대로 (사용자가 확인)
+        assert s.pending["ars_prompt"] == masked                                # 그 밖의 필드·판단 입력은 가린 문장
+        await s.action({"type": "select", "request_id": s.pending["request_id"], "key": "1"})
+        assert s.path[-1]["selected"]["label"] == "주민등록번호 확인"           # 경로에는 답('맞음')이 아니라 확인한 항목
+    run(go())
+
+
+def test_readback_is_masked_even_after_secure_window_closed():
+    """되읽기 구간이 닫힌 뒤에 '입력하신 … 맞으면' 문장이 와도 한국어 숫자를 길게 읽으면 입력값 되읽기로 보고 가린다."""
+    async def go():
+        s, call = await secure_pending()
+        req = s.pending
+        await s.action({"type": "secure_input", "request_id": req["request_id"], "digits": "9501011234567"})
+        s.secure_window = False
+        await s.on_paragraph("입력하신 주민등록번호는 구 오 공 일 공 일 일 이 삼 사 오 육 칠 입니다. 맞으면 1번, 틀리면 2번을 눌러 주십시오.")
+        assert "구 오 공" not in str(s.captions)                                 # 자막으로 나가지 않는다
+    run(go())
+
+
+def test_spoken_digit_run_is_masked_even_if_length_differs():
+    """인식이 틀려 자릿수가 달라도 한국어 숫자를 여섯 자 이상 이어 읽는 문장은 가린다."""
+    async def go():
+        s, call = await secure_pending()
+        req = s.pending
+        await s.action({"type": "secure_input", "request_id": req["request_id"], "digits": "950101"})
+        await s.on_paragraph("확인된 번호 구 오 공 일 공 일 일 로 조회합니다. 잠시만 기다려 주십시오.")
+        assert "구 오 공" not in str(s.captions) and "*******" in s.captions[-1]["text"]
+    run(go())
+
+
+
+def test_short_segments_and_tiny_results_are_not_captioned():
+    """키 전송(DTMF)에 끊긴 조각은 인식하지 않고, 인식돼도 두 글자 이하면 버린다 ("콩" 자막 문제)."""
+    async def go():
+        s, call = await manual("통장 잔액 알고 싶어", stt=ScriptSTT(["콩", "KB국민은행입니다."]), paragraph_silence_ms=200,
+                               clarify_expire_s=5, clarify_drop_s=10, min_voiced_s=0.4)
+        await speak(s, 0.2)                                                      # 0.2초 조각: 인식 자체를 하지 않는다
+        await asyncio.sleep(0.3)
+        assert s.captions == []
+        await speak(s, 1.0)                                                      # 1초 단락: 인식하지만 결과 "콩"은 버린다
+        await asyncio.sleep(0.3)
+        assert s.captions == []
+        await speak(s, 1.0)
+        await wait_for(s, lambda s: len(s.captions) == 1)
+        assert s.captions[0]["text"] == "KB국민은행입니다."
+        await s.action({"type": "cancel"})
+    run(go())
+
+
+
+def test_info_cut_by_key_press_is_not_captioned():
+    """키 전송 직후(post_key_caption_s 안)에 끝난 일반 안내는 키에 잘린 조각으로 보고 자막을 보내지 않는다.
+    메뉴처럼 다음 단계가 분명한 안내는 그대로 자막이 된다."""
+    async def go():
+        s, call = await manual("통장 잔액 알고 싶어", clarify_expire_s=5, clarify_drop_s=10, post_key_caption_s=3.0)
+        await s.on_paragraph(ROOT)                                   # 잔액조회(3) 전송
+        n = len(s.captions)
+        await s.on_paragraph("이번에 입력해 주십시오")                  # 키에 잘린 조각 → 자막 없음
+        assert len(s.captions) == n
+        await s.on_paragraph(BAL)                                    # 다음 메뉴는 자막
+        assert len(s.captions) == n + 1
+    run(go())
+
+
+
+def test_confirm_prompts_do_not_count_as_revisits_and_loop_can_be_disabled():
+    """확인 질문이 여러 번 같은 모양으로 나와도 반복으로 세지 않고, MAX_REVISIT=0 이면 반복 판정을 끈다."""
+    async def go():
+        s, call = await manual("카드 결제일 바꾸고 싶어", clarify_expire_s=5, clarify_drop_s=10, max_revisit=0, max_presses=0)
+        for _ in range(6):
+            await s.on_paragraph(ROOT)      # 같은 메뉴에 여섯 번 도착해도 묻지 않는다
+        assert s.pending is None and call.keys == ["5"] * 6
+    run(go())

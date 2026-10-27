@@ -298,6 +298,28 @@ class GeminiAudioRecognizer:
         self.api_key, self.model, self.thinking, self.timeout_s = api_key, model, thinking, timeout_s
         self.url = (url or self.URL).format(model=model)
         self._http = http
+        self.interp = None  # attach_interpreter 로 연결되면 받아쓰기와 분류·점수를 한 번에 받는다 (GEMINI_STT_COMBINED=1)
+
+    def attach_interpreter(self, interp) -> None:
+        """받아쓰기 + 분류·점수를 Gemini 한 번으로 처리한다 (안내 종료 → 판단 지연을 호출 한 번만큼 줄인다).
+        결과는 해석기 캐시에 넣어 두므로 session 이 바로 이어 부르는 classify 는 Gemini 를 다시 부르지 않는다.
+        끄면(연결하지 않으면) 받아쓰기만 하고 해석기가 따로 Gemini 를 부르는 원래 구조 그대로다."""
+        self.interp = interp
+
+    def combined_body(self, ulaw8k: bytes) -> dict | None:
+        """해석기가 연결되어 있고 목적을 알면 받아쓰기+분류 요청 본문, 아니면 None (일반 받아쓰기)."""
+        interp = self.interp
+        if interp is None or not getattr(interp, "goal", ""):
+            return None
+        system, schema, blocks = interp.audio_request()
+        audio = base64.b64encode(wav_bytes(ulaw8k_to_pcm16k(ulaw8k), 16000)).decode("ascii")
+        gen: dict = {"temperature": 0, "maxOutputTokens": 1024, "responseMimeType": "application/json",
+                     "responseJsonSchema": schema}
+        if self.thinking:
+            gen["thinkingConfig"] = {"thinkingLevel": self.thinking}
+        return {"systemInstruction": {"parts": [{"text": system}]},
+                "contents": [{"role": "user", "parts": [{"text": blocks}, {"inlineData": {"mimeType": "audio/wav", "data": audio}}]}],
+                "generationConfig": gen}
 
     def body(self, ulaw8k: bytes) -> dict:
         audio = base64.b64encode(wav_bytes(ulaw8k_to_pcm16k(ulaw8k), 16000)).decode("ascii")
@@ -318,8 +340,9 @@ class GeminiAudioRecognizer:
         t0 = time.monotonic()
         if self._http is None:
             self._http = httpx.AsyncClient(headers={"x-goog-api-key": self.api_key}, timeout=self.timeout_s)
+        combined = self.combined_body(ulaw8k)
         try:
-            r = await asyncio.wait_for(self._http.post(self.url, json=self.body(ulaw8k), timeout=self.timeout_s),
+            r = await asyncio.wait_for(self._http.post(self.url, json=combined or self.body(ulaw8k), timeout=self.timeout_s),
                                        self.timeout_s)  # 전체 응답 시간 제한 (httpx timeout 은 단계별)
             r.raise_for_status()
             cand = (r.json().get("candidates") or [{}])[0]
@@ -327,12 +350,18 @@ class GeminiAudioRecognizer:
             raw = "".join(p.get("text", "") for p in parts if not p.get("thought"))
             if not raw:
                 raise RuntimeError(f"빈 응답 (finishReason={cand.get('finishReason')})")
-            text = str(json.loads(raw).get("text") or "")
+            d = json.loads(raw)
+            if combined:
+                text = _clean(str(d.pop("transcript", "") or ""))
+                if text:
+                    self.interp.prime(text, d)  # 분류·점수를 캐시에 넣는다. 이어지는 classify 는 Gemini 를 다시 부르지 않는다
+            else:
+                text = _clean(str(d.get("text") or ""))
         except Exception as e:
             log.warning("Gemini STT 실패: %s", _hide(e, self.api_key))
             return ""
-        text = _clean(text)
-        log.info("인식(gemini) %.2fs (음성 %.1fs) %s", time.monotonic() - t0, len(ulaw8k) / 8000, text)
+        log.info("인식(gemini%s) %.2fs (음성 %.1fs) %s", "+분류" if combined else "", time.monotonic() - t0,
+                 len(ulaw8k) / 8000, text)
         return text
 
 

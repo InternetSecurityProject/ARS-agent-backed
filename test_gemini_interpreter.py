@@ -340,3 +340,38 @@ def test_score_failure_uses_exact_name_match():
     opts = [Option("1", "증명서 발급"), Option("2", "건강보험증 발급"), Option("3", "고지서 발급")]
     s = run(GeminiInterpreter(FakeClient(fail=True)).score("건강보험증을 발급받고 싶다", opts))
     assert s["2"] >= 0.5 and s["1"] < 0.3
+
+
+def test_option_label_drops_trailing_key_phrase():
+    """확인 안내의 label 이 '맞으면 1번' 처럼 오면 끝의 번호를 떼어 경로에 '맞으면 (1번)' 으로 보이게 한다."""
+    from gemini_interpreter import clean_label
+    assert clean_label("맞으면 1번") == "맞으면"
+    assert clean_label("발급을 원하시면 1번") == "발급을 원하시면"
+    assert clean_label("분실신고는 별표") == "분실신고"
+    assert clean_label("빠른 말 서비스는 샵 버튼") == "빠른 말 서비스"
+    assert clean_label("상담직원 연결") == "상담직원 연결"
+    assert clean_label("1번") == "1번"  # 전부 지워지면 원문 유지
+    text = "입력하신 번호가 맞으면 1번, 아니면 2번을 눌러 주십시오."
+    reply = _menu([{"key": "1", "label": "맞으면 1번", "category": "확인"}, {"key": "2", "label": "아니면 2번", "category": "재입력"}])
+    reply["kind"] = "confirm"
+    p = run(GeminiInterpreter(FakeClient([reply])).classify(text))
+    assert [o.label for o in p.options] == ["확인", "다시 입력"]  # 번호를 뗀 뒤 확인 질문의 동작 이름으로
+
+
+def test_confirm_labels_become_action_names():
+    """확인 질문의 선택지 이름이 조건문 조각이면 동작 이름으로 바꾼다 (경로에 '맞으면 → 발급을 원하시면' 이 보이던 문제)."""
+    from gemini_interpreter import confirm_label, confirm_key
+    assert confirm_label("맞으면 1번") == "맞으면 1번"       # 끝의 번호는 clean_label 이 먼저 뗀다
+    assert confirm_label("맞으면") == "확인"
+    assert confirm_label("틀리면") == "다시 입력"
+    assert confirm_label("아니면") == "다시 입력"
+    assert confirm_label("발급을 원하시면") == "발급 진행"
+    assert confirm_label("변경 확정") == "변경 확정"
+    assert confirm_label("맞음") == "확인" and confirm_label("예") == "확인"      # 모델이 조건문을 줄여 보낸 경우
+    assert confirm_label("틀림") == "다시 입력" and confirm_label("아니요") == "다시 입력"
+    assert confirm_label("취소") == "취소"
+    reply = _menu([{"key": "1", "label": "발급을 원하시면 1번"}, {"key": "2", "label": "취소하시려면 2번"}])
+    reply["kind"] = "confirm"
+    p = run(GeminiInterpreter(FakeClient([reply])).classify("건강보험증 발급을 원하시면 1번, 취소하시려면 2번을 눌러 주십시오."))
+    assert [o.label for o in p.options] == ["발급 진행", "취소"]
+    assert confirm_key(p, "네") == "1" and confirm_key(p, "아니요") == "2"

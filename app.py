@@ -47,6 +47,9 @@ def build_deps(st: Settings) -> Deps:
     else:
         Segmenter.on_chunk = None
     interp = load_interpreter(st.interpreter)
+    if st.gemini_stt_combined and hasattr(recognizer, "attach_interpreter") and hasattr(interp, "audio_request"):
+        recognizer.attach_interpreter(interp)  # STT=gemini: 받아쓰기+분류를 한 번에 (GEMINI_STT_COMBINED=1)
+        log.info("Gemini STT: 받아쓰기와 분류를 한 번의 호출로 처리한다")
     nav = Navigator(interp, st.match_threshold, st.margin, st.max_revisit, st.max_presses, st.low_threshold)
     return Deps(st, backend, recognizer, interp, nav)
 

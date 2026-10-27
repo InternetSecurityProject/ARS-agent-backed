@@ -65,6 +65,7 @@ class Prompt:
     label: str | None = None         # sensitive: 입력 항목명
     terminator: str | None = None    # sensitive: 입력 뒤 종료 키
     critical: bool = False           # 결제·계약·해지 최종 승인 등
+    readback_of: str | None = None   # confirm: 입력값 되읽기 확인이면 그 입력 항목명 (경로 표시용, 값은 아님)
 
     def all_options(self) -> list[Option]:
         out = list(self.options)

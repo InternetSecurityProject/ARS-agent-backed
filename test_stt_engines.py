@@ -11,6 +11,7 @@ STT 후보 엔진 시험 (실제 API 호출 없음)
 from __future__ import annotations
 
 import asyncio
+import time
 import base64
 import contextlib
 import io
@@ -524,7 +525,11 @@ def test_http_engine_drives_session(kind):
         await wait_for(s, lambda s: call.keys == ["3"])
         await speak(s, 0.3)
         await wait_for(s, lambda s: call.keys == ["3", "2"])
-        assert [c["text"] for c in s.captions] == [ROOT, BAL]
+        # 단락마다 자막 하나. 메뉴 안내 자막은 원문이 아니라 선택지 목록으로 축약된다 (session.caption_text)
+        texts = [c["text"] for c in s.captions]
+        assert len(texts) == 2
+        assert texts[0].startswith("잔액조회 3번") and "0번" in texts[0] and "눌러 주십시오" not in texts[0]
+        assert "1번" in texts[1] and "2번" in texts[1] and "눌러 주십시오" not in texts[1]
         await s.action({"type": "cancel"})
 
     run(go())
@@ -572,12 +577,34 @@ def test_external_engine_skips_secure_readback():
         s, call = await manual("통장 잔액 알고 싶어", stt=rec, paragraph_silence_ms=200, clarify_expire_s=5,
                                clarify_drop_s=10)
         s.secure_window = True
+        s.secure_sent_at = time.monotonic()
         await speak(s, 0.3)
         await asyncio.sleep(0.2)
         await s.action({"type": "cancel"})
 
     run(go())
     assert seen == []
+
+
+def test_external_engine_resumes_after_secure_skip_time():
+    """되읽기 구간을 외부 엔진이 닫을 계기가 없으므로, 입력 전송 뒤 secure_skip_s 가 지나면 구간을 닫고 다시 인식한다
+    (안 그러면 민감정보 입력 뒤 통화가 끝날 때까지 아무것도 인식하지 못한다)."""
+    from test_flows import manual, speak, wait_for
+
+    seen: list = []
+    rec = E.GeminiAudioRecognizer("k", "m", http=sequence_client(["잠시만 기다려 주십시오."], seen, "gemini"))
+
+    async def go():
+        s, call = await manual("통장 잔액 알고 싶어", stt=rec, paragraph_silence_ms=200, clarify_expire_s=5,
+                               clarify_drop_s=10, secure_skip_s=0.5)
+        s.secure_window = True
+        s.secure_sent_at = time.monotonic() - 1.0          # 건너뛰기 시간이 이미 지났다
+        await speak(s, 0.3)
+        await wait_for(s, lambda s: len(seen) == 1)
+        assert not s.secure_window
+        await s.action({"type": "cancel"})
+
+    run(go())
 
 
 # ---------------------------------------------------------------------------
@@ -727,3 +754,53 @@ def test_qwen_missing_packages_check(monkeypatch):
     assert check("hf") == ["transformers>=5.13"]
     monkeypatch.setattr(importlib.metadata, "version", lambda name: "5.21.0")
     assert check("hf") == [] and check("hf", "a/b") == ["peft"]
+
+
+# ---------------------------------------------------------------------------
+# 음성 직접 판단: 받아쓰기 + 분류·점수를 Gemini 한 번으로 (GEMINI_STT_COMBINED=1)
+# ---------------------------------------------------------------------------
+def test_gemini_combined_call_transcribes_and_primes_interpreter():
+    """해석기를 연결하면 녹음 요청에 분류 지시문·스키마가 함께 가고, 응답의 transcript 가 인식 문장이 되며
+    분류·점수는 캐시에 들어가 이어지는 classify 가 Gemini 를 다시 부르지 않는다. 연결하지 않으면 원래대로 받아쓰기만 한다."""
+    from gemini_interpreter import GeminiInterpreter
+    from test_gemini_interpreter import FakeClient
+
+    reply = {"transcript": "잔액조회는 3번, 거래내역조회는 4번을 눌러 주십시오.", "kind": "menu",
+             "options": [{"key": "3", "label": "잔액조회", "category": "잔액 조회"},
+                         {"key": "4", "label": "거래내역조회", "category": "거래내역 조회"}],
+             "unnumbered": [], "back_key": None, "home_key": None, "repeat_key": None, "agent_key": None,
+             "label": None, "terminator": None, "critical": False,
+             "scores": [{"key": "3", "confidence": 0.9}, {"key": "4", "confidence": 0.1}]}
+    seen: list = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(req.content))
+        return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": json.dumps(reply, ensure_ascii=False)}]}}]})
+
+    fake = FakeClient()                       # 해석기 쪽 Gemini. 한 번도 불리면 안 된다
+    interp = GeminiInterpreter(fake)
+    interp.goal = "통장 잔액 알고 싶어"
+    rec = E.GeminiAudioRecognizer("k", "m", http=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    rec.attach_interpreter(interp)
+
+    async def go():
+        text = await rec.recognize(b"\xff" * 8000)
+        assert text == "잔액조회는 3번, 거래내역조회는 4번을 눌러 주십시오."
+        p = await interp.classify(text)
+        assert p.kind == "menu" and [o.key for o in p.options] == ["3", "4"]
+        s = await interp.score("통장 잔액 알고 싶어", p.options)
+        assert s["3"] == 0.9
+    asyncio.run(go())
+    assert fake.calls == []                                           # 해석기가 Gemini 를 따로 부르지 않았다
+    body = seen[0]
+    assert "transcript" in body["generationConfig"]["responseJsonSchema"]["properties"]
+    assert "<goal>" in body["contents"][0]["parts"][0]["text"]
+    assert body["contents"][0]["parts"][1]["inlineData"]["mimeType"] == "audio/wav"
+
+    # 연결하지 않으면 원래 받아쓰기 요청 (text 스키마)
+    seen.clear()
+    plain = E.GeminiAudioRecognizer("k", "m", http=httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda req: (seen.append(json.loads(req.content)) or httpx.Response(200, json={"candidates": [{"content": {"parts": [
+            {"text": json.dumps({"text": "안녕하십니까"}, ensure_ascii=False)}]}}]})))))
+    assert asyncio.run(plain.recognize(b"\xff" * 8000)) == "안녕하십니까"
+    assert "transcript" not in seen[0]["generationConfig"]["responseJsonSchema"]["properties"]

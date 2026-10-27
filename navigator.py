@@ -79,11 +79,13 @@ class Navigator:
 
         # 반복 감지: 키를 눌러 이미 지나온 메뉴에 다시 도착한 경우만 센다 (7장 5항).
         # 명세 6.3: '이미 지나온 메뉴가 다시 나오는 상황이 2회 발생' 또는 키 전송 5회
-        if arrived:
+        # 확인 질문("맞으면 1번/틀리면 2번")은 여러 단계에서 같은 모양으로 되풀이되므로 반복으로 세지 않는다
+        if arrived and current.kind == "menu":
             if st.visits[sig]:
                 st.revisits += 1
             st.visits[sig] += 1
-        if st.revisits >= self.max_revisit or st.presses >= self.max_presses:
+        # MAX_REVISIT=0 / MAX_PRESSES=0 이면 그 판정을 끈다
+        if (self.max_revisit and st.revisits >= self.max_revisit) or (self.max_presses and st.presses >= self.max_presses):
             note = (f"지나온 메뉴에 다시 도착 {st.revisits}회" if st.revisits >= self.max_revisit
                     else f"키 {st.presses}회 입력 후 미도달")
             return Decision("ask", reason="loop", note=note, options=current.options)
