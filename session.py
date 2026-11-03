@@ -507,7 +507,13 @@ class Session:
             if p.kind != "sensitive":
                 self.secure_errors = 0
         self.current_fresh = True if p.kind in ("menu", "confirm") else self.current_fresh
-        if p.kind not in ("sensitive", "input_error"):
+        # 키 전송에 잘린 안내(키보다 먼저 시작된 단락, 또는 키 전송 뒤 post_key_caption_s 안에 끝난 일반 안내)는 자막으로 보내지 않는다.
+        # "이번에 입력해 주십시오" 같은 조각이 남는 것을 막는다. 메뉴·결과·확인처럼 다음 단계가 분명한 안내는 그대로 보낸다
+        cut = p.kind == "info" and (stale or (self.last_key_at is not None
+                                             and time.monotonic() - self.last_key_at < self.s.post_key_caption_s))
+        if cut:
+            log.info("키 전송에 잘린 안내는 자막으로 보내지 않는다: %s", text[:40])
+        if p.kind not in ("sensitive", "input_error") and not cut:
             cap = {"step": self.step + 1, "speaker": "ars", "text": caption_text(p, text), "at": now_iso()}
             self.captions.append(cap)
             self.publish("caption", cap)
