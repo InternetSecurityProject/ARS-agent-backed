@@ -375,3 +375,13 @@ def test_confirm_labels_become_action_names():
     p = run(GeminiInterpreter(FakeClient([reply])).classify("건강보험증 발급을 원하시면 1번, 취소하시려면 2번을 눌러 주십시오."))
     assert [o.label for o in p.options] == ["발급 진행", "취소"]
     assert confirm_key(p, "네") == "1" and confirm_key(p, "아니요") == "2"
+
+
+def test_transfer_to_another_ars_is_not_agent_wait():
+    """'카드 ARS로 연결해 드리겠습니다' 는 사람 상담원이 아니라 다른 자동응답으로 넘기는 안내다. 계속 듣는다 (info)."""
+    from gemini_interpreter import rule_classify
+    assert rule_classify("카드 ARS로 연결해 드리겠습니다.").kind == "info"
+    assert rule_classify("상담원 연결 중입니다. 잠시만 기다려 주십시오.").kind == "agent_wait"
+    reply = {"kind": "agent_wait", "options": [], "unnumbered": [], "back_key": None, "home_key": None, "repeat_key": None,
+             "agent_key": None, "label": None, "terminator": None, "critical": False}
+    assert run(GeminiInterpreter(FakeClient([reply])).classify("카드 ARS로 연결해 드리겠습니다.")).kind == "info"

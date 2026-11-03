@@ -146,6 +146,7 @@ _OPTION = re.compile(r"([가-힣A-Za-z0-9 ·]{2,30}?)\s*(?:은|는|면|으로|�
 
 _DIGITS_FIELD = re.compile(r"([가-힣 ]{2,12}?)\s*[0-9]+\s*자리")
 _HOURS = re.compile(r"(?:업무|운영|상담)\s?시간")
+_OTHER_ARS = re.compile(r"ARS|에이알에스|자동\s?응답|음성\s?안내|고객센터로\s*연결")  # 사람이 아닌 다른 자동응답으로 넘기는 안내
 
 
 def rule_classify(text: str) -> Prompt:
@@ -183,7 +184,9 @@ def rule_classify(text: str) -> Prompt:
         return Prompt(kind="input_error", text=text)
     if re.search(r"(상담원|상담사|상담직원)\s*[가-힣]{2,4}\s*입니다", t):
         return Prompt(kind="agent_human", text=text)
-    if re.search(r"연결\s*중|연결해\s*드리겠|잠시만\s*기다려", t):
+    # 상담원 연결 대기는 '상담원·상담사·상담직원' 이 언급될 때만. "잠시만 기다려 주십시오"·"연결해 드리겠습니다" 만으로는
+    # 조회 대기·다른 ARS 이관일 수 있으므로 info 로 두고 계속 듣는다
+    if re.search(r"상담\s?(?:원|사|직원|센터)", t) and re.search(r"연결|기다려", t) and not _OTHER_ARS.search(t):
         return Prompt(kind="agent_wait", text=text)
     return Prompt(kind="info", text=text)
 
@@ -230,7 +233,8 @@ CLASSIFY = COMMON + """
 kind (하나만):
   menu 번호 선택 메뉴 / confirm 확인 질문("맞으면 1번") / sensitive 주민등록번호·생년월일·계좌번호·카드번호·비밀번호·인증번호·
   전화번호 등 실제 값을 지금 입력하라는 요청 / result 조회 결과·처리 완료 안내("발송되었습니다","접수되었습니다","금액은 ~원입니다") /
-  agent_wait 상담원 연결 대기 / agent_human 상담원이 직접 말함("상담원 ○○○입니다") / input_error 잘못 눌렀거나 입력 시간 초과 /
+  agent_wait 사람 상담원(상담사·상담직원)에게 연결하는 대기 안내. 다른 ARS·자동응답·음성안내로 넘기는 안내("카드 ARS로 연결해 드리겠습니다")는 사람이 아니므로 info /
+  agent_human 상담원이 직접 말함("상담원 ○○○입니다") / input_error 잘못 눌렀거나 입력 시간 초과 /
   voice_request 말로 대답하라는 요청 / out_of_hours 업무시간 외 / message_sent 문자·알림톡을 보내고 끝내는 안내 /
   rejected 본인 확인 실패 등 거절 / info 그 밖의 안내
 규칙:
@@ -478,6 +482,10 @@ class GeminiInterpreter:
             self._scores.pop(goal, None)
         # 민감정보 요청·결과 안내는 모델이 놓쳐도 규칙으로 한 번 더 잡는다
         r = rule_classify(text)
+        if p.kind == "agent_wait" and (_OTHER_ARS.search(text) or not re.search(r"상담\s?(?:원|사|직원|센터)", text)):
+            # 다른 ARS·자동응답으로 넘기는 안내, 또는 상담원 언급이 없는 "잠시만 기다려 주십시오"(조회 대기)는
+            # 상담원 대기가 아니다. 다음 안내를 계속 듣는다
+            p.kind = "info"
         if r.kind == "sensitive" and p.kind in ("info", "menu"):
             p = r
         elif r.kind == "result" and p.kind == "info":

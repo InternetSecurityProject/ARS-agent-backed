@@ -1685,3 +1685,12 @@ def test_sibling_choices_are_asked_even_when_model_is_confident():
         await s.action({"type": "select", "request_id": s.pending["request_id"], "key": "2"})
         assert call.keys == ["2"]
     run(go())
+
+
+def test_plain_wait_notice_is_not_agent_wait():
+    """"잠시만 기다려 주십시오" 만으로는 상담원 대기가 아니다 (조회 대기). 상담원이 언급돼야 waiting_agent."""
+    from gemini_interpreter import rule_classify
+    assert rule_classify("잠시만 기다려 주십시오.").kind == "info"
+    assert rule_classify("확인 중입니다. 잠시만 기다려 주십시오.").kind == "info"
+    assert rule_classify("상담사 연결 중입니다. 잠시만 기다려 주십시오.").kind == "agent_wait"
+    assert rule_classify("카드 ARS로 연결해 드리겠습니다.").kind == "info"
