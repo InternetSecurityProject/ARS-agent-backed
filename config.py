@@ -74,6 +74,8 @@ class Settings:
     no_response_s: float = 8.0           # 키 전송 후 ARS 가 소리를 내지 않을 때 (7장 3항)
     clarify_expire_s: float = 30.0       # 재질문 expires_at (6.3 무응답 처리)
     clarify_drop_s: float = 60.0         # 재질문 무효 처리
+    # 재질문에 60초 동안 답이 없을 때 상담원 연결 키를 누를지 (명세 6.3). 0 이면 요청을 유지한 채 계속 듣는다 (기본)
+    drop_to_agent: bool = field(default_factory=lambda: _env("CLARIFY_DROP_TO_AGENT", "0") == "1")
     secure_expire_s: float = 60.0        # 민감정보 입력 expires_at
     user_key_hold_s: float = 10.0        # 사용자 직접 선택 후 AI 보류 (4.3 key)
     # 상대가 끊은 뒤 마지막 안내 인식·결과 요약을 기다리는 최대 시간 (7장 7항). AI 요약 최악 응답(제한 6초 × 재시도 2회 = 12초)보다 길게.

@@ -832,7 +832,7 @@ class Session:
             if not (self.pending and self.pending["request_id"] == rid) or self.ended:
                 return
             cur = self.current
-            if cur and cur.agent_key:
+            if cur and cur.agent_key and self.s.drop_to_agent:
                 self._close_request()
                 self.set_status("selecting", "응답이 없어 상담원 연결 메뉴로 진행합니다.")
                 try:

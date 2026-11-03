@@ -140,9 +140,9 @@ def test_low_confidence_then_answer():
 
 
 def test_low_confidence_no_answer_goes_to_agent_menu():
-    """재질문 무응답 60초(시험 0.6초) → 현재 메뉴의 상담원 연결 선택지로 진행"""
+    """재질문 무응답 60초(시험 0.6초) → CLARIFY_DROP_TO_AGENT=1 이면 현재 메뉴의 상담원 연결 선택지로 진행 (기본은 꺼짐: 요청 유지)"""
     async def go():
-        m = await new_manager()
+        m = await new_manager(drop_to_agent=True)
         _, s = await start(m, "카드 관련 문의")
         await wait_for(s, lambda s: s.pending)
         await wait_for(s, lambda s: s.status == "connected_to_agent", timeout=6)
@@ -1684,6 +1684,20 @@ def test_sibling_choices_are_asked_even_when_model_is_confident():
         assert [o["key"] for o in s.pending["options"]] == ["1", "2"]
         await s.action({"type": "select", "request_id": s.pending["request_id"], "key": "2"})
         assert call.keys == ["2"]
+    run(go())
+
+
+
+def test_no_answer_keeps_request_by_default_instead_of_calling_agent():
+    """기본값에서는 재질문에 답이 없어도 상담원 연결 키를 누르지 않고 요청을 유지한 채 계속 듣는다."""
+    async def go():
+        m = await new_manager()
+        _, s = await start(m, "카드 관련 문의")
+        await wait_for(s, lambda s: s.pending)
+        rid = s.pending["request_id"]
+        await asyncio.sleep(0.9)                                      # clarify_drop(0.6초) 경과
+        assert s.pending and s.pending["request_id"] == rid and s.path == [] and s.status == "awaiting_user"
+        await s.action({"type": "cancel"})
     run(go())
 
 
