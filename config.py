@@ -80,6 +80,8 @@ class Settings:
     # 민감정보 입력값을 받았을 때 ARS 가 안내 중이면 안내가 끝날 때까지 기다렸다 보내는 최대 시간(초).
     # '입력 시간이 초과되었습니다' 처럼 키를 받지 않는 안내 중에 보내면 입력이 무시된다. 0 이면 바로 보낸다
     secure_wait_max_s: float = field(default_factory=lambda: float(_env("SECURE_WAIT_MAX_S", "15")))
+    # 시험용 통화 기록(record=true)을 통화 종료 뒤 서버 메모리에 보관하는 시간(초). 주인이 받거나 지우면 바로 사라진다
+    recording_keep_s: float = field(default_factory=lambda: float(_env("RECORDING_KEEP_S", "1800")))
     user_key_hold_s: float = 10.0        # 사용자 직접 선택 후 AI 보류 (4.3 key)
     # 상대가 끊은 뒤 마지막 안내 인식·결과 요약을 기다리는 최대 시간 (7장 7항). AI 요약 최악 응답(제한 6초 × 재시도 2회 = 12초)보다 길게.
     # 넘기면 결과 안내 원문으로 요약을 대신하여 summary → ended 를 보낸다

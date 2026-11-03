@@ -501,7 +501,7 @@ async def speak(s, sec: float, silence: float = 0.3) -> None:
     await asyncio.sleep(0.02)
 
 
-async def manual(goal: str, stt: ScriptSTT | None = None, **kw):
+async def manual(goal: str, stt: ScriptSTT | None = None, record: bool = False, **kw):
     """stt 를 주면 음성 경로(Segmenter → STT)로 시험한다."""
     from interpreter import MockInterpreter, _norm
     from navigator import Navigator
@@ -516,7 +516,7 @@ async def manual(goal: str, stt: ScriptSTT | None = None, **kw):
     deps = Deps(st, ManualBackend(transcripts=stt is None), stt or NullRecognizer(), interp,
                 Navigator(interp, st.match_threshold, st.margin, st.max_revisit, st.max_presses, st.low_threshold))
     m = SessionManager(deps)
-    out = await m.create("15889999", goal)
+    out = await m.create("15889999", goal, record=record)
     s = m.sessions[out["session_id"]]
     await s._on_answer()
     return s, deps.backend.call
@@ -924,9 +924,9 @@ TIMEOUT_MSG = "입력 시간이 초과되었습니다."
 GIVEUP_MSG = "입력이 없어 통화를 종료합니다."
 
 
-async def secure_pending(**kw):
+async def secure_pending(record: bool = False, **kw):
     """잔액조회 → ARS 계속 → 주민등록번호 입력 요청까지 진행한 세션"""
-    s, call = await manual("통장 잔액 알고 싶어", clarify_expire_s=5, clarify_drop_s=10, **kw)
+    s, call = await manual("통장 잔액 알고 싶어", clarify_expire_s=5, clarify_drop_s=10, record=record, **kw)
     await s.on_paragraph(ROOT)
     await s.on_paragraph(BAL)
     await s.on_paragraph(RRN)
@@ -1765,3 +1765,70 @@ def test_plain_wait_notice_is_not_agent_wait():
     assert rule_classify("확인 중입니다. 잠시만 기다려 주십시오.").kind == "info"
     assert rule_classify("상담사 연결 중입니다. 잠시만 기다려 주십시오.").kind == "agent_wait"
     assert rule_classify("카드 ARS로 연결해 드리겠습니다.").kind == "info"
+
+
+# ---------------------------------------------------------------------------
+# 시험용 통화 기록 (record=true)
+# ---------------------------------------------------------------------------
+def _goertzel(samples, hz: float, rate: int = 8000) -> float:
+    import math
+    k = 2 * math.cos(2 * math.pi * hz / rate)
+    a = b = 0.0
+    for x in samples:
+        a, b = x + k * a - b, a
+    return a * a + b * b - k * a * b
+
+
+def test_recording_keeps_no_secure_digits():
+    """통화 기록에는 민감정보 입력값이 없다: 로그에는 자릿수만, 소리에는 DTMF 대신 1kHz 대체 신호음."""
+    import io, json, zipfile
+    from audio import SILENCE_FRAME
+
+    async def go():
+        s, call = await secure_pending(record=True)
+        for _ in range(50):
+            await s._on_audio(SILENCE_FRAME)                         # 통화 소리 1초
+        await s.action({"type": "secure_input", "request_id": s.pending["request_id"], "digits": "991332"})
+        await s.finish("user_canceled")
+        z = zipfile.ZipFile(io.BytesIO(s.recorder.export_zip()))
+        assert set(z.namelist()) == {"call.wav", "log.json", "log.txt"}
+        blob = z.read("log.json").decode() + z.read("log.txt").decode()
+        assert "991332" not in blob
+        log_ = json.loads(z.read("log.json"))
+        acts = log_["actions"]
+        assert [a.get("keys") for a in acts if a["type"] == "key"] == ["3", "2"]
+        sec = [a for a in acts if a["type"] == "input"]
+        assert len(sec) == 1 and sec[0]["digits"] is None and sec[0]["digit_count"] == 6 and sec[0]["actor"] == "user"
+        tone = s.recorder.tones[-1][1][:1200]                        # 민감정보 입력 자리의 소리
+        assert _goertzel(tone, 1000) > 100 * max(_goertzel(tone, f) for f in (697, 770, 852, 941, 1209, 1336, 1477))
+        assert any(e["type"] == "event:request" and e["data"]["kind"] == "secure_input" for e in log_["events"])
+        assert log_["wav"] == "call.wav" and log_["seconds"] >= 1.0
+    run(go())
+
+
+def test_recording_rest_owner_only_and_deletable():
+    """기록은 record=true 세션의 주인만, 통화가 끝난 뒤 받을 수 있고, 지우면 다시 받을 수 없다."""
+    import io, zipfile
+    from fastapi.testclient import TestClient
+
+    st = make_settings(sim_speed=0.05)
+    with TestClient(create_app(st)) as c:
+        def make(record):
+            r = c.post("/v1/sessions", json={"phone_number": "15889999", "goal": "카드 결제일 바꾸고 싶어", "record": record},
+                       headers={"X-App-Key": st.app_key})
+            assert r.status_code == 201, r.text
+            return r.json()["session_id"], {"Authorization": f"Bearer {r.json()['session_token']}"}
+
+        sid, h = make(True)
+        assert c.get(f"/v1/sessions/{sid}/recording", headers=h).status_code == 409        # 통화 중
+        assert c.get(f"/v1/sessions/{sid}/recording", headers={"Authorization": "Bearer x"}).status_code == 401
+        c.post(f"/v1/sessions/{sid}/actions", json={"type": "cancel"}, headers=h)
+        r = c.get(f"/v1/sessions/{sid}/recording", headers=h)
+        assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
+        assert "call.wav" in zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+        assert c.delete(f"/v1/sessions/{sid}/recording", headers=h).json() == {"deleted": True}
+        assert c.get(f"/v1/sessions/{sid}/recording", headers=h).status_code == 404
+
+        sid, h = make(False)                                         # 기록을 켜지 않은 세션
+        c.post(f"/v1/sessions/{sid}/actions", json={"type": "cancel"}, headers=h)
+        assert c.get(f"/v1/sessions/{sid}/recording", headers=h).status_code == 404

@@ -20,6 +20,7 @@ from audio import FRAME, VALID_KEYS, Segmenter, rms
 from config import Settings
 from interpreter import Interpreter, Option, Prompt
 from navigator import Layer, NavState, Navigator
+from recording import CallRecorder
 from stt import Recognizer
 from telephony import Backend, Call, CallHandlers
 
@@ -167,6 +168,7 @@ class Session:
         self.ended_at: float | None = None
         self.end_reason: str | None = None
         self.created_mono = time.monotonic()
+        self.recorder: CallRecorder | None = None   # 시험용 통화 기록 (record=true 로 만든 세션만, 메모리에만 보관)
 
         self.captions: list[dict] = []
         self.path: list[dict] = []
@@ -253,6 +255,8 @@ class Session:
     def publish(self, event: str, data: dict) -> None:
         """이벤트 전송. ended 가 마지막 이벤트이며, 종료 뒤 늦게 끝난 처리의 이벤트는 보내지 않는다."""
         if not self.closed:
+            if self.recorder is not None:
+                self.recorder.event(event, data)
             self.hub.publish(event, data)
 
     def set_status(self, status: str, message: str | None = None) -> None:
@@ -282,10 +286,13 @@ class Session:
         }
 
     # 생성·발신 ---------------------------------------------------------------
-    async def create(self, goal: str | None) -> dict:
+    async def create(self, goal: str | None, record: bool = False) -> dict:
         # AI 도우미 사용과 목적은 통화 시작 시 정한다. 승인 없이 바로 발신하고 첫 메뉴부터 탐색한다.
         out = {"session_id": self.id, "session_token": self.token, "phone_number": self.phone}
         self.goal = (goal or "").strip()
+        if record:
+            self.recorder = CallRecorder({"session_id": self.id, "phone": self.phone, "goal": self.goal,
+                                          "backend": self.s.backend, "stt": self.s.stt, "interpreter": self.s.interpreter})
         self.goal_summary = await self._ai("summarize_goal", self.d.interp.summarize_goal(self.goal),
                                            f"'{self.goal}' 업무를 찾아 드릴게요.")
         self.agent_active = True
@@ -371,12 +378,16 @@ class Session:
             data["detail"] = note
         self.publish("ended", data)
         self.closed = True
+        if self.recorder is not None:
+            asyncio.get_running_loop().call_later(self.s.recording_keep_s, self.drop_recording)
         for q in list(self.audio_out):
             q.put_nowait(None)
         self.stt_q.put_nowait(None)  # 음성 인식 작업 종료
 
     # 오디오 ----------------------------------------------------------------
     async def _on_audio(self, frame: bytes) -> None:
+        if self.recorder is not None and not self.closed:
+            self.recorder.audio(frame)
         for q in list(self.audio_out):
             if q.qsize() < 50:  # 1초 이상 밀리면 버린다
                 q.put_nowait(frame)
@@ -394,7 +405,7 @@ class Session:
 
     def _queue_segment(self, seg: bytes, started_at: float | None) -> None:
         self.stt_inflight += 1
-        self.stt_q.put_nowait((seg, started_at))
+        self.stt_q.put_nowait((seg, started_at, self.recorder.pos if self.recorder else 0))
 
     def _ars_active(self) -> bool:
         """ARS 가 안내하는 중이거나, 끝난 안내를 아직 인식·처리하는 중인지 (가상 ARS 는 call.speaking 으로 알린다)."""
@@ -405,13 +416,17 @@ class Session:
             item = await self.stt_q.get()
             if item is None:
                 break  # 통화 종료
-            seg, started_at = item
+            seg, started_at, end_sample = item if len(item) == 3 else (*item, 0)
             del item
+            rec = self.recorder
             try:
                 if self.secure_window and not self.d.recognizer.is_local:
                     # 외부 STT 에는 입력값을 다시 읽어 주는 구간을 보내지 않는다. 문장을 받지 못하면 구간을 닫을 계기가 없으므로
                     # 입력 전송 뒤 secure_skip_s 가 지나면 구간을 닫고 다시 인식한다 (그 사이의 되읽기 확인은 사용자가 소리를 듣고 직접 누른다)
                     if time.monotonic() - self.secure_sent_at < self.s.secure_skip_s:
+                        if rec:
+                            rec.note("stt_skipped", reason="민감정보 입력 뒤 외부 STT 로 보내지 않는 구간",
+                                     seg_end_t=round(end_sample / 8000, 2))
                         continue
                     log.info("외부 STT: 되읽기 건너뛰기 %.0f초가 지나 인식을 재개한다", self.s.secure_skip_s)
                     self.secure_window = False
@@ -419,8 +434,13 @@ class Session:
                 if voiced < self.s.min_voiced_s:
                     # 키 전송(DTMF)에 끊긴 조각·딸깍음·잔향. 인식하면 "콩" 같은 글자가 자막으로 남는다 (설계안 2.4)
                     log.info("소리 %.2f초뿐인 단락은 인식하지 않는다", voiced)
+                    if rec:
+                        rec.note("stt_skipped", reason=f"소리 {voiced:.2f}초뿐인 단락", seg_end_t=round(end_sample / 8000, 2))
                     continue
+                t_stt = time.monotonic()
                 text = await self.d.recognizer.recognize(seg)
+                if rec:
+                    rec.stt(text, end_sample, len(seg), time.monotonic() - t_stt, self.s.stt)
                 del seg
                 if text and len(re.sub(r"[^가-힣0-9A-Za-z]", "", text)) < 3:
                     log.info("두 글자 이하 인식 결과는 버린다: %s", text)
@@ -492,6 +512,9 @@ class Session:
             closing_secure = False
 
         p = await self._ai("classify", interp.classify(text), Prompt(kind="info", text=text))
+        if self.recorder is not None:
+            self.recorder.note("classified", kind=p.kind, text=text,
+                               options=[f"{o.key}:{o.label}" for o in (p.options or [])])
         if self.secure_queued and p.kind not in ("sensitive", "input_error", "info"):
             log.info("입력값 전송 대기 중 ARS 가 다른 안내(%s)로 넘어감. 입력값을 보내지 않는다", p.kind)
             self.secure_abort = True
@@ -719,12 +742,14 @@ class Session:
         elif dec.action == "end":
             await self.finish(dec.reason, note=dec.note)
 
-    async def _send_keys(self, keys: str) -> float:
+    async def _send_keys(self, keys: str, actor: str = "ai", secure: bool = False) -> float:
         """키(DTMF 톤) 전송. 키를 누르면 ARS 는 하던 안내를 끊거나 다음 안내로 넘어가므로,
         말하던 중인 단락은 버리고(앞뒤 안내가 한 자막으로 섞이지 않게) 보낸 톤의 반향은 듣지 않는다."""
         if self.call is None or self.ended or self.hangup_seen:
             raise ApiError(409, "invalid_state", "통화가 연결되지 않았습니다.")
         self.last_key_at = time.monotonic()  # 전송 시작 시각. 이보다 먼저 시작된 안내는 키 이전 상태의 안내다
+        if self.recorder is not None:
+            self.recorder.keys(keys, actor, secure)  # 민감정보는 값 대신 자릿수·대체 신호음만 남긴다
         try:
             dur = await self.call.send_keys(keys)
         except Exception as e:
@@ -738,7 +763,7 @@ class Session:
         return dur
 
     async def _press(self, keys: str, actor: str, p: Prompt | None, confidence: float | None = None) -> None:
-        await self._send_keys(keys)
+        await self._send_keys(keys, actor)
         self.current_fresh = False
         self.last_key_actor = actor
         if p is not None:
@@ -880,6 +905,8 @@ class Session:
         t = body.get("type")
         if self.ended:
             raise ApiError(409, "invalid_state", "이미 종료된 통화입니다.")
+        if self.recorder is not None:
+            self.recorder.user_action(body)
         async with self._lock:
             if t == "cancel":
                 if self.status == "connected_to_agent":
@@ -986,11 +1013,18 @@ class Session:
             self._spawn_secure_send(keys)
             del keys
             return {"accepted": True}
-        await self._send_keys(keys)  # 메모리에서 톤으로 변환하여 전송
+        await self._send_keys(keys, "user", secure=True)  # 메모리에서 톤으로 변환하여 전송
         del keys
         self.last_send_secure = True
         self.set_status(self.idle_status())
         return {"accepted": True}
+
+    def drop_recording(self) -> None:
+        """통화 기록을 메모리에서 지운다 (주인의 삭제 요청 또는 보관 시간 경과)."""
+        if self.recorder is not None:
+            self.recorder.wipe()
+            self.recorder = None
+            log.info("통화 기록을 지웠다 (%s)", self.id)
 
     def _ars_speaking(self) -> bool:
         """ARS 소리가 지금 나고 있는지 (단락 종료 무음 paragraph_silence_ms 전까지는 말하는 중으로 본다)."""
@@ -1022,7 +1056,7 @@ class Session:
             # 잠금 없이 보낸다: 안내 인식·AI 판단이 잠금을 잡고 있으면 ARS 의 입력 대기 시간이 지나 버린다
             self.last_send_secure = True       # 전송 중에 처리되는 같은 입력 안내는 무시된다 (stale)
             self.secure_sent_at = time.monotonic()
-            await self._send_keys(keys)
+            await self._send_keys(keys, "user", secure=True)
             self.last_send_secure = True
         except ApiError:
             pass
@@ -1104,7 +1138,7 @@ class SessionManager:
             raise ApiError(401, "unauthorized", "만료된 세션 토큰입니다.")
         return s
 
-    async def create(self, phone: str, goal: str | None) -> dict:
+    async def create(self, phone: str, goal: str | None, record: bool = False) -> dict:
         if not goal or not str(goal).strip():
             raise ApiError(400, "invalid_request", "goal(목적)이 필요합니다. AI 도우미 사용과 목적은 발신 시 정합니다.")
         cur = self.active()
@@ -1115,4 +1149,4 @@ class SessionManager:
             raise ApiError(400, "invalid_request", "전화번호 형식이 올바르지 않습니다.")
         s = Session(digits, self.deps)
         self.sessions[s.id] = s
-        return await s.create(goal)
+        return await s.create(goal, record)

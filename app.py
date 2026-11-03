@@ -19,7 +19,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Header, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from audio import FrameChunker, Segmenter
 from config import Settings, settings as default_settings
@@ -101,7 +101,7 @@ def create_app(st: Settings | None = None) -> FastAPI:
         phone = str(body.get("phone_number") or "")
         if not phone:
             raise ApiError(400, "invalid_request", "phone_number 가 필요합니다.")
-        out = await manager.create(phone, body.get("goal"))
+        out = await manager.create(phone, body.get("goal"), record=body.get("record") is True)
         host = request.headers.get("host", "localhost")
         scheme = "wss" if request.url.scheme == "https" else "ws"
         sid = out["session_id"]
@@ -151,6 +151,24 @@ def create_app(st: Settings | None = None) -> FastAPI:
         s = manager.get(sid, bearer(authorization))
         code, body = s.result()
         return JSONResponse(body, status_code=code)
+
+    # 시험용 통화 기록 (record=true 로 만든 세션, 세션 주인만) ---------------------------
+    @app.get("/v1/sessions/{sid}/recording")
+    async def recording(sid: str, authorization: str | None = Header(None)):
+        s = manager.get(sid, bearer(authorization))
+        if s.recorder is None:
+            raise ApiError(404, "no_recording", "통화 기록이 없거나 이미 지워졌습니다.")
+        if not s.ended:
+            raise ApiError(409, "invalid_state", "통화가 끝난 뒤 받을 수 있습니다.")
+        data = await asyncio.to_thread(s.recorder.export_zip)
+        return Response(data, media_type="application/zip", headers={
+            "Content-Disposition": f'attachment; filename="ars-call-{sid}.zip"', "Cache-Control": "no-store"})
+
+    @app.delete("/v1/sessions/{sid}/recording")
+    async def delete_recording(sid: str, authorization: str | None = Header(None)):
+        s = manager.get(sid, bearer(authorization))
+        s.drop_recording()
+        return {"deleted": True}
 
     # 4.5 오디오 채널 ------------------------------------------------------------
     @app.websocket("/v1/sessions/{sid}/audio")
