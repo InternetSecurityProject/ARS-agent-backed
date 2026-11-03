@@ -1000,6 +1000,45 @@ def test_secure_input_error_is_not_a_menu_error_and_digits_stay_out():
     run(go())
 
 
+def test_secure_input_waits_until_ars_stops_speaking():
+    """'입력 시간이 초과되었습니다' 처럼 ARS 가 말하는 중에 받은 입력값은 안내가 끝난 뒤 보낸다 (말하는 중에 보내면 무시된다).
+    기다리는 동안 다시 들린 같은 입력 안내로 새 요청을 만들지 않는다."""
+    async def go():
+        s, call = await secure_pending()
+        req = s.pending
+        call.speaking = True                                         # ARS 가 시간 초과 안내 중
+        r = await s.action({"type": "secure_input", "request_id": req["request_id"], "digits": "991332"})
+        assert r == {"accepted": True} and call.keys == ["3", "2"]   # 아직 보내지 않음
+        await s.on_paragraph(TIMEOUT_MSG)
+        await s.on_paragraph(RRN)                                    # 기다리는 동안 입력 안내가 다시 들림
+        assert s.pending is None                                     # 새 입력 요청 없음
+        await asyncio.sleep(0.2)
+        assert call.keys == ["3", "2"]
+        call.speaking = False                                        # 안내가 끝남
+        await wait_for(s, lambda s: len(call.keys) == 3, timeout=2)
+        assert call.keys[-1] == "991332#" and s.last_send_secure and not s.secure_queued
+        assert "991332" not in str(s.hub.history)
+    run(go())
+
+
+def test_secure_input_dropped_if_ars_moves_on():
+    """기다리는 동안 ARS 가 메뉴로 넘어가거나 너무 길게 말하면 입력값을 메뉴 키로 보내지 않고 버린다."""
+    async def go():
+        s, call = await secure_pending()
+        call.speaking = True
+        await s.action({"type": "secure_input", "request_id": s.pending["request_id"], "digits": "991332"})
+        await s.on_paragraph(ROOT)                                   # 첫 메뉴로 돌아감 (AI 는 메뉴를 다시 판단한다)
+        await wait_for(s, lambda s: not s.secure_queued, timeout=2)
+        assert "991332#" not in call.keys and ev(s, "input_rejected")[-1]["keys"] is None
+
+        s, call = await secure_pending(secure_wait_max_s=0.3)
+        call.speaking = True
+        await s.action({"type": "secure_input", "request_id": s.pending["request_id"], "digits": "991332"})
+        await wait_for(s, lambda s: not s.secure_queued, timeout=2)  # 0.3초가 지나도 계속 말함
+        assert call.keys == ["3", "2"] and ev(s, "input_rejected")
+    run(go())
+
+
 def test_secure_input_terminator_is_not_duplicated():
     """사용자가 종료 키(#)까지 눌러 보낸 경우 서버가 #을 한 번 더 붙이지 않는다 (두 번째 #은 ARS 에서 다른 뜻일 수 있다)."""
     async def go():

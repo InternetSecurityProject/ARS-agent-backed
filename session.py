@@ -194,6 +194,8 @@ class Session:
         self.last_key_at: float | None = None  # 마지막 키 전송 시각. 그 전에 시작된 안내는 키 이전 상태의 안내다
         self.seg_started_at: float | None = None  # 지금 듣고 있는 단락의 소리가 시작된 시각
         self.last_send_secure = False        # 마지막으로 보낸 키가 민감정보 입력값인지
+        self.secure_queued = False           # 민감정보 입력값을 받아 ARS 안내가 끝나기를 기다리는 중 (값은 전송 작업 안에만 있다)
+        self.secure_abort = False            # 기다리는 동안 ARS 가 메뉴·결과 등 다른 안내로 넘어감 → 입력값을 보내지 않는다
         self.secure_len: int | None = None   # 마지막 민감정보 입력의 자릿수 (값은 저장하지 않는다)
         self.secure_label: str = "입력 번호"   # 마지막 민감정보 요청의 항목명 (되읽기 확인 단계의 경로 표시용)
         self.secure_sent_at = 0.0
@@ -490,6 +492,9 @@ class Session:
             closing_secure = False
 
         p = await self._ai("classify", interp.classify(text), Prompt(kind="info", text=text))
+        if self.secure_queued and p.kind not in ("sensitive", "input_error", "info"):
+            log.info("입력값 전송 대기 중 ARS 가 다른 안내(%s)로 넘어감. 입력값을 보내지 않는다", p.kind)
+            self.secure_abort = True
         if closing_secure and (p.kind != "info" or hit or hit2):
             # 되읽기 구간은 메뉴·결과·입력 요청처럼 다음 단계가 분명한 안내가 와야 닫는다.
             # "잠시만 기다려 주십시오" 같은 짧은 안내로 닫으면, 그 뒤에 오는 실제 되읽기 문장의 숫자가 가려지지 않는다
@@ -524,6 +529,10 @@ class Session:
                 # 사용자가 번호를 누르는 동안 ARS 가 같은 입력 안내를 되풀이한 것이 뒤늦게 인식된 경우.
                 # 이미 입력을 보냈으므로 새 입력 요청을 만들지 않는다 (만들면 사용자가 같은 번호를 또 입력해 '잘못된 입력'이 반복된다)
                 log.info("입력 전송 전에 시작된 입력 안내가 뒤늦게 도착. 무시한다")
+                return
+            if self.secure_queued:
+                # 입력값을 받아 ARS 안내가 끝나기를 기다리는 중에 같은 입력 안내가 다시 들렸다. 안내가 끝나면 그 값을 보낸다
+                log.info("입력값 전송 대기 중 입력 안내가 다시 들림. 새 입력 요청을 만들지 않는다")
                 return
             if self.pending and self.pending["kind"] == "secure_input":
                 # 입력하는 동안 ARS 가 안내를 되풀이함. 요청은 그대로 두고 만료 시각만 늘려 같은 요청을 다시 알린다
@@ -967,13 +976,61 @@ class Session:
         self.secure_sent_at = time.monotonic()  # 외부 STT 는 이 뒤 secure_skip_s 동안 음성을 보내지 않는다
         del digits
         self.pending = None
+        self.current_fresh = False
+        self.last_key_actor = "user"
+        if self._ars_speaking() and self.s.secure_wait_max_s > 0:
+            # ARS 가 안내 중이다. '입력 시간이 초과되었습니다' 처럼 키를 받지 않는 안내 중에 보내면 입력이 무시되므로
+            # 안내가 끝난 뒤 보낸다. 기다리는 동안 다른 처리(안내 인식·종료 요청)가 막히지 않도록 잠금 밖에서 기다린다
+            self.secure_queued, self.secure_abort = True, False
+            self.set_status(self.idle_status())
+            self._spawn_secure_send(keys)
+            del keys
+            return {"accepted": True}
         await self._send_keys(keys)  # 메모리에서 톤으로 변환하여 전송
         del keys
         self.last_send_secure = True
-        self.current_fresh = False
-        self.last_key_actor = "user"
         self.set_status(self.idle_status())
         return {"accepted": True}
+
+    def _ars_speaking(self) -> bool:
+        """ARS 소리가 지금 나고 있는지 (단락 종료 무음 paragraph_silence_ms 전까지는 말하는 중으로 본다)."""
+        return bool(getattr(self.call, "speaking", False) or self.segmenter.speaking)
+
+    def _spawn_secure_send(self, keys: str) -> None:
+        task = asyncio.create_task(self._send_secure_when_quiet(keys))
+        self._secure_task = task  # 작업 참조를 유지한다 (값은 작업이 끝나면 사라진다)
+
+    async def _send_secure_when_quiet(self, keys: str) -> None:
+        t0 = time.monotonic()
+        try:
+            while (self._ars_speaking() and not self.ended and not self.hangup_seen and not self.secure_abort
+                   and time.monotonic() - t0 < self.s.secure_wait_max_s):
+                await asyncio.sleep(0.05)
+            if self.ended or self.hangup_seen:
+                return
+            if self.secure_abort or self._ars_speaking():
+                # 다른 안내로 넘어갔거나, 입력 안내 되풀이로 보기에는 너무 길게 말한다(첫 메뉴로 돌아간 경우 등).
+                # 입력값을 메뉴 키로 잘못 보내지 않도록 버리고, 입력 안내가 다시 나오면 새로 입력받는다
+                log.info("ARS 가 다른 안내로 넘어가 입력값을 보내지 않았다 (%.1f초 기다림)", time.monotonic() - t0)
+                self.secure_errors += 1
+                self.publish("input_rejected", {
+                    "keys": None, "actor": "user", "ars_prompt": "", "retry_count": self.secure_errors,
+                    "message": "ARS가 다른 안내로 넘어가 입력하신 번호를 보내지 않았습니다. 입력 안내가 다시 나오면 다시 입력해 주세요.",
+                })
+                return
+            log.info("ARS 안내가 끝나 입력값을 보낸다 (%.1f초 기다림)", time.monotonic() - t0)
+            # 잠금 없이 보낸다: 안내 인식·AI 판단이 잠금을 잡고 있으면 ARS 의 입력 대기 시간이 지나 버린다
+            self.last_send_secure = True       # 전송 중에 처리되는 같은 입력 안내는 무시된다 (stale)
+            self.secure_sent_at = time.monotonic()
+            await self._send_keys(keys)
+            self.last_send_secure = True
+        except ApiError:
+            pass
+        except Exception:
+            log.exception("입력값 전송 실패")
+        finally:
+            del keys
+            self.secure_queued = False
 
     async def _act_revise_goal(self, body: dict) -> dict:
         """다시 말하기 (피그마 03): 목적 설정 단계, 즉 첫 번호를 누르기 전까지만 받는다.

@@ -77,6 +77,9 @@ class Settings:
     # 재질문에 60초 동안 답이 없을 때 상담원 연결 키를 누를지 (명세 6.3). 0 이면 요청을 유지한 채 계속 듣는다 (기본)
     drop_to_agent: bool = field(default_factory=lambda: _env("CLARIFY_DROP_TO_AGENT", "0") == "1")
     secure_expire_s: float = 60.0        # 민감정보 입력 expires_at
+    # 민감정보 입력값을 받았을 때 ARS 가 안내 중이면 안내가 끝날 때까지 기다렸다 보내는 최대 시간(초).
+    # '입력 시간이 초과되었습니다' 처럼 키를 받지 않는 안내 중에 보내면 입력이 무시된다. 0 이면 바로 보낸다
+    secure_wait_max_s: float = field(default_factory=lambda: float(_env("SECURE_WAIT_MAX_S", "15")))
     user_key_hold_s: float = 10.0        # 사용자 직접 선택 후 AI 보류 (4.3 key)
     # 상대가 끊은 뒤 마지막 안내 인식·결과 요약을 기다리는 최대 시간 (7장 7항). AI 요약 최악 응답(제한 6초 × 재시도 2회 = 12초)보다 길게.
     # 넘기면 결과 안내 원문으로 요약을 대신하여 summary → ended 를 보낸다
