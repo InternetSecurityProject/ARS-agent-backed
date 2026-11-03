@@ -549,8 +549,10 @@ class GeminiInterpreter:
         missing = self.unnumbered.get(Prompt(kind="menu", text="", options=options).signature(), [])
         try:
             cached = self._scores.get(goal, {})
-            if all(o.key in cached and cached[o.key][0] == o.label for o in options):
-                out = {o.key: cached[o.key][1] for o in options}  # 분류할 때 함께 받은 점수 (Gemini 재호출 없음)
+            hit = [o for o in options if o.key in cached and cached[o.key][0] == o.label]
+            # 분류 뒤 규칙으로 채운 '*'·'#' 선택지(빠른 말 서비스·다른 서비스 등)는 캐시에 없어도 0 점으로 두고 Gemini 를 다시 부르지 않는다
+            if len(hit) == len(options) or (hit and all(o.key in "*#" for o in options if o not in hit)):
+                out = {o.key: (cached[o.key][1] if o in hit else 0.0) for o in options}  # 분류할 때 함께 받은 점수 (Gemini 재호출 없음)
             else:
                 d = await self._ask(SCORE, SCHEMA_SCORE, fast=True, goal=goal, path=path or [], options=opts, unnumbered=missing)
                 got = {str(s["key"]): float(s["confidence"]) for s in d.get("scores", [])}

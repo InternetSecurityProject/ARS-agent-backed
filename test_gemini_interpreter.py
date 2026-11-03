@@ -385,3 +385,16 @@ def test_transfer_to_another_ars_is_not_agent_wait():
     reply = {"kind": "agent_wait", "options": [], "unnumbered": [], "back_key": None, "home_key": None, "repeat_key": None,
              "agent_key": None, "label": None, "terminator": None, "critical": False}
     assert run(GeminiInterpreter(FakeClient([reply])).classify("카드 ARS로 연결해 드리겠습니다.")).kind == "info"
+
+
+def test_rule_added_hash_option_does_not_trigger_second_score_call():
+    """분류 때 받은 점수에 없는 '#' 선택지(규칙으로 채움)가 있어도 score 가 Gemini 를 다시 부르지 않는다."""
+    reply = _menu([{"key": "1", "label": "신용 체크카드", "category": "신용·체크카드"}, {"key": "2", "label": "현금카드", "category": "현금카드"}],
+                  scores=[{"key": "1", "confidence": 0.9}, {"key": "2", "confidence": 0.1}])
+    fake = FakeClient([reply])
+    interp = GeminiInterpreter(fake)
+    interp.goal = "카드 분실 신고"
+    p = run(interp.classify("신용 체크카드는 1번, 현금카드는 2번, 다른 서비스는 샵 버튼을 눌러 주십시오."))
+    assert [o.key for o in p.options] == ["1", "2", "#"]           # '#' 은 규칙이 채웠다
+    s = run(interp.score("카드 분실 신고", p.options))
+    assert s == {"1": 0.9, "2": 0.1, "#": 0.0} and len(fake.calls) == 1
