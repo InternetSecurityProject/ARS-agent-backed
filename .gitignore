@@ -22,7 +22,7 @@ _to_delete/
 # STT 비교용 시험 음성 (합성 음성, 개인정보 없음)은 저장소에 둔다
 !bench_clips/*.wav
 
-# �񱳿� ����ȯ�桤���� ��� (���� PC ���� �д�)
+# 비교용 가상환경·측정 출력 (각자 PC 에만 둔다)
 .venv-qwen/
 bench-*.txt
 call-*.txt
