@@ -4,7 +4,9 @@ ARS 자동화 API 서버 (API 명세서 v0.3)
 실행
   python app.py                      # .env 의 CALL_BACKEND 사용 (clawops / sim)
   python app.py --sim                # 가상 ARS 로 실행 (실통화 없음)
+  python app.py --no-reload          # 코드가 바뀌어도 자동 재시작하지 않음 (시연·실통화 시험 중 권장)
 브라우저에서 http://localhost:8000 을 열면 시험용 앱 화면이 나온다.
+기본값으로 .py 파일이 바뀌면 서버가 자동으로 다시 시작한다. 이때 진행 중인 통화는 끊긴다.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -203,6 +206,25 @@ def create_app(st: Settings | None = None) -> FastAPI:
     return app
 
 
+def setup_logging(debug: bool) -> None:
+    logging.basicConfig(level=logging.DEBUG if debug else logging.INFO,
+                        format="%(asctime)s %(name)s %(message)s", datefmt="%H:%M:%S")
+    logging.getLogger("clawops").setLevel(logging.INFO if debug else logging.WARNING)
+    logging.getLogger("watchfiles").setLevel(logging.WARNING)  # 파일 변경 감지 로그가 매번 찍히지 않게
+
+
+def reload_app() -> FastAPI:
+    """자동 재시작 때 uvicorn 이 새 프로세스에서 부르는 앱 생성 함수. 설정은 main() 이 남긴 환경변수로 다시 읽는다."""
+    setup_logging(os.environ.get("ARS_DEBUG") == "1")
+    return create_app(Settings())
+
+
+def reload_excludes() -> list[str]:
+    """바뀌어도 서버를 다시 시작하지 않을 파일·폴더. 폴더는 절대 경로로 넘겨야 uvicorn 이 폴더로 인식한다."""
+    dirs = [HERE / d for d in (".venv", ".venv-qwen", ".git", "bench", "bench_real", "bench_clips", "_to_delete", "docs")]
+    return ["test_*.py", *(str(d) for d in dirs if d.is_dir())]
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="ARS 자동화 API 서버")
     ap.add_argument("--sim", action="store_true", help="가상 ARS 로 실행")
@@ -211,21 +233,27 @@ def main() -> None:
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--debug", action="store_true")
+    ap.add_argument("--no-reload", action="store_true", help="코드가 바뀌어도 자동 재시작하지 않음 (시연·실통화 시험 중 권장)")
     a = ap.parse_args()
-    logging.basicConfig(level=logging.DEBUG if a.debug else logging.INFO,
-                        format="%(asctime)s %(name)s %(message)s", datefmt="%H:%M:%S")
-    logging.getLogger("clawops").setLevel(logging.INFO if a.debug else logging.WARNING)
-    st = Settings()
+    setup_logging(a.debug)
+    # 명령행 옵션은 환경변수로 넘긴다. 자동 재시작으로 뜨는 새 프로세스도 같은 설정을 읽게 하기 위해서다.
     if a.sim or a.sim_voice:
-        st.backend = "sim"
+        os.environ["CALL_BACKEND"] = "sim"
     if a.sim_voice:
-        st.sim_voice = True
+        os.environ["SIM_VOICE"] = "1"
     if a.sim_tree:
-        st.sim_tree = a.sim_tree
+        os.environ["SIM_TREE"] = a.sim_tree
+    os.environ["ARS_DEBUG"] = "1" if a.debug else "0"
+    st = Settings()
     import uvicorn
 
     log.info("백엔드=%s%s STT=%s 해석기=%s", st.backend, "(음성)" if st.sim_voice else "", stt_kind(st), st.interpreter)
-    uvicorn.run(create_app(st), host=a.host, port=a.port, log_level="info")
+    if a.no_reload:
+        uvicorn.run(create_app(st), host=a.host, port=a.port, log_level="info")
+        return
+    log.info("자동 재시작 켜짐: .py 파일이 바뀌면 서버를 다시 시작한다 (진행 중 통화는 끊김). 끄려면 --no-reload")
+    uvicorn.run("app:reload_app", factory=True, reload=True, reload_dirs=[str(HERE)], reload_excludes=reload_excludes(),
+                host=a.host, port=a.port, log_level="info")
 
 
 if __name__ == "__main__":
