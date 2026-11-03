@@ -27,3 +27,8 @@ _to_delete/
 bench-*.txt
 call-*.txt
 bench_real/
+
+# bench 시나리오 녹음·단락·평가 결과 (저장 위치 결정 전까지 저장소에 넣지 않는다)
+bench/raw/
+bench/data/
+bench/out/
