@@ -116,8 +116,14 @@ class ClawOpsCall:
         tone = dtmf_ulaw(keys)
         dur = len(tone) / 8000
         self._tone_until = time.monotonic() + dur + 0.05  # 톤 송출 중 마이크 음성 차단
-        for i in range(0, len(tone), FRAME):
+        # 실시간 속도로 보낸다 (20ms 프레임마다). 한꺼번에 밀어 넣으면 전송 쪽 버퍼에서 톤이 겹치거나 잘려
+        # 긴 번호(전화번호 등)의 일부가 ARS 에 인식되지 않을 수 있다
+        t0 = time.monotonic()
+        for n, i in enumerate(range(0, len(tone), FRAME)):
             await leg.call.send_audio(tone[i:i + FRAME])
+            wait = t0 + (n + 1) * FRAME / 8000 - time.monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
         return dur
 
     async def hangup(self) -> None:
