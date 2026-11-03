@@ -32,3 +32,6 @@ bench_real/
 bench/raw/
 bench/data/
 bench/out/
+
+# 웹 화면 빌드용 외부 패키지 (web/build.py 준비 단계에서 받는다)
+web/vendor/

@@ -214,6 +214,11 @@ def create_app(st: Settings | None = None) -> FastAPI:
     async def index():
         return FileResponse(HERE / "static" / "index.html")
 
+    # Android 앱과 같은 동작의 웹 화면 (안드로이드가 없는 팀원 확인용)
+    @app.get("/app")
+    async def web_app():
+        return FileResponse(HERE / "static" / "app.html", headers={"Cache-Control": "no-store"})
+
     @app.get("/v1/health")
     async def health():
         a = manager.active()
