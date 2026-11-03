@@ -1687,6 +1687,24 @@ def test_sibling_choices_are_asked_even_when_model_is_confident():
     run(go())
 
 
+def test_repeated_input_prompt_while_typing_keeps_request_and_late_repeat_after_send_is_ignored():
+    """전화번호처럼 긴 입력을 누르는 동안 ARS 가 입력 안내를 되풀이하면 요청을 바꾸지 않고(같은 request_id 로 만료만 연장),
+    입력을 보낸 뒤 뒤늦게 인식된 되풀이 안내는 새 입력 요청을 만들지 않는다 (사용자가 같은 번호를 또 넣어 오류가 반복되던 문제)."""
+    async def go():
+        s, call = await secure_pending()
+        req = s.pending
+        await s.on_paragraph(RRN)                                    # 입력 중 ARS 가 같은 안내를 되풀이
+        assert s.pending["request_id"] == req["request_id"]          # 요청 유지
+        t_send = time.monotonic()
+        await s.action({"type": "secure_input", "request_id": req["request_id"], "digits": "950101"})
+        assert call.keys[-1].startswith("950101")
+        await s.on_paragraph(RRN, started_at=t_send - 1.0)           # 입력 전에 시작된 되풀이 안내가 뒤늦게 도착
+        assert s.pending is None                                     # 새 입력 요청을 만들지 않는다
+        await s.on_paragraph(RRN, started_at=t_send + 1.0)           # 입력 뒤에 ARS 가 정말로 다시 요구하면 새 요청
+        assert s.pending and s.pending["kind"] == "secure_input"
+    run(go())
+
+
 
 def test_no_answer_keeps_request_by_default_instead_of_calling_agent():
     """기본값에서는 재질문에 답이 없어도 상담원 연결 키를 누르지 않고 요청을 유지한 채 계속 듣는다."""

@@ -520,8 +520,17 @@ class Session:
 
         # AI 사용 여부와 관계없이 처리하는 안내
         if p.kind == "sensitive":
-            if not (self.pending and self.pending["kind"] == "secure_input"):
-                await self._ask_secure(p)
+            if stale and self.last_send_secure:
+                # 사용자가 번호를 누르는 동안 ARS 가 같은 입력 안내를 되풀이한 것이 뒤늦게 인식된 경우.
+                # 이미 입력을 보냈으므로 새 입력 요청을 만들지 않는다 (만들면 사용자가 같은 번호를 또 입력해 '잘못된 입력'이 반복된다)
+                log.info("입력 전송 전에 시작된 입력 안내가 뒤늦게 도착. 무시한다")
+                return
+            if self.pending and self.pending["kind"] == "secure_input":
+                # 입력하는 동안 ARS 가 안내를 되풀이함. 요청은 그대로 두고 만료 시각만 늘려 같은 요청을 다시 알린다
+                self.pending["expires_at"] = now_iso(self.s.secure_expire_s)
+                self.publish("request", self.pending)
+                return
+            await self._ask_secure(p)
             return
         if p.kind == "input_error":
             if self.last_send_secure:
