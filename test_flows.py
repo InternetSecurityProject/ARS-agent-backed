@@ -1659,3 +1659,29 @@ def test_confirm_prompts_do_not_count_as_revisits_and_loop_can_be_disabled():
             await s.on_paragraph(ROOT)      # 같은 메뉴에 여섯 번 도착해도 묻지 않는다
         assert s.pending is None and call.keys == ["5"] * 6
     run(go())
+
+
+def test_sibling_choices_are_asked_even_when_model_is_confident():
+    """'신용·체크카드 1번 / 현금카드 2번' 처럼 같은 대상의 종류를 고르는 안내에서 목적에 구분이 없으면
+    모델이 높은 점수를 줘도 사용자에게 묻는다 (2026-10-27 실통화: '카드' 목적에 신용 체크카드를 0.90 으로 눌러 버림)."""
+    from navigator import sibling_choices
+    from interpreter import Option, _norm
+
+    a, b = Option("1", "신용 체크카드"), Option("2", "현금카드")
+    assert [o.key for o in sibling_choices("카드 분실 신고", a, [b])] == ["2"]
+    assert sibling_choices("신용카드 분실 신고", a, [b]) == []
+    assert sibling_choices("통장 잔액 알고 싶어", Option("3", "잔액조회"), [Option("4", "거래내역조회")]) == []
+
+    menu = "신용 체크카드는 1번, 현금카드는 2번, 다른 서비스는 샵 버튼을 눌러 주십시오."
+
+    async def go():
+        s, call = await manual("카드 분실 신고하고 싶어", clarify_expire_s=5, clarify_drop_s=10)
+        s.d.interp.prompts[_norm(menu)] = (menu, {"kind": "menu", "options": [
+            {"key": "1", "label": "신용 체크카드"}, {"key": "2", "label": "현금카드"}, {"key": "#", "label": "다른 서비스"}]})
+        s.d.interp.goals["카드 분실 신고하고 싶어"] = {"match": {"신용 체크카드": 0.9, "현금카드": 0.1, "다른 서비스": 0.0}}
+        await s.on_paragraph(menu)
+        assert call.keys == [] and s.pending and s.pending["reason"] == "ambiguous"
+        assert [o["key"] for o in s.pending["options"]] == ["1", "2"]
+        await s.action({"type": "select", "request_id": s.pending["request_id"], "key": "2"})
+        assert call.keys == ["2"]
+    run(go())

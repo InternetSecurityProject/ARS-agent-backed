@@ -21,6 +21,48 @@ from dataclasses import dataclass, field
 
 from interpreter import Interpreter, Option, Prompt
 
+_GENERIC = {"서비스", "안내", "업무", "문의", "연결", "메뉴", "기타", "다른", "신청", "조회", "발급", "변경", "확인"}
+
+
+def _chunks(label: str) -> list[str]:
+    """선택지 이름을 낱말 조각으로: '신용 체크카드' → ['신용', '체크', '카드'], '현금카드' → ['현금', '카드']."""
+    import re
+
+    out: list[str] = []
+    for w in re.split(r"[\s·,/및과와]+", label):
+        w = re.sub(r"[^가-힣A-Za-z0-9]", "", w)
+        if not w:
+            continue
+        # '체크카드'·'현금카드'·'집주소' 처럼 붙은 복합어는 뒤의 공통 명사를 떼어 둔다 (2글자 명사 기준)
+        m = re.match(r"^(.{2,})(카드|주소|계좌|통장|보험|요금|번호|예금|대출|수표)$", w)
+        out += [m.group(1), m.group(2)] if m else [w]
+    return out
+
+
+def sibling_choices(goal: str, best: Option, others: list[Option]) -> list[Option]:
+    """best 가 다른 선택지와 같은 대상의 '종류'를 고르는 선택지인데(신용·체크카드 / 현금카드, 집 주소 / 회사 주소,
+    국민은행 송금 / 타행 송금), 목적에 그 종류를 가르는 말이 없으면 AI 가 대신 고르지 않고 사용자에게 묻는다.
+    같은 대상 = 선택지 이름의 마지막 명사(머리말)가 같다. '결제일 변경 / 결제 대금 조회' 처럼 머리말이 다르면 다른 업무다."""
+    g = goal.replace(" ", "")
+
+    def same(a: str, b: str) -> bool:  # '주소지'·'주소' 처럼 한쪽이 다른 쪽으로 시작하면 같은 명사로 본다
+        return len(a) >= 2 and len(b) >= 2 and (a.startswith(b) or b.startswith(a))
+
+    bc = _chunks(best.label)
+    if len(bc) < 2 or bc[-1] in _GENERIC:
+        return []
+    twins: list[Option] = []
+    for o in others:
+        oc = _chunks(o.label)
+        if len(oc) < 2 or not same(bc[-1], oc[-1]):
+            continue
+        if any(c in g for c in bc[:-1] if len(c) >= 2):
+            continue  # 목적이 best 쪽을 가리킨다 ("신용카드 …" → 신용 체크카드)
+        if any(c in g for c in oc[:-1] if len(c) >= 2):
+            continue  # 목적이 다른 쪽을 가리킨다
+        twins.append(o)
+    return twins
+
 
 @dataclass
 class Layer:
@@ -51,6 +93,7 @@ class NavState:
     visits: Counter = field(default_factory=Counter)
     revisits: int = 0                   # 키 전송 결과로 이미 지나온 메뉴에 다시 도착한 횟수
     low_asked: set[str] = field(default_factory=set)  # low_confidence 재질문을 이미 한 계층
+    sibling_asked: set[str] = field(default_factory=set)  # 같은 대상의 종류를 고르는 재질문을 이미 한 계층
 
     def reset_loop(self) -> None:
         """반복(loop) 재질문에 사용자가 응답하면 반복 판정을 처음부터 다시 센다."""
@@ -99,6 +142,12 @@ class Navigator:
             best, s1 = ranked[0]
             s2 = ranked[1][1] if len(ranked) > 1 else 0.0
             if s1 - s2 >= self.margin:
+                twins = sibling_choices(st.goal, best, [o for o, _ in ranked[1:]]) if sig not in st.sibling_asked else []
+                if twins:
+                    # 같은 대상의 종류를 고르는 선택지인데 목적에 그 구분이 없다. 모델이 높게 줘도 사용자가 고른다 (계층당 1회)
+                    st.sibling_asked.add(sig)
+                    return Decision("ask", reason="ambiguous", note=f"'{best.label}' 과 '{twins[0].label}' 중 목적만으로 구분 불가",
+                                    options=[best] + twins, scores=scores)
                 return Decision("press", key=best.key, note=f"'{best.label}' 일치율 {s1:.2f}", scores=scores)
             cands = [o for o, s in ranked if s >= self.threshold and s1 - s < self.margin]
             return Decision("ask", reason="ambiguous", note=f"1·2순위 차이 {s1 - s2:.2f}", options=cands, scores=scores)
