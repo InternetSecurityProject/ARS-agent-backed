@@ -1845,7 +1845,7 @@ function LivePurposeScreen({ entry, server, voice }) {
   return html`<div class="screen grad">
     <${CallScreen} state=${{ ...appState0(), screen: "Purpose", number: entry.number, agent: true }} dispatch=${(a) => { if (a.type === "Back") owner.cancelPurpose(); }}
       liveControls=${liveControls0()} purposeContent=${purposeContent}/>
-    ${entry.confirmation && html`<${LiveConfirmDialog} key=${jsonKey(entry.confirmation)} target=${entry.confirmation} confirm=${(k) => owner.confirm(k)} dismiss=${() => owner.dismissConfirmation()}/>`}
+    ${entry.confirmation && html`<${LiveConfirmDialog} key=${jsonKey(entry.confirmation)} target=${entry.confirmation} confirm=${(k, record) => owner.confirm(k, record)} dismiss=${() => owner.dismissConfirmation()}/>`}
   </div>`;
 }
 function LiveConfirmDialog({ target, confirm, dismiss }) {
