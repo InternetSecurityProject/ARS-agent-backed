@@ -40,6 +40,18 @@ class Option:
         return {"key": self.key, "label": self.label, "category": self.category}
 
 
+@dataclass(frozen=True)
+class RouteAssessment:
+    """Optional internal routing extension, separate from menu-match scores.
+
+    unknown is fail-safe: a failed inference is not evidence of service absence.
+    """
+    status: str = "unknown"  # proceed / needs_info / unavailable / unknown
+    confidence: float = 0.0
+    clarification_keys: tuple[str, ...] = ()  # Independently verified user-detail alternatives, internal only.
+    clarification_dimension: str = ""  # purpose can require a free answer without two menu choices.
+
+
 # Prompt.kind 값 (명세서 9.2)
 #   menu          번호 선택 메뉴
 #   confirm       확인 질문 ("맞으면 1번")

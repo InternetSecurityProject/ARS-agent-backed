@@ -134,7 +134,7 @@ const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]", "10.0.2.2"];
 // 앱의 SERVER_TEST_URL(https://ars.mcsmtp.org/v1)에 해당한다. 이 페이지를 연 서버와 같은 주소를 쓴다.
 const SERVER_TEST_URL = location.origin + "/v1";
 // 앱과 같이 HTTPS 만 허용한다 (HttpServerTestGateway·ArsAudio 의 allowLocalHttp 기본값 false).
-const ALLOW_LOCAL_HTTP = false;
+const ALLOW_LOCAL_HTTP = true; // local-only test copy; server binds 127.0.0.1
 
 const isBlank = (s) => s == null || String(s).trim() === "";
 const asciiPrintable = (s, lo = 32) => [...s].every((c) => { const n = c.charCodeAt(0); return n >= lo && n <= 126; });

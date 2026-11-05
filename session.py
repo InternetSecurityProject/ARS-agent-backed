@@ -21,6 +21,12 @@ from config import Settings
 from interpreter import Interpreter, Option, Prompt
 from navigator import Layer, NavState, Navigator
 from recording import CallRecorder
+from recovery_budget import MenuRecoveryBudgets
+from dtmf_echo import DtmfEchoGuard
+from readback_display import (DIGIT_RUN, SPOKEN_LONG_RUN, readback_message, readback_options,
+                              phone_confirmation_source)
+from phone_readback import PhoneReadbackPermit
+from choice_display import choice_display_options
 from stt import Recognizer
 from telephony import Backend, Call, CallHandlers
 
@@ -68,9 +74,9 @@ END_TEXT = {
 
 # 입력값 되읽기: "입력하신 번호는 123456, 맞으면 1번" 처럼 입력 표현과 확인 표현이 함께 있는 안내
 _READBACK_RE = re.compile(r"(입력하신|누르신|입력한).*(맞으|맞습니까|확인|정확)|(맞으|맞습니까|확인|정확).*(입력하신|누르신|입력한)")
-_DIGITS_RE = re.compile(r"[0-9][0-9\s,\-]{2,}[0-9]|(?:[공영일이삼사오육칠팔구]\s*){4,}")
+_DIGITS_RE = DIGIT_RUN
 _NO_ANSWER_RE = re.compile(r"틀|아니|다시|재입력|취소|정정|수정")  # 되읽기 확인에서 '아니요' 쪽 선택지 이름
-_SPOKEN_RUN_RE = re.compile(r"(?:[공영일이삼사오육칠팔구]\s*){6,}")  # 한국어 숫자를 여섯 자 이상 이어 읽음 (금액·시각은 이렇게 읽지 않는다)
+_SPOKEN_RUN_RE = SPOKEN_LONG_RUN  # 문장부호로 끊긴 숫자 되읽기도 포함
 
 
 def _obj(word: str) -> str:
@@ -89,14 +95,12 @@ def key_name(key: str) -> str:
 
 
 def caption_text(p: Prompt, text: str) -> str:
-    """앱에 보내는 자막(caption.text). 앱은 해석 없이 그대로 보여 주므로 서버가 보여 줄 형태로 만든다.
-    선택지가 있는 안내(메뉴·확인 질문)는 STT 원문 대신 AI 가 뽑은 선택지 목록으로 압축한다:
-    "잔액조회 3번 · 거래내역조회 4번 · 상담직원 연결 0번 · 다시 듣기 별표". 그 밖의 안내(결과·오류·일반 안내)는 원문 그대로다.
-    결과 요약(summarize_result)은 captions 를 입력으로 쓰므로 결과 안내는 원문을 유지해야 한다."""
-    opts = p.all_options() if p.options else []
-    if not opts:
-        return text
-    return " · ".join(f"{o.label} {key_name(o.key)}" for o in opts)
+    """ARS 자막은 받아쓴 문장을 보존한다. AI 메뉴/미확정 라벨로 재구성하지 않는다.
+
+    민감정보 마스킹과 되읽기·입력 안내 제외는 호출 전 _paragraph에서 처리한다.
+    메뉴 옵션과 이동 경로는 기존 구조화 이벤트를 사용한다.
+    """
+    return text
 
 
 def mask_digits(text: str, length: int | None = None) -> tuple[str, bool]:
@@ -128,9 +132,9 @@ class EventHub:
     def unsubscribe(self, q: asyncio.Queue) -> None:
         self.queues.discard(q)
 
-    def publish(self, event: str, data: dict) -> None:
+    def publish(self, event: str, data: dict, *, history_data: dict | None = None) -> None:
         msg = {"event": event, "at": now_iso(), "data": data}
-        self.history.append(msg)
+        self.history.append(msg if history_data is None else {**msg, "data": history_data})
         for q in list(self.queues):
             q.put_nowait(msg)
 
@@ -142,6 +146,7 @@ class Deps:
     recognizer: Recognizer
     interp: Interpreter
     navigator: Navigator
+    private_recognizer: Recognizer | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +159,11 @@ class Session:
         self.phone = phone
         self.d = deps
         self.s = deps.settings
+        fork = getattr(deps.interp, 'new_session', None)
+        self.interp = fork() if fork else deps.interp
+        self.navigator = (Navigator(self.interp, deps.navigator.threshold, deps.navigator.margin,
+                                   deps.navigator.max_revisit, deps.navigator.max_presses, deps.navigator.low)
+                          if fork else deps.navigator)
         self.hub = EventHub()
         self.audio_out: set[asyncio.Queue] = set()   # 앱 오디오 채널 (서버 → 앱)
 
@@ -182,6 +192,9 @@ class Session:
         self.redo_same_menu = False          # 입력 오류 뒤 같은 메뉴를 다시 판단
         self.after_backtrack = False         # 이전 계층으로 돌아가는 중
         self.input_errors = 0
+        # Recovery budgets reset only on a real menu transition / goal change,
+        # never merely because ASR wording changed during the same menu replay.
+        self._system_recovery_budget = MenuRecoveryBudgets()
 
         self.pending: dict | None = None
         self.req_seq = 0
@@ -206,8 +219,23 @@ class Session:
         self.closed = False                  # ended 이벤트를 보냄. 이후에는 이벤트를 보내지 않는다
 
         self.segmenter = Segmenter(self.s.vad_rms, self.s.paragraph_silence_ms)
+        self._prefetch = None
+        self._prefetch_segments = set()
+        self._segment_private = False
+        self._segment_phone_ticket = None
+        self._private_generation = 0
+        self._segment_private_generation = 0
+        self._private_tail_frames = 0
+        self._phone_readback = PhoneReadbackPermit(
+            self.s.allow_openai_phone_readback and self.s.stt == 'openai'
+            and not self.d.recognizer.is_local)
+        self._phone_confirmation_pending = False
+        if self.s.stt_prefetch and callable(getattr(self.d.recognizer, 'new_segment', None)):
+            self.segmenter.on_chunk = self._prefetch_chunk
         self.stt_q: asyncio.Queue = asyncio.Queue()
         self.stt_inflight = 0                # 인식을 기다리거나 처리 중인 단락 수
+        self._processing_stt_task = None
+        self._key_echo = DtmfEchoGuard()
         self._timers: dict[str, asyncio.Task] = {}
         self._tasks: set[asyncio.Task] = set()
         self._lock = asyncio.Lock()
@@ -233,6 +261,15 @@ class Session:
             log.exception("AI 모듈 %s 실패. 대체값으로 진행", name)
             return fallback
 
+    async def _classify(self, text: str) -> Prompt:
+        historical = getattr(self.interp, 'classify_history', None)
+        if historical:
+            return await historical(text, self.goal or '', self.layers)
+        contextual = getattr(self.interp, 'classify_context', None)
+        path = [layer.prompt.category_of(layer.key) for layer in self.layers]
+        return (await contextual(text, self.goal or '', path) if contextual
+                else await self.interp.classify(text))
+
     def timer(self, name: str, delay: float, fn: Callable[[], Awaitable[None]]) -> None:
         self.cancel_timer(name)
 
@@ -252,12 +289,15 @@ class Session:
     def ended(self) -> bool:
         return self.status == "ended"
 
-    def publish(self, event: str, data: dict) -> None:
+    def publish(self, event: str, data: dict, *, record_data: dict | None = None) -> None:
         """이벤트 전송. ended 가 마지막 이벤트이며, 종료 뒤 늦게 끝난 처리의 이벤트는 보내지 않는다."""
         if not self.closed:
             if self.recorder is not None:
-                self.recorder.event(event, data)
-            self.hub.publish(event, data)
+                self.recorder.event(event, data if record_data is None else record_data)
+            if record_data is None:
+                self.hub.publish(event, data)
+            else:
+                self.hub.publish(event, data, history_data=record_data)
 
     def set_status(self, status: str, message: str | None = None) -> None:
         if self.ended:
@@ -293,7 +333,7 @@ class Session:
         if record:
             self.recorder = CallRecorder({"session_id": self.id, "phone": self.phone, "goal": self.goal,
                                           "backend": self.s.backend, "stt": self.s.stt, "interpreter": self.s.interpreter})
-        self.goal_summary = await self._ai("summarize_goal", self.d.interp.summarize_goal(self.goal),
+        self.goal_summary = await self._ai("summarize_goal", self.interp.summarize_goal(self.goal),
                                            f"'{self.goal}' 업무를 찾아 드릴게요.")
         self.agent_active = True
         self.nav = NavState(self.goal)
@@ -362,6 +402,11 @@ class Session:
         if self.end_reason is not None:
             return
         self.end_reason = reason
+        self._private_generation += 1
+        self._phone_readback.revoke()
+        self._phone_confirmation_pending = False
+        self._discard_prefetch()
+        self._key_echo.clear()
         self.ended_at = time.monotonic()
         self.pending = None
         self.agent_active = False
@@ -385,6 +430,36 @@ class Session:
         self.stt_q.put_nowait(None)  # 음성 인식 작업 종료
 
     # 오디오 ----------------------------------------------------------------
+    def _private_stt_audio(self) -> bool:
+        if self.d.recognizer.is_local:
+            return False
+        if self.pending and self.pending.get('kind') == 'secure_input':
+            return True
+        if self._phone_confirmation_pending:
+            return True  # The one recognized readback is already shown; wait for the user's reply.
+        if self._phone_readback.active():
+            return False
+        if self.d.private_recognizer is not None and self.secure_window:
+            return True  # Fail closed: unknown readbacks cannot become public by timer expiry.
+        return bool(self.secure_queued or (self.secure_window and
+                    (not self.secure_sent_at or time.monotonic()-self.secure_sent_at<self.s.secure_skip_s)))
+
+    def _discard_prefetch(self):
+        for context in self._prefetch_segments: context.discard()
+        self._prefetch_segments.clear()
+        self._prefetch = None
+
+    def _prefetch_chunk(self, prefix: bytes, start: int):
+        if self.closed or self.end_reason is not None or self.hangup_seen: return
+        if self._private_stt_audio():
+            self._segment_private = True
+        if self._segment_private or self._phone_readback.active(): return
+        if self._prefetch is None:
+            if len(self._prefetch_segments)>=3: return
+            self._prefetch = self.d.recognizer.new_segment()
+            self._prefetch_segments.add(self._prefetch)
+        self._prefetch.offer(prefix)
+
     async def _on_audio(self, frame: bytes) -> None:
         if self.recorder is not None and not self.closed:
             self.recorder.audio(frame)
@@ -392,9 +467,20 @@ class Session:
             if q.qsize() < 50:  # 1초 이상 밀리면 버린다
                 q.put_nowait(frame)
         if (self.call is None or self.call.provides_transcripts or self.status == "connected_to_agent"
-                or self.hangup_seen):
+                or self.hangup_seen or self.end_reason is not None):
             return
+        frame=self._key_echo.filter(frame)
+        private = self._private_stt_audio()
+        self._private_tail_frames = 10 if private else max(0,self._private_tail_frames-1)
         was_speaking = self.segmenter.speaking
+        if not was_speaking:
+            self._segment_private_generation = self._private_generation
+            self._segment_private = private or bool(self._private_tail_frames)
+            self._segment_phone_ticket = (self._phone_readback.generation
+                                          if self._phone_readback.active() else None)
+        elif private:
+            self._segment_private = True
+            if self._prefetch is not None: self._prefetch.discard()
         seg = self.segmenter.feed(frame)
         if self.segmenter.speaking and not was_speaking:
             self.seg_started_at = time.monotonic()  # 이 단락의 소리가 시작됐다고 판정한 때 (키 이전 안내 판별용)
@@ -402,25 +488,61 @@ class Session:
             self.heard_since_press = True
         if seg is not None:
             self._queue_segment(seg, self.seg_started_at)
+        elif was_speaking and not self.segmenter.speaking:
+            # The detector can discard a music/noise paragraph without
+            # returning audio. Do not carry that paragraph's context forward.
+            if self._prefetch is not None:
+                self._prefetch.discard()
+                self._prefetch_segments.discard(self._prefetch)
+                self._prefetch = None
+            self._segment_private = False
+            self._segment_phone_ticket = None
 
     def _queue_segment(self, seg: bytes, started_at: float | None) -> None:
         self.stt_inflight += 1
-        self.stt_q.put_nowait((seg, started_at, self.recorder.pos if self.recorder else 0))
+        self.stt_q.put_nowait((seg, started_at, self.recorder.pos if self.recorder else 0,
+                              self._prefetch, self._segment_private, self._segment_phone_ticket,
+                              self._segment_private_generation))
+        self._prefetch = None
+        self._segment_private = False
+        self._segment_phone_ticket = None
 
     def _ars_active(self) -> bool:
         """ARS 가 안내하는 중이거나, 끝난 안내를 아직 인식·처리하는 중인지 (가상 ARS 는 call.speaking 으로 알린다)."""
         return bool(getattr(self.call, "speaking", False) or self.segmenter.speaking or self.stt_inflight)
+
+    def _ars_active_for_recovery(self) -> bool:
+        active=self._ars_active()
+        if (active and self._processing_stt_task is not None
+                and self._processing_stt_task is asyncio.current_task()):
+            # The paragraph being decided is done. Other queued recognition or
+            # incoming speech must still prevent an interrupting replay.
+            return bool(getattr(self.call,'speaking',False) or self.segmenter.speaking or self.stt_inflight>1)
+        return active
 
     async def _stt_worker(self) -> None:
         while not self.ended:
             item = await self.stt_q.get()
             if item is None:
                 break  # 통화 종료
-            seg, started_at, end_sample = item if len(item) == 3 else (*item, 0)
+            seg, started_at, end_sample = item[:3] if len(item)>=3 else (*item, 0)
+            prefetched = item[3] if len(item)>3 else None
+            private_segment = item[4] if len(item)>4 else False
+            phone_ticket = item[5] if len(item)>5 else None
+            private_generation = item[6] if len(item)>6 else self._private_generation
             del item
             rec = self.recorder
             try:
-                if self.secure_window and not self.d.recognizer.is_local:
+                if phone_ticket is not None and not self._phone_readback.valid(phone_ticket):
+                    if prefetched is not None: prefetched.discard()
+                    continue
+                if private_segment or self._private_stt_audio():
+                    if prefetched is not None: prefetched.discard()
+                    if rec: rec.note('stt_skipped', reason='개인정보 보호 구간과 겹친 단락', seg_end_t=round(end_sample/8000,2))
+                    if self.d.private_recognizer is not None:
+                        await self._protected_segment(seg, started_at, private_generation)
+                    continue
+                if self.secure_window and not self.d.recognizer.is_local and phone_ticket is None:
                     # 외부 STT 에는 입력값을 다시 읽어 주는 구간을 보내지 않는다. 문장을 받지 못하면 구간을 닫을 계기가 없으므로
                     # 입력 전송 뒤 secure_skip_s 가 지나면 구간을 닫고 다시 인식한다 (그 사이의 되읽기 확인은 사용자가 소리를 듣고 직접 누른다)
                     if time.monotonic() - self.secure_sent_at < self.s.secure_skip_s:
@@ -438,19 +560,110 @@ class Session:
                         rec.note("stt_skipped", reason=f"소리 {voiced:.2f}초뿐인 단락", seg_end_t=round(end_sample / 8000, 2))
                     continue
                 t_stt = time.monotonic()
-                text = await self.d.recognizer.recognize(seg)
+                text = (await prefetched.finish(seg) if prefetched is not None
+                        else await self.d.recognizer.recognize(seg))
                 if rec:
-                    rec.stt(text, end_sample, len(seg), time.monotonic() - t_stt, self.s.stt)
+                    record_text = phone_confirmation_source(text) if phone_ticket is not None else text
+                    rec.stt(record_text, end_sample, len(seg), time.monotonic() - t_stt, self.s.stt)
+                    if prefetched is not None: rec.note('stt_prefetch', **prefetched.metrics)
                 del seg
+                if phone_ticket is not None and not self._phone_readback.valid(phone_ticket):
+                    continue  # A new request/close must not receive this older result.
                 if text and len(re.sub(r"[^가-힣0-9A-Za-z]", "", text)) < 3:
                     log.info("두 글자 이하 인식 결과는 버린다: %s", text)
                     continue
                 if text:
-                    await self.on_paragraph(text, started_at)
+                    self._processing_stt_task=asyncio.current_task()
+                    try:
+                        if phone_ticket is not None:
+                            await self.on_paragraph(text, started_at, phone_readback_ticket=phone_ticket)
+                        else:
+                            await self.on_paragraph(text, started_at)
+                    finally:
+                        self._processing_stt_task=None
             except Exception:
                 log.exception("안내 처리 오류")  # 한 단락의 오류로 인식 작업이 멈추지 않게 한다
             finally:
+                if prefetched is not None:
+                    prefetched.discard()
+                    self._prefetch_segments.discard(prefetched)
                 self.stt_inflight -= 1
+
+    async def _protected_segment(self, audio: bytes, started_at: float | None, generation: int) -> None:
+        """Protected audio/text never goes through the external STT/interpreter."""
+        if generation != self._private_generation or self.ended:
+            return
+        started = time.monotonic()
+        try:
+            text = await self.d.private_recognizer.recognize(audio)
+        except Exception:
+            text = ''  # Recognizer errors can contain private text. Do not log them.
+        from protected_input import protected_prompt
+        p = protected_prompt(text)
+        async with self._lock:
+            if (generation != self._private_generation or self.ended
+                    or self.status == 'connected_to_agent'
+                    or (started_at is not None and self.last_key_at is not None and started_at < self.last_key_at)):
+                return
+            if self.hangup_seen and (p is None or p.kind != 'result'):
+                return  # Final results can flush; new requests/controls cannot.
+            if self.recorder:
+                self.recorder.note('protected_stt', engine='local_whisper',
+                    seconds=round(time.monotonic()-started,3), kind=p.kind if p else 'unresolved')
+            if p is None:
+                if self.pending is None:
+                    self.set_status(self.idle_status(), '개인정보 안내를 로컬에서 확인 중이에요. 인식이 불확실하면 ARS 소리로 확인해 주세요.')
+                return
+            self.cancel_timer('no_response')
+            self.key_outstanding = False
+            same_input = (p.kind == 'sensitive' and p.label and
+                          re.sub(r'\s*(?:앞|뒤)?\s*\d+자리$', '', p.label).strip() == self.secure_label)
+            if self.secure_queued and same_input:
+                return  # Still the same input prompt; let the queued value send after recognition.
+            if self.secure_queued:
+                self.secure_abort = True
+                task = getattr(self, '_secure_task', None)
+                if task and not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+            if self.pending and self.pending['kind'] == 'secure_input' and same_input:
+                self.pending['expires_at'] = now_iso(self.s.secure_expire_s)
+                self.publish('request', self.pending)
+                return
+            if p.kind == 'sensitive':
+                self._close_request()
+                await self._ask_secure(p)  # Canonical field metadata, never the raw paragraph.
+            elif p.kind in ('confirm', 'menu'):
+                self._close_request()
+                if p.kind == 'confirm':
+                    p.readback_of = self.secure_label
+                self.current, self.current_fresh = p, True
+                display_options=choice_display_options(text,p.options)
+                if p.kind=='confirm':
+                    p._readback_ui_options=display_options
+                # Button-only: spoken replies must not forward a private UI
+                # question to an external merge_answer call. History is redacted.
+                await self._ask(p, 'critical_action', display_options,
+                    readback_message(text, self.secure_label, self.secure_len) if p.kind == 'confirm' else text,
+                    record_message=p.text)
+            elif p.kind == 'input_error':
+                self._close_request()
+                self.set_status(self.idle_status(), p.text + ' 다음 입력 안내를 기다리고 있어요.')
+            elif p.kind == 'result':
+                self._close_request()
+                self.result_heard = True
+                self.agent_active = False
+                self.key_queue.clear()
+                # Safe generic spoken summary; private result stays in UI-only
+                # key_info, not cloud summarization, caption/history or logs.
+                self.summary = {'kind': 'result', 'summary': p.text,
+                                'key_info': [{'label': 'ARS 결과 안내', 'value': text}], 'handoff_script': None}
+                self.publish('summary', self.summary, record_data={**self.summary, 'key_info': []})
+                if not self.hangup_seen:
+                    self.set_status('agent_done')
 
     async def mic_audio(self, frame: bytes) -> None:
         """앱 마이크 음성. 상담원 연결 중에만 통화로 보낸다 (그 외에는 사용자 음성을 중계하지 않는다)."""
@@ -462,15 +675,19 @@ class Session:
         await self.on_paragraph(text, started_at)
 
     # 안내 처리 ---------------------------------------------------------------
-    async def on_paragraph(self, text: str, started_at: float | None = None) -> None:
+    async def on_paragraph(self, text: str, started_at: float | None = None,
+                           *, phone_readback_ticket: int | None = None) -> None:
         """ARS 안내 한 단락. started_at 은 그 안내의 소리가 시작된 시각(monotonic). 모르면 None."""
         if self.ended or self.status == "connected_to_agent":
             return
         async with self._lock:
-            await self._paragraph(text, started_at)
+            if phone_readback_ticket is not None and not self._phone_readback.valid(phone_readback_ticket):
+                return
+            await self._paragraph(text, started_at, phone_readback_source=phone_readback_ticket is not None)
 
-    async def _paragraph(self, text: str, started_at: float | None = None) -> None:
-        interp = self.d.interp
+    async def _paragraph(self, text: str, started_at: float | None = None,
+                         *, phone_readback_source=False) -> None:
+        interp = self.interp
         self.cancel_timer("no_response")
         self.heard_since_press = True  # ARS 가 키에 응답했다
         # 우리가 키를 보내기 전에 시작된 안내는 키 이전 상태를 말한 것이다 (예: AI 판단이 ARS 입력 대기보다 늦어
@@ -481,17 +698,31 @@ class Session:
             self.key_outstanding = False
 
         # 되읽기 구간이 닫혔더라도 "입력하신 … 맞으면" 문장에 한국어 숫자를 길게 읽는 부분이 있으면 입력값 되읽기로 본다
-        readback = bool(_READBACK_RE.search(text)) and (self.secure_window or bool(_SPOKEN_RUN_RE.search(text)))
+        phone_choices = (readback_options(text, Prompt('confirm', '')) if phone_readback_source else [])
+        readback = (bool(_READBACK_RE.search(text)) and (self.secure_window or bool(_SPOKEN_RUN_RE.search(text))))
+        readback |= bool(phone_choices)
+        if phone_readback_source and not readback:
+            # Consent is for OpenAI recognition only. Even a wrong-length,
+            # Arabic-only or partial readback must never reach Jev/captions.
+            text = phone_confirmation_source(text)
         if self.secure_window or readback:
             # ARS 가 입력값을 다시 읽어 주는 안내("입력하신 번호는 … 맞으면 1번")는 숫자를 가린 뒤 판단만 하고 자막으로 보내지 않는다
             if readback:
-                masked, _ = mask_digits(text)
+                consented_phone = self._phone_readback.active()
+                self._phone_readback.revoke()
+                masked = phone_confirmation_source(text) if phone_readback_source else mask_digits(text)[0]
+                important = bool(phone_readback_source and re.search(r'결제|송금|이체|해지|해약|계약|가입', text))
                 # 판단(Gemini)·자막·로그에는 숫자를 가린 문장을 쓴다. 사용자에게 묻는 문구만 원문을 그대로 쓴다:
                 # 사용자가 입력한 값이 맞게 전달됐는지 화면에서 확인하려면 되읽힌 숫자를 봐야 한다 (사용자 결정 2026-10-27).
                 # 서버는 이 문장을 저장하지 않으며, 요청이 닫히면 사라진다
                 shown = text
                 del text
-                p = await self._ai("classify", interp.classify(masked), Prompt(kind="info", text=masked))
+                p = await self._ai("classify", self._classify(masked), Prompt(kind="info", text=masked))
+                p.critical |= important
+                if phone_choices and p.kind not in ('menu', 'confirm'):
+                    # Explicit source-proven confirmation asks the user; it
+                    # never authorizes an automatic business-menu selection.
+                    p = Prompt('confirm', masked, phone_choices, critical=p.critical)
                 if p.kind in ("menu", "confirm"):
                     p.readback_of = self.secure_label  # 경로 표시용: 어떤 입력을 확인한 단계인지
                 if p.kind == "sensitive":
@@ -499,19 +730,32 @@ class Session:
                 elif p.kind in ("menu", "confirm"):
                     self.current, self.current_fresh = p, True
                     if self.agent_active:
-                        await self._ask(p, "unknown_prompt", p.options, shown)  # 되읽힌 숫자를 포함한 원문으로 묻는다
+                        self._phone_confirmation_pending |= consented_phone
+                        p._readback_ui_options = readback_options(shown, p)
+                        await self._ask(p, 'critical_action' if p.critical else 'unknown_prompt', p._readback_ui_options,
+                                        readback_message(shown, self.secure_label, self.secure_len))
                 return
             # 되읽기 문장이 아니어도, 입력한 자릿수와 같은 숫자열이 들리면 입력값으로 보고 가린다 (금액·날짜는 자릿수가 달라 남는다).
             # 인식이 한두 글자 틀려 자릿수가 달라져도, 한국어 숫자를 여섯 자 이상 이어 읽는 것은 입력값 되읽기이므로 가린다
             text, hit = mask_digits(text, self.secure_len)
-            text, hit2 = _SPOKEN_RUN_RE.subn(lambda m: "*" * _digit_count(m.group()), text)
+            # Mixed Hangul/Arabic readback can have an STT length error too.
+            # Do not turn a different-length ordinary Arabic balance/date into
+            # private digits merely because a secure window is still closing.
+            guarded = _SPOKEN_RUN_RE.sub(
+                lambda m: '*' * _digit_count(m.group())
+                if re.search('[공영일이삼사오육칠팔구]', m.group()) else m.group(), text)
+            hit2 = guarded != text
+            text = guarded
             if hit or hit2:
                 log.info("민감정보 입력 뒤 숫자열을 가렸다")
             closing_secure = True
         else:
             closing_secure = False
 
-        p = await self._ai("classify", interp.classify(text), Prompt(kind="info", text=text))
+        p = await self._ai("classify", self._classify(text), Prompt(kind="info", text=text))
+        if p.kind != 'info':
+            self._phone_readback.revoke()
+            self._phone_confirmation_pending = False
         if self.recorder is not None:
             self.recorder.note("classified", kind=p.kind, text=text,
                                options=[f"{o.key}:{o.label}" for o in (p.options or [])])
@@ -663,7 +907,7 @@ class Session:
         self.pending = None
         self.set_status("connected_to_agent")
         texts = [p["text"] for p in self.path]
-        script = (await self._ai("handoff_script", self.d.interp.handoff_script(self.goal, texts),
+        script = (await self._ai("handoff_script", self.interp.handoff_script(self.goal, texts),
                                  self._handoff_fallback()) if self.goal else None)
         if self.ended or self.summary is not None:
             return
@@ -698,22 +942,41 @@ class Session:
             if p.critical:  # 결제·계약·해지 최종 승인 등은 확인 질문이어도 키를 보내지 않는다 (1.1 원칙 5)
                 await self._ask(p, "critical_action", p.options)
                 return
-            key = await self._ai("answer_confirm", self.d.interp.answer_confirm(self.goal or "", p), None)
+            key = await self._ai("answer_confirm", self.interp.answer_confirm(self.goal or "", p), None)
             if self.ended or self.hangup_seen:
                 return  # 판단하는 동안 통화가 끊겼다
             if key:
                 self.set_status("selecting")
                 await self._press(key, "ai", p)
             else:
-                await self._ask(p, "unknown_prompt", p.options)
+                if getattr(self.interp, 'system_recovery', False):
+                    # A missing fact in an ordinary confirmation (e.g. whether
+                    # the announced appointment is correct) still belongs to
+                    # the user. Require the same verified alternatives as menus.
+                    route = await self._ai('confirm_route', self.interp.assess_route(
+                        self.goal or '', p, p.options,
+                        [l.prompt.category_of(l.key) for l in self.layers]), None)
+                    if self.ended or self.hangup_seen or self.pending is not None or not self.agent_active:
+                        return
+                    relevant = [o for o in p.options if o.key in getattr(route,'clarification_keys',())]
+                    if getattr(route,'status',None)=='needs_info' and len(relevant)>=2:
+                        await self._ask(p,'ambiguous',relevant,
+                            message=f"{' / '.join(o.label for o in relevant)} 중 어떤 쪽인가요?")
+                    else:
+                        await self._recover_system(p)
+                else:
+                    await self._ask(p, "unknown_prompt", p.options)
             return
         try:
-            dec = await self.d.navigator.decide(self.nav, p, self.layers, arrived)
+            dec = await self.navigator.decide(self.nav, p, self.layers, arrived)
         except Exception:
-            log.exception("AI 모듈 score 실패. 사용자에게 묻는다")
+            log.exception("AI 모듈 score 실패")
             if not (self.ended or self.hangup_seen):
-                await self._ask(p, "unknown_prompt", p.options,
-                                "안내를 해석하지 못했습니다. 원하시는 메뉴를 말씀하거나 직접 골라 주세요.")
+                if getattr(self.interp, 'system_recovery', False):
+                    await self._recover_system(p)
+                else:
+                    await self._ask(p, "unknown_prompt", p.options,
+                                    "안내를 해석하지 못했습니다. 원하시는 메뉴를 말씀하거나 직접 골라 주세요.")
             return
         if self.ended or self.hangup_seen:
             return  # 판단하는 동안 통화가 끊겼다
@@ -725,7 +988,9 @@ class Session:
             self.set_status("selecting", f"'{p.label_of(dec.key)}' 메뉴를 선택합니다.")
             await self._press(dec.key, "ai", p, confidence=dec.scores.get(dec.key))
         elif dec.action == "ask":
-            await self._ask(p, dec.reason, dec.options, scores=dec.scores)
+            await self._ask(p, dec.reason, dec.options, message=dec.message, scores=dec.scores)
+        elif dec.action == 'recover':
+            await self._recover_system(p, reanalyze=dec.reason != 'navigation_limit')
         elif dec.action == "backtrack":
             # '이전 메뉴' 키를 누르면 _press 가 마지막 계층을 지운다.
             # '처음으로' 키를 쓰는 경우 지나온 키를 key_queue 로 다시 누르며 계층을 다시 쌓는다.
@@ -740,30 +1005,112 @@ class Session:
             self.set_status("selecting", "맞는 메뉴가 없어 이전 메뉴를 확인합니다.")
             await self._press(keys, "ai", p)
         elif dec.action == "end":
+            if dec.reason == "not_found" and callable(getattr(self.interp, 'assess_route', None)):
+                self.set_status("selecting", "말씀하신 업무로 진행할 수 있는 메뉴를 찾지 못했어요. 통화를 종료할게요.")
             await self.finish(dec.reason, note=dec.note)
+
+    async def _recover_system(self, p: Prompt, *, reanalyze=True) -> None:
+        """No user-purpose question for an AI/STT failure. No guessed keys.
+
+        One bounded internal reanalysis and one verified current-menu replay
+        per distinct observed menu, with a shared per-layer cap. A persistent
+        failure remains visibly listening.
+        """
+        if (self.ended or self.hangup_seen or not self.agent_active or self.pending is not None
+                or p is not self.current or not self.current_fresh):
+            return
+        key = (self.goal, tuple((l.prompt.text,l.key) for l in self.layers))
+        budget = self._system_recovery_budget.for_prompt(key,p)
+        if budget is None:
+            self.set_status('listening', '다음 안내를 기다리고 있어요.')
+            return
+        if reanalyze and not budget.analyzed:
+            budget.analyzed = True
+            self.set_status('selecting', '안내와 이전 경로를 다시 확인하고 있어요.')
+            start = time.monotonic()
+            try:
+                fixed = await self.interp.recover_context(p, self.goal or '',
+                    [l.prompt.category_of(l.key) for l in self.layers])
+            except Exception as exc:
+                log.warning('시스템 재판단 실패: %s', type(exc).__name__)
+                fixed = p
+            if self.ended or self.hangup_seen or self.pending is not None or not self.agent_active:
+                return
+            log.info('시스템 재판단 %.0fms', (time.monotonic()-start)*1000)
+            self.current = fixed
+            if self.recorder is not None:
+                self.recorder.note('system_reanalysis', duration_s=round(time.monotonic()-start,3),
+                    kind=fixed.kind, options=[f'{o.key}:{o.label}' for o in fixed.options])
+            if fixed.kind in ('menu','confirm'):
+                await self._decide_inner(fixed, arrived=False)
+                return
+            # Recovery cannot directly execute newly inferred secure/result or
+            # non-menu states; only the ordinary paragraph pipeline can do so.
+            p = fixed
+        if self._ars_active_for_recovery():
+            self.set_status('listening', '새 안내를 듣고 다시 확인하고 있어요.')
+            return
+        if p.repeat_key and not p.critical and not budget.replayed:
+            budget.replayed = True
+            self.redo_same_menu = True
+            self.set_status('listening', '안내를 다시 듣고 확인할게요.')
+            await self._press(p.repeat_key, 'ai', p)
+            return
+        self.set_status('listening', '안내를 정확히 확인하지 못해 자동 선택을 보류했어요. 새 안내를 기다리고 있어요.')
 
     async def _send_keys(self, keys: str, actor: str = "ai", secure: bool = False) -> float:
         """키(DTMF 톤) 전송. 키를 누르면 ARS 는 하던 안내를 끊거나 다음 안내로 넘어가므로,
         말하던 중인 단락은 버리고(앞뒤 안내가 한 자막으로 섞이지 않게) 보낸 톤의 반향은 듣지 않는다."""
         if self.call is None or self.ended or self.hangup_seen:
             raise ApiError(409, "invalid_state", "통화가 연결되지 않았습니다.")
+        self._private_generation += 1
+        self._discard_prefetch()
+        self.segmenter.reset_for_key()
+        self._segment_private = False
+        self._segment_phone_ticket = None
+        opened = self._phone_readback.begin(keys) if secure else False
+        if not secure:
+            self._phone_readback.revoke()
+            if self._phone_confirmation_pending:
+                # The explicit reply leaves this already recognized phone
+                # confirmation. The following public result must not be lost
+                # to the old private-input countdown. A new secure request
+                # arms its own normal guard independently.
+                self.secure_window = False
+                self._private_tail_frames = 0
+                self._phone_confirmation_pending = False
+        if opened:
+            # Only after the send boundary has discarded older buffered audio.
+            self._private_tail_frames = 0
+            log.info('전화번호 재확인: 승인된 OpenAI STT 구간 시작')
+        self.seg_started_at=None
         self.last_key_at = time.monotonic()  # 전송 시작 시각. 이보다 먼저 시작된 안내는 키 이전 상태의 안내다
+        self.heard_since_press = False
+        self.key_outstanding = True
+        self.last_send_secure = secure
+        if getattr(self.call,'dtmf_mode','inband')!='sdk':
+            self._key_echo.start(keys)
         if self.recorder is not None:
             self.recorder.keys(keys, actor, secure)  # 민감정보는 값 대신 자릿수·대체 신호음만 남긴다
         try:
             dur = await self.call.send_keys(keys)
         except Exception as e:
+            self._phone_readback.revoke()
+            self._discard_prefetch()
+            self._key_echo.clear()
             log.warning("키 전송 실패: %s", e)
             raise ApiError(409, "invalid_state", "키를 전송하지 못했습니다. 통화가 끊겼을 수 있습니다.")
-        self.segmenter.reset()
-        self.segmenter.mute(dur)
-        self.heard_since_press = False
-        self.key_outstanding = True
-        self.last_send_secure = False
+        self._key_echo.finish()
+        if secure:
+            self._system_recovery_budget.clear()
         return dur
 
     async def _press(self, keys: str, actor: str, p: Prompt | None, confidence: float | None = None) -> None:
         await self._send_keys(keys, actor)
+        if p is None or keys != p.repeat_key:
+            # Confirmations/manual selections can transition without adding a
+            # Layer. A real non-replay input starts a new recovery budget too.
+            self._system_recovery_budget.clear()
         self.current_fresh = False
         self.last_key_actor = actor
         if p is not None:
@@ -776,9 +1123,11 @@ class Session:
                 self.layers.append(Layer(p, keys, actor))
         self.step += 1
         label = p.label_of(keys) if p else keys
-        if p is not None and getattr(p, "readback_of", None) and any(o.key == keys for o in p.options):
+        readback_ui = getattr(p, '_readback_ui_options', p.options if p else [])
+        if p is not None and getattr(p, "readback_of", None) and any(o.key == keys for o in readback_ui):
             # 입력값 되읽기 확인 단계: 경로에는 "확인" 같은 답이 아니라 무엇을 확인했는지 남긴다
-            label = f"{p.readback_of} {'재입력' if _NO_ANSWER_RE.search(label) else '확인'}"
+            chosen_label = next(o.label for o in readback_ui if o.key == keys)
+            label = f"{p.readback_of} {'재입력' if _NO_ANSWER_RE.search(chosen_label) else '확인'}"
         names = [o.label for o in (p.options if p else [])]
         if label == keys:
             text = f"{keys} 입력"  # 안내에서 듣지 못한 키 (직접 선택)
@@ -817,6 +1166,11 @@ class Session:
                 return
             if self.heard_since_press or self._ars_active():
                 return
+            recovery_key = (self.goal, tuple((l.prompt.text,l.key) for l in self.layers))
+            budget = self._system_recovery_budget.for_prompt(recovery_key,p,create=False)
+            if budget is not None and budget.replayed:
+                self.set_status('listening', '다시 듣기 응답을 확인하지 못해 자동 선택을 보류했어요. 새 안내를 기다리고 있어요.')
+                return
             try:
                 await self._send_keys(p.repeat_key)
             except ApiError:
@@ -831,7 +1185,8 @@ class Session:
         return req
 
     async def _ask(self, p: Prompt, reason: str, options: list[Option], message: str | None = None,
-                   scores: dict[str, float] | None = None) -> None:
+                   scores: dict[str, float] | None = None, *, record_message: str | None = None) -> None:
+        options=choice_display_options(p.text,options)
         labels = [o.label for o in options]
         scores = scores or {}
         default = {
@@ -847,8 +1202,8 @@ class Session:
                                 message=message or default.get(reason, "확인이 필요합니다."),
                                 options=[{**o.as_dict(), "confidence": scores.get(o.key)} for o in options],
                                 ars_prompt=p.text)
-        self.set_status("awaiting_user", req["message"])
-        self.publish("request", req)
+        self.set_status("awaiting_user", record_message or req["message"])
+        self.publish("request", req, record_data={**req, "message": record_message} if record_message else None)
         rid = req["request_id"]
         self.timer("clarify_expire", self.s.clarify_expire_s, lambda: self._clarify_expire(rid))
         self.timer("clarify_drop", self.s.clarify_drop_s, lambda: self._clarify_drop(rid))
@@ -884,10 +1239,14 @@ class Session:
                     pass
 
     async def _ask_secure(self, p: Prompt) -> None:
+        self._private_generation += 1
+        self._discard_prefetch()
         self.secure_window = True
         label = p.label or "요청 정보"
         # "주민등록번호 앞 6자리"·"계좌 비밀번호 네 자리" → "주민등록번호"·"계좌 비밀번호" (경로에 보일 항목명)
         self.secure_label = re.sub(r"\s*(?:앞|뒤)?\s*(?:[0-9]+|[한두세네]|다섯|여섯|일곱|여덟|아홉|열\s?[한두세네]?)\s*자리\s*$", "", label).strip() or label
+        self._phone_readback.arm(self.secure_label, p.text)
+        self._phone_confirmation_pending = False
         req = self._new_request("secure_input", self.s.secure_expire_s, label=label, ars_prompt=p.text,
                                 terminator=p.terminator,
                                 message=f"{label}{_obj(label)} 직접 눌러 주세요. 입력하신 번호는 저장되지 않습니다.")
@@ -955,8 +1314,12 @@ class Session:
         if req["reason"] == "critical_action":
             raise ApiError(409, "invalid_state", "중요 선택은 번호를 직접 골라야 합니다 (select).")
         self._close_request()
-        self.goal = await self._ai("merge_answer", self.d.interp.merge_answer(self.goal or "", req["message"], text),
-                                   text)
+        merge_for_prompt = getattr(self.interp, 'merge_answer_for_prompt', None)
+        merged = (merge_for_prompt(self.goal or '', req.get('ars_prompt', ''), text,
+                                  allow_context=req['reason'] == 'ambiguous')
+                  if callable(merge_for_prompt)
+                  else self.interp.merge_answer(self.goal or '', req['message'], text))
+        self.goal = await self._ai('merge_answer', merged, text)
         self.nav.goal = self.goal
         if req["reason"] == "loop":
             self.nav.reset_loop()
@@ -1005,7 +1368,8 @@ class Session:
         self.pending = None
         self.current_fresh = False
         self.last_key_actor = "user"
-        if self._ars_speaking() and self.s.secure_wait_max_s > 0:
+        if self._secure_send_blocked() and (self.s.secure_wait_max_s > 0
+                or (self.d.private_recognizer is not None and self.stt_inflight)):
             # ARS 가 안내 중이다. '입력 시간이 초과되었습니다' 처럼 키를 받지 않는 안내 중에 보내면 입력이 무시되므로
             # 안내가 끝난 뒤 보낸다. 기다리는 동안 다른 처리(안내 인식·종료 요청)가 막히지 않도록 잠금 밖에서 기다린다
             self.secure_queued, self.secure_abort = True, False
@@ -1030,6 +1394,9 @@ class Session:
         """ARS 소리가 지금 나고 있는지 (단락 종료 무음 paragraph_silence_ms 전까지는 말하는 중으로 본다)."""
         return bool(getattr(self.call, "speaking", False) or self.segmenter.speaking)
 
+    def _secure_send_blocked(self) -> bool:
+        return self._ars_speaking() or bool(self.d.private_recognizer is not None and self.stt_inflight)
+
     def _spawn_secure_send(self, keys: str) -> None:
         task = asyncio.create_task(self._send_secure_when_quiet(keys))
         self._secure_task = task  # 작업 참조를 유지한다 (값은 작업이 끝나면 사라진다)
@@ -1037,12 +1404,12 @@ class Session:
     async def _send_secure_when_quiet(self, keys: str) -> None:
         t0 = time.monotonic()
         try:
-            while (self._ars_speaking() and not self.ended and not self.hangup_seen and not self.secure_abort
+            while (self._secure_send_blocked() and not self.ended and not self.hangup_seen and not self.secure_abort
                    and time.monotonic() - t0 < self.s.secure_wait_max_s):
                 await asyncio.sleep(0.05)
             if self.ended or self.hangup_seen:
                 return
-            if self.secure_abort or self._ars_speaking():
+            if self.secure_abort or self._secure_send_blocked():
                 # 다른 안내로 넘어갔거나, 입력 안내 되풀이로 보기에는 너무 길게 말한다(첫 메뉴로 돌아간 경우 등).
                 # 입력값을 메뉴 키로 잘못 보내지 않도록 버리고, 입력 안내가 다시 나오면 새로 입력받는다
                 log.info("ARS 가 다른 안내로 넘어가 입력값을 보내지 않았다 (%.1f초 기다림)", time.monotonic() - t0)
@@ -1076,7 +1443,7 @@ class Session:
             raise ApiError(409, "invalid_state",
                            "목적은 첫 번호를 누르기 전까지만 바꿀 수 있습니다. 이후에는 재질문에 답하거나 직접 선택하십시오.")
         self.goal = text
-        self.goal_summary = await self._ai("summarize_goal", self.d.interp.summarize_goal(text),
+        self.goal_summary = await self._ai("summarize_goal", self.interp.summarize_goal(text),
                                            f"'{text}' 업무를 찾아 드릴게요.")
         self.summary = None
         self.result_heard = False

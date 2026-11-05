@@ -1,5 +1,8 @@
 # 비밀 값 (ClawOps API 키 등)
 .env
+.env.*
+!.env.example
+!.env.openai-jev.example
 
 # Python
 __pycache__/
@@ -35,3 +38,18 @@ bench/out/
 
 # 웹 화면 빌드용 외부 패키지 (web/build.py 준비 단계에서 받는다)
 web/vendor/
+
+# 로컬 실험 환경·모델·실통화 내보내기 (공유하지 않는다)
+.local-run/
+run-local.command
+LOCAL_TEST.txt
+models/
+ars-call-*/
+ars-call-*.zip
+call-*.json
+*.m4a
+*.mp3
+*.flac
+*.ogg
+*.pcm
+*.ulaw

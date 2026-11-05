@@ -28,8 +28,13 @@ from audio import rms, ulaw8k_to_pcm16k
 log = logging.getLogger("ars.stt")
 
 # ARS 안내에 자주 나오는 표현. 인식 시 어휘 힌트로 쓴다.
-ARS_PROMPT = ("안녕하십니까. KB국민은행입니다. 잔액조회는 1번, 거래내역조회는 2번, 상담원 연결은 0번, 다른 서비스는 샵 버튼, "
-              "이전 메뉴는 별표, 다시 들으시려면 우물정자를 눌러 주십시오. 주민등록번호 앞 여섯 자리를 입력해 주십시오.")
+ARS_PROMPT = (
+    '한국어와 영어가 섞인 ARS 전화 안내 녹음입니다. 실제 들리는 내용만 그대로 전사합니다. '
+    '영어 문장과 약어는 영문으로 유지하고 한글 발음으로 풀어쓰거나 번역하지 않습니다. '
+    '도메인 어휘: ARS, AI, SMS, URL, foreign language service, press. '
+    '이 어휘는 참고일 뿐 들리지 않으면 추가하지 않습니다. '
+    '번호는 들리는 자리 순서대로 적고 숫자를 추측하거나 추가·삭제하지 않습니다. '
+    '메뉴 이름과 선택 번호, 별표·샵·우물정자를 구분합니다. 기관이나 번호 배정은 추측하지 않습니다.')
 
 # 무음·대기 음악 구간에서 Whisper 가 지어내는 대표적인 문장
 _HALLUCINATIONS = re.compile(
@@ -181,7 +186,13 @@ class OpenAIRecognizer:
         # SDK 기본 제한 시간은 길다(10분). 응답이 늦으면 단락 처리 전체가 멈추므로 다른 엔진과 같은 STT_TIMEOUT_S 로 제한한다
         self.client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"), max_retries=1, timeout=timeout_s)
 
-    async def recognize(self, ulaw8k: bytes) -> str:
+    def new_segment(self):
+        # Session owns and privacy-gates this context. Never expose global prefetch().
+        from stt_prefetch import PrefetchedSegment
+        return PrefetchedSegment(self.recognize, transcribe_with_context=self.recognize,
+                                 timeout_s=self.timeout_s)
+
+    async def recognize(self, ulaw8k: bytes, prefix_context: str = "") -> str:
         if not ulaw8k:
             return ""
         buf = io.BytesIO()
@@ -192,13 +203,23 @@ class OpenAIRecognizer:
             w.writeframes(ulaw8k_to_pcm16k(ulaw8k))
         buf.name = "ars.wav"
         buf.seek(0)
+        language_args = ({"extra_body": {"languages": ["ko", "en"]}}
+                         if self.model == "gpt-transcribe" else {"language": "ko"})
+        started = time.monotonic()
+        # Only the owning paragraph's preceding transcript is supplied as a
+        # bounded hint. Full-paragraph retries start with no previous text.
+        prompt = ARS_PROMPT
+        if prefix_context:
+            prompt += "\n앞선 음성의 전사문(문맥 참고용): " + prefix_context[-240:]
         try:
             # SDK 의 timeout 은 연결·읽기 단계별 제한이고 재시도도 있으므로 전체 시간은 wait_for 로 제한한다
             r = await asyncio.wait_for(self.client.audio.transcriptions.create(
-                model=self.model, file=buf, language="ko", prompt=ARS_PROMPT), self.timeout_s)
+                model=self.model, file=buf, prompt=prompt, **language_args), self.timeout_s)
         except Exception as e:
-            log.warning("STT 실패: %s", str(e) or type(e).__name__)
+            # SDK 오류 본문/헤더에는 키나 음성 내용이 있을 수 있다.
+            log.warning("STT 실패: %s", type(e).__name__)
             return ""
+        log.info("인식(%s) %.2fs (음성 %.1fs)", self.model, time.monotonic() - started, len(ulaw8k) / 8000)
         return _clean(r.text)
 
 

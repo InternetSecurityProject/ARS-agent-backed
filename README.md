@@ -1,5 +1,7 @@
 # ARS-agent-backed
 
+> 이 브랜치의 **OpenAI STT + Jev 로컬 실험**: [설정·실행 방법, 처리 구조와 검증 범위](docs/OpenAI-STT-Jev-local.md). 운영 서버·Android 앱에 적용한 변경이 아니다.
+
 ARS 자동화 API 서버
 
 - 앱에서 전화번호·목적 전송, 서버가 ClawOps 070 번호로 기관 ARS 발신

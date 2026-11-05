@@ -54,7 +54,11 @@ def build_deps(st: Settings) -> Deps:
         recognizer.attach_interpreter(interp)  # STT=gemini: 받아쓰기+분류를 한 번에 (GEMINI_STT_COMBINED=1)
         log.info("Gemini STT: 받아쓰기와 분류를 한 번의 호출로 처리한다")
     nav = Navigator(interp, st.match_threshold, st.margin, st.max_revisit, st.max_presses, st.low_threshold)
-    return Deps(st, backend, recognizer, interp, nav)
+    private = None
+    if st.private_stt_model:
+        from protected_input import ProtectedWhisperRecognizer
+        private = ProtectedWhisperRecognizer(st.private_stt_model)
+    return Deps(st, backend, recognizer, interp, nav, private)
 
 
 def stt_kind(st: Settings) -> str:
@@ -69,6 +73,8 @@ def create_app(st: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        if deps.private_recognizer is not None:
+            await deps.private_recognizer.warmup()
         await deps.backend.start()
         warm = getattr(deps.recognizer, "warmup", None)
         if warm:

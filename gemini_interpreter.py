@@ -139,14 +139,21 @@ def confirm_key(prompt: Prompt, answer: str) -> str | None:
 # ---------------------------------------------------------------------------
 _SENSITIVE = re.compile(r"(주민\s?등록\s?번호|주민\s?번호|생년\s?월일|계좌\s?번호|카드\s?번호|비밀\s?번호|인증\s?번호|"
                         r"보안\s?카드|OTP|휴대\s?(?:폰|전화)\s?번호|전화\s?번호|유효\s?기간|CVC)")
-_INPUT_VERB = re.compile(r"(눌러|입력|누르)")
-_RESULT = re.compile(r"잔액은\s*[0-9]|출금\s?가능\s?(?:액|금액)은\s*[0-9]|접수\s*되었|완료\s*되었|발송\s*됩니다|발급\s*됩니다|처리\s*되었|발급\s*되었|발송\s*되었|원입니다|입니다\.?\s*감사합니다")
+_INPUT_VERB = re.compile(r"(눌러|누르|입력(?:하신|한)(?=\s*(?:후|뒤|다음))|입력(?!하신|한|하셨|했|되었))")
+_RESULT = re.compile(r"잔액은\s*[0-9]|출금\s?가능\s?(?:액|금액)은\s*[0-9]|접수\s*되었|완료\s*되었|발송\s*됩니다|발급\s*됩니다|처리\s*되었|발급\s*되었|발송\s*되었|(?:[0-9*,]|[일이삼사오육칠팔구십백천만억조])\s*원입니다|입니다\.?\s*감사합니다")
 _OPTION = re.compile(r"([가-힣A-Za-z0-9 ·]{2,30}?)\s*(?:은|는|면|으로|로)\s*([0-9]|\*|#)\s*(?=번|을|를|,|\.|\s|$)")
 
 
 _DIGITS_FIELD = re.compile(r"([가-힣 ]{2,12}?)\s*[0-9]+\s*자리")
 _HOURS = re.compile(r"(?:업무|운영|상담)\s?시간")
 _OTHER_ARS = re.compile(r"ARS|에이알에스|자동\s?응답|음성\s?안내|고객센터로\s*연결")  # 사람이 아닌 다른 자동응답으로 넘기는 안내
+DELIVERY_NOTICE = re.compile(r'(문자|알림톡|카카오톡).{0,24}(?:발송해|보내)\s*드리겠습니다(?=[.!?。]|\s*$)')
+_DELIVERY_CONDITION = re.compile(
+    r'면(?=\s|[,.!?]|$)|경우|(?:완료|동의|승인|인증|입력|가입|신청)(?:하신|한)?\s*(?:후|뒤|다음)')
+
+
+def final_delivery_notice(text: str) -> bool:
+    return bool(DELIVERY_NOTICE.search(text) and not _DELIVERY_CONDITION.search(text))
 
 
 def rule_classify(text: str) -> Prompt:
@@ -165,6 +172,10 @@ def rule_classify(text: str) -> Prompt:
         return Prompt(kind="message_sent", text=text)
     if _RESULT.search(t):
         return Prompt(kind="result", text=text)
+    if final_delivery_notice(t):
+        # Final delivery notice is not a new request to enter the number that
+        # was supplied earlier. A future promise is a result, not already sent.
+        return Prompt(kind='result', text=text)
     opts, back, home, rep = [], None, None, None
     for label, key in _OPTION.findall(t):
         label = re.sub(r"^(?:번\s*|그리고\s*|또는\s*|및\s*|,\s*)+", "", label.strip())

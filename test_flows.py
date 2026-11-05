@@ -674,7 +674,7 @@ def test_no_repeat_key_while_next_menu_is_long():
         assert call.keys == ["3"]
         await speak(s, 0)                                            # 안내 끝 → 인식 → ARS로 계속(2)
         await wait_for(s, lambda s: call.keys == ["3", "2"])
-        assert len(s.captions) == 2 and "잔액조회 3번" in s.captions[0]["text"] and "ARS" in s.captions[1]["text"]  # 두 안내가 섞이지 않음
+        assert [c['text'] for c in s.captions] == [ROOT, BAL]  # 두 안내가 원문 순서대로 분리됨
     run(go())
 
 
@@ -798,15 +798,14 @@ def test_agent_connected_status_comes_before_handoff_summary():
     run(go())
 
 
-def test_menu_caption_is_condensed_to_options_and_other_captions_keep_text():
-    """자막(caption.text)은 앱이 해석 없이 그대로 보여 준다. 선택지가 있는 안내는 STT 원문 대신
-    'AI 가 뽑은 선택지 이름 + 키' 목록으로 보내고, 결과·일반 안내는 원문을 보낸다 (결과 요약 입력 유지)."""
+def test_menu_and_result_captions_preserve_recognized_source():
+    """자막은 선택지 요약과 별개로 받아쓴 원문을 보존한다. 결과 요약도 원문을 입력받는다."""
     async def go():
         s, call = await manual("이번 달 카드 대금 알고 싶어", clarify_expire_s=5, clarify_drop_s=10)
         await s.on_paragraph(ROOT)
         menu = s.captions[-1]["text"]
-        assert menu != ROOT and " · " in menu and "카드 업무 5번" in menu and len(menu) < len(ROOT)
-        assert menu == s.hub.history[-1]["data"]["text"] if s.hub.history[-1]["event"] == "caption" else True
+        assert menu == ROOT
+        assert [e['data']['text'] for e in s.hub.history if e['event']=='caption'][-1] == ROOT
         await s.on_paragraph(CARD)
         await s.on_paragraph(BILL)
         assert s.captions[-1]["text"] == BILL                        # 결과 안내는 원문 (요약 입력)
@@ -1090,7 +1089,7 @@ def test_stale_menu_heard_before_key_is_not_decided_again():
         replay_started = s.last_key_at - 0.5                         # 키보다 먼저 시작된 같은 메뉴(재생)
         await s.on_paragraph(ROOT, started_at=replay_started)
         assert call.keys == ["5"]                                    # 두 번 누르지 않는다
-        assert s.captions[-1]["text"] == s.captions[0]["text"] != ROOT  # 자막은 남긴다 (메뉴는 선택지 요약으로)
+        assert s.captions[-1]["text"] == s.captions[0]["text"] == ROOT  # 자막은 원문으로 남긴다
         await s.on_paragraph(CARD, started_at=time.monotonic())      # 키 이후 시작된 다음 메뉴 → 판단
         assert call.keys == ["5", "3"]
     run(go())

@@ -525,11 +525,9 @@ def test_http_engine_drives_session(kind):
         await wait_for(s, lambda s: call.keys == ["3"])
         await speak(s, 0.3)
         await wait_for(s, lambda s: call.keys == ["3", "2"])
-        # 단락마다 자막 하나. 메뉴 안내 자막은 원문이 아니라 선택지 목록으로 축약된다 (session.caption_text)
+        # 단락마다 자막 하나. AI 선택지 추출과 별개로 인식한 원문을 순서대로 보존한다.
         texts = [c["text"] for c in s.captions]
-        assert len(texts) == 2
-        assert texts[0].startswith("잔액조회 3번") and "0번" in texts[0] and "눌러 주십시오" not in texts[0]
-        assert "1번" in texts[1] and "2번" in texts[1] and "눌러 주십시오" not in texts[1]
+        assert texts == [ROOT, BAL]
         await s.action({"type": "cancel"})
 
     run(go())
