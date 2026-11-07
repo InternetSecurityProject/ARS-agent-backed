@@ -176,6 +176,14 @@ class Segmenter:
     def mute(self, seconds: float) -> None:
         self._mute_frames = max(self._mute_frames, int(seconds * 50) + 5)
 
+    def reset_for_key(self) -> None:
+        """Begin receiving the next prompt before a key is transmitted."""
+        self.reset()
+        self._mute_frames=0
+        self._levels.clear()
+        self._music_run=0
+        self.music=False
+
     def feed(self, frame: bytes) -> bytes | None:
         """프레임을 넣고, 단락이 끝났으면 그 단락의 μ-law 오디오를 반환한다."""
         if self._mute_frames > 0:

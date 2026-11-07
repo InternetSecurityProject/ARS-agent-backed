@@ -95,6 +95,11 @@ class Settings:
     gemini_stt_combined: bool = field(default_factory=lambda: _env("GEMINI_STT_COMBINED", "0") == "1")
     # 외부 STT(openai·rtzr·clova·gemini) 사용 시 민감정보 입력 뒤 음성을 보내지 않는 시간(초). 되읽기가 외부로 나가지 않게 한다
     secure_skip_s: float = field(default_factory=lambda: float(_env("SECURE_SKIP_S", "20")))
+    # Explicit consent only. The isolated local runner may enable phone
+    # readback for OpenAI; all other private fields retain the normal guard.
+    allow_openai_phone_readback: bool = False
+    # Optional on-disk local model for protected paragraphs. No auto-download.
+    private_stt_model: str = ""
     max_call_s: int = 600
 
 

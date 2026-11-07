@@ -8,3 +8,4 @@ pytest
 httpx
 websockets
 sounddevice
+openai>=1.0

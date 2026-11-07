@@ -1,5 +1,7 @@
 # ARS-agent-backed
 
+> 이 브랜치의 **OpenAI STT + Jev 로컬 실험**: [설정·실행 방법, 처리 구조와 검증 범위](docs/OpenAI-STT-Jev-local.md). 운영 서버·Android 앱에 적용한 변경이 아니다.
+
 ARS 자동화 API 서버
 
 - 앱에서 전화번호·목적 전송, 서버가 ClawOps 070 번호로 기관 ARS 발신
@@ -68,7 +70,7 @@ X-App-Key: dev-app-key
 | `answer` | `request_id`, `text` | 재질문(`clarification`) 음성 답변. 목적에 반영 후 재판단 |
 | `select` | `request_id`, `key` | 재질문 후보 선택. 중요 선택(`critical_action`)은 `select` 만 허용 |
 | `key` | `key` | 직접 선택. 키(`0-9*#`, 1~4자) 즉시 전송, AI 메뉴 판단 10초 보류 |
-| `secure_input` | `request_id`, `digits` | 민감정보 직접 입력. 톤 전송 후 즉시 폐기 (저장·AI 전달 없음) |
+| `secure_input` | `request_id`, `digits` | 민감정보 직접 입력. 입력값 AI 전달 없음. 로컬 전화번호 확인용 한시 메모리 대조는 [실행 문서](docs/OpenAI-STT-Jev-local.md) 참고 |
 | `revise_goal` | `text` | 다시 말하기. 첫 번호 입력 전까지만 허용, 이후 `409` |
 | `cancel` | — | 통화 종료 |
 
