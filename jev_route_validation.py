@@ -54,13 +54,20 @@ def proposal_request(goal, prompt, options, path, evidence, answers, questions, 
     return state, checks, selected
 
 
-def verified_route(answers, source_confidence):
+def verified_route(answers, source_confidence, *, diagnostic=None):
     if set(answers) != {'relationship', 'source_supported'}:
         raise ValueError('route_proof_answer_set_mismatch')
     relation, probs = _choice(answers['relationship'], RELATION)
     strength = min(answers['relationship']['confidence'], probs[relation])
     supported = _noul(answers['source_supported'])
-    if (relation not in ('direct', 'parent') or strength < .85 or supported < .85
-            or source_confidence < MIN_CONFIDENCE):
-        return None
+    failed=[]
+    if relation not in ('direct','parent'):failed.append('relationship_not_advancing')
+    if strength<.85:failed.append('relationship_below_minimum')
+    if supported<.85:failed.append('binding_below_minimum')
+    if source_confidence<MIN_CONFIDENCE:failed.append('source_below_minimum')
+    if diagnostic is not None:
+        diagnostic.update({'relation':relation,'probabilities':probs,'strength':strength,
+            'relationship_minimum':.85,'binding':supported,'binding_minimum':.85,
+            'source':source_confidence,'source_minimum':MIN_CONFIDENCE,'failed':failed})
+    if failed:return None
     return RouteAssessment('proceed', min(strength, supported, source_confidence))

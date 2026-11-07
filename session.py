@@ -26,6 +26,7 @@ from dtmf_echo import DtmfEchoGuard
 from readback_display import (DIGIT_RUN, SPOKEN_LONG_RUN, readback_message, readback_options,
                               phone_confirmation_source)
 from phone_readback import PhoneReadbackPermit
+from phone_comparison import PhoneComparison, comparison_message
 from choice_display import choice_display_options
 from stt import Recognizer
 from telephony import Backend, Call, CallHandlers
@@ -230,6 +231,9 @@ class Session:
             self.s.allow_openai_phone_readback and self.s.stt == 'openai'
             and not self.d.recognizer.is_local)
         self._phone_confirmation_pending = False
+        self._phone_comparison = PhoneComparison()
+        self._private_display_rid = None
+        self._private_display_message = None
         if self.s.stt_prefetch and callable(getattr(self.d.recognizer, 'new_segment', None)):
             self.segmenter.on_chunk = self._prefetch_chunk
         self.stt_q: asyncio.Queue = asyncio.Queue()
@@ -404,6 +408,8 @@ class Session:
         self.end_reason = reason
         self._private_generation += 1
         self._phone_readback.revoke()
+        self._clear_phone_comparison()
+        self._redact_private_display()
         self._phone_confirmation_pending = False
         self._discard_prefetch()
         self._key_echo.clear()
@@ -637,6 +643,9 @@ class Session:
                 self._close_request()
                 await self._ask_secure(p)  # Canonical field metadata, never the raw paragraph.
             elif p.kind in ('confirm', 'menu'):
+                # Consume the phone comparison before closing the old request,
+                # whose privacy cleanup deliberately clears retained values.
+                display_message=self._readback_message(text) if p.kind=='confirm' else text
                 self._close_request()
                 if p.kind == 'confirm':
                     p.readback_of = self.secure_label
@@ -647,7 +656,7 @@ class Session:
                 # Button-only: spoken replies must not forward a private UI
                 # question to an external merge_answer call. History is redacted.
                 await self._ask(p, 'critical_action', display_options,
-                    readback_message(text, self.secure_label, self.secure_len) if p.kind == 'confirm' else text,
+                    display_message,
                     record_message=p.text)
             elif p.kind == 'input_error':
                 self._close_request()
@@ -732,8 +741,10 @@ class Session:
                     if self.agent_active:
                         self._phone_confirmation_pending |= consented_phone
                         p._readback_ui_options = readback_options(shown, p)
-                        await self._ask(p, 'critical_action' if p.critical else 'unknown_prompt', p._readback_ui_options,
-                                        readback_message(shown, self.secure_label, self.secure_len))
+                        # The live UI contains private values. Keep replies
+                        # button-only so a spoken number cannot enter intent AI.
+                        await self._ask(p, 'critical_action', p._readback_ui_options,
+                                        self._readback_message(shown), record_message=p.text)
                 return
             # 되읽기 문장이 아니어도, 입력한 자릿수와 같은 숫자열이 들리면 입력값으로 보고 가린다 (금액·날짜는 자릿수가 달라 남는다).
             # 인식이 한두 글자 틀려 자릿수가 달라져도, 한국어 숫자를 여섯 자 이상 이어 읽는 것은 입력값 되읽기이므로 가린다
@@ -1055,6 +1066,9 @@ class Session:
             self.redo_same_menu = True
             self.set_status('listening', '안내를 다시 듣고 확인할게요.')
             await self._press(p.repeat_key, 'ai', p)
+            retry = getattr(self.interp, 'retry_uncertain_after_replay', None)
+            if retry:
+                retry(p)
             return
         self.set_status('listening', '안내를 정확히 확인하지 못해 자동 선택을 보류했어요. 새 안내를 기다리고 있어요.')
 
@@ -1069,6 +1083,13 @@ class Session:
         self._segment_private = False
         self._segment_phone_ticket = None
         opened = self._phone_readback.begin(keys) if secure else False
+        if secure:
+            if self._phone_comparison.begin(keys):
+                generation=self._phone_comparison.generation
+                self.timer('phone_comparison',self._phone_comparison.seconds,
+                           lambda:self._expire_phone_comparison(generation))
+        else:
+            self._clear_phone_comparison()
         if not secure:
             self._phone_readback.revoke()
             if self._phone_confirmation_pending:
@@ -1096,9 +1117,10 @@ class Session:
             dur = await self.call.send_keys(keys)
         except Exception as e:
             self._phone_readback.revoke()
+            self._clear_phone_comparison()
             self._discard_prefetch()
             self._key_echo.clear()
-            log.warning("키 전송 실패: %s", e)
+            log.warning("키 전송 실패: %s", type(e).__name__)
             raise ApiError(409, "invalid_state", "키를 전송하지 못했습니다. 통화가 끊겼을 수 있습니다.")
         self._key_echo.finish()
         if secure:
@@ -1178,7 +1200,34 @@ class Session:
             self.redo_same_menu = True  # 다시 듣기 키로 다시 나온 메뉴는 반복으로 세지 않는다 (명세 7장 5항)
 
     # 사용자 요청 -------------------------------------------------------------
+    def _clear_phone_comparison(self):
+        self._phone_comparison.clear()
+        self.cancel_timer('phone_comparison')
+
+    async def _expire_phone_comparison(self,generation):
+        if generation==self._phone_comparison.generation:
+            self._clear_phone_comparison()
+
+    def _readback_message(self,text):
+        entered=self._phone_comparison.take()
+        self.cancel_timer('phone_comparison')
+        return (comparison_message(text,entered) if entered is not None
+                else readback_message(text,self.secure_label,self.secure_len))
+
+    def _redact_private_display(self):
+        redacted=False
+        if self.pending and self.pending.get('request_id')==self._private_display_rid:
+            # Mutate the live request too: undelivered queue aliases must not
+            # retain the old private message after its request has closed.
+            self.pending['message']=self._private_display_message or '개인정보 확인 안내입니다.'
+            redacted=True
+        self._private_display_rid=None
+        self._private_display_message=None
+        return redacted
+
     def _new_request(self, kind: str, expire_s: float, **fields) -> dict:
+        self._redact_private_display()
+        if kind!='secure_input':self._clear_phone_comparison()
         self.req_seq += 1
         req = {"request_id": f"req_{self.req_seq}", "kind": kind, **fields, "expires_at": now_iso(expire_s)}
         self.pending = req
@@ -1202,8 +1251,11 @@ class Session:
                                 message=message or default.get(reason, "확인이 필요합니다."),
                                 options=[{**o.as_dict(), "confidence": scores.get(o.key)} for o in options],
                                 ars_prompt=p.text)
-        self.set_status("awaiting_user", record_message or req["message"])
-        self.publish("request", req, record_data={**req, "message": record_message} if record_message else None)
+        if record_message is not None:
+            self._private_display_rid=req['request_id']
+            self._private_display_message=record_message
+        self.set_status("awaiting_user", record_message if record_message is not None else req["message"])
+        self.publish("request", req, record_data={**req, "message": record_message} if record_message is not None else None)
         rid = req["request_id"]
         self.timer("clarify_expire", self.s.clarify_expire_s, lambda: self._clarify_expire(rid))
         self.timer("clarify_drop", self.s.clarify_drop_s, lambda: self._clarify_drop(rid))
@@ -1214,6 +1266,10 @@ class Session:
         async with self._lock:
             if not (self.pending and self.pending["request_id"] == rid) or self.ended or self.hangup_seen:
                 return
+            if self._redact_private_display():
+                self._clear_phone_comparison()
+                self.pending['message']='확인 시간이 지나 번호를 가렸어요. ARS 안내를 확인하거나 다시 입력해 주세요.'
+                self.publish('request',self.pending)
             if self._ars_active():
                 self.timer("clarify_expire", 0.5, lambda: self._clarify_expire(rid))
                 return
@@ -1246,10 +1302,15 @@ class Session:
         # "주민등록번호 앞 6자리"·"계좌 비밀번호 네 자리" → "주민등록번호"·"계좌 비밀번호" (경로에 보일 항목명)
         self.secure_label = re.sub(r"\s*(?:앞|뒤)?\s*(?:[0-9]+|[한두세네]|다섯|여섯|일곱|여덟|아홉|열\s?[한두세네]?)\s*자리\s*$", "", label).strip() or label
         self._phone_readback.arm(self.secure_label, p.text)
+        self._redact_private_display()
+        self._clear_phone_comparison()
+        self._phone_comparison.arm(self.secure_label,p.text,p.terminator)
         self._phone_confirmation_pending = False
         req = self._new_request("secure_input", self.s.secure_expire_s, label=label, ars_prompt=p.text,
                                 terminator=p.terminator,
-                                message=f"{label}{_obj(label)} 직접 눌러 주세요. 입력하신 번호는 저장되지 않습니다.")
+                                message=f"{label}{_obj(label)} 직접 눌러 주세요. "+
+                                ('확인이 끝나면 입력 번호를 지워요.' if self._phone_comparison.eligible
+                                 else '입력하신 번호는 저장되지 않습니다.'))
         self.set_status("awaiting_user", "직접 입력이 필요합니다.")
         self.publish("request", req)
 
@@ -1264,7 +1325,7 @@ class Session:
         t = body.get("type")
         if self.ended:
             raise ApiError(409, "invalid_state", "이미 종료된 통화입니다.")
-        if self.recorder is not None:
+        if self.recorder is not None and t!='answer':
             self.recorder.user_action(body)
         async with self._lock:
             if t == "cancel":
@@ -1302,6 +1363,8 @@ class Session:
     def _close_request(self, keep_secure: bool = False) -> None:
         if keep_secure and self.pending and self.pending["kind"] == "secure_input":
             return
+        self._redact_private_display()
+        self._clear_phone_comparison()
         self.pending = None
         self.cancel_timer("clarify_expire")
         self.cancel_timer("clarify_drop")
@@ -1313,6 +1376,10 @@ class Session:
         req = self._check_request(body, "clarification")
         if req["reason"] == "critical_action":
             raise ApiError(409, "invalid_state", "중요 선택은 번호를 직접 골라야 합니다 (select).")
+        # Validate the request and private/button-only gate BEFORE recording
+        # answer text. A rejected private reply must not enter any text log.
+        if self.recorder is not None:
+            self.recorder.user_action(body)
         self._close_request()
         merge_for_prompt = getattr(self.interp, 'merge_answer_for_prompt', None)
         merged = (merge_for_prompt(self.goal or '', req.get('ars_prompt', ''), text,
@@ -1362,7 +1429,7 @@ class Session:
             raise ApiError(400, "invalid_request", "digits 는 0-9, *, # 1~20자입니다.")
         term = req.get("terminator") or ""
         keys = digits if (term and digits.endswith(term)) else digits + term  # 사용자가 종료 키까지 누른 경우 중복하지 않는다
-        self.secure_len = _digit_count(digits)  # 자릿수만 기억한다 (되읽기 마스킹용)
+        self.secure_len = _digit_count(digits)  # 기본은 자릿수만; 단일 전화번호 대조는 전송 때 한시 보관
         self.secure_sent_at = time.monotonic()  # 외부 STT 는 이 뒤 secure_skip_s 동안 음성을 보내지 않는다
         del digits
         self.pending = None

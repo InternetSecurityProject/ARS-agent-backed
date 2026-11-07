@@ -20,6 +20,7 @@ from jev_route_validation import proposal_request, verified_route
 from jev_intent_policy import OUTCOME_POLICY, meaning_questions, meaning_override
 from jev_repeated_bindings import repeated_request, verify_repeated
 from jev_parent_route import parent_request, verify_parent
+from jev_diagnostics import emit as emit_diagnostic, emit_selection
 
 log = logging.getLogger('ars.jev.phrase')
 
@@ -213,6 +214,25 @@ class PhraseJevInterpreter(JevInterpreter):
             log.warning('시스템 재판단 시간 제한')
             return prompt
 
+    def retry_uncertain_after_replay(self, prompt):
+        """One fresh observation may replace an unknown verdict after a sent replay.
+
+        Session owns the replay budget. This is never called merely to poll a
+        cached decision and does not invalidate proceed/user-choice decisions.
+        """
+        keys=[key for key,route in self._routes.items()
+              if route.status=='unknown' and key[0]==self.goal and key[1]==prompt.text
+              and key[2]==getattr(prompt,'_phrase_evidence_id',None)]
+        for key in keys:
+            self._routes.pop(key,None)
+            self._scored.pop(key,None)
+        evidence=self._extractions.get(prompt.text)
+        if keys and evidence is not None and evidence.classification_uncertain:
+            self._extractions.pop(prompt.text,None)
+        if keys:
+            emit_diagnostic(uuid.uuid4().hex[:12],'cache',action='replay_invalidated_unknown',count=len(keys))
+        return bool(keys)
+
     def _route_questions(self, options, evidence):
         questions, mapping = self._matching_questions(options)
         questions = copy.deepcopy(questions)
@@ -341,11 +361,19 @@ class PhraseJevInterpreter(JevInterpreter):
         key = self._cache_key(goal, prompt, options, path)
         evidence = self._evidence_for(prompt, options)
         if not options or evidence is None or evidence.classification_uncertain:
+            failed=[]
+            if not options:failed.append('no_options')
+            if evidence is None:failed.append('stale_or_missing_evidence')
+            elif evidence.classification_uncertain:failed.append('classification_uncertain')
+            emit_diagnostic(uuid.uuid4().hex[:12],'precondition',failed=failed)
             scores = {o.key: .4 for o in options}
             self._cache_matching(key, scores, RouteAssessment())
             return scores
         if key in self._scored:
+            emit_diagnostic(uuid.uuid4().hex[:12],'cache',action='hit',
+                            result=self._routes[key].status)
             return dict(self._scored[key])
+        trace=uuid.uuid4().hex[:12]
         questions, mapping = self._route_questions(options,evidence)
         try:
             state = {
@@ -376,6 +404,7 @@ class PhraseJevInterpreter(JevInterpreter):
                         questions[name]['instructions'] = answered + questions[name]['instructions']
             answers = await self.client.decide(state, questions)
             scores, route = self._source_route_result(answers, questions, mapping, options, evidence)
+            emit_selection(trace,answers,questions,mapping,evidence,route)
             verified_key = None
             first_choice = mapping.get(answers['matching_key'].get('choice'))
             direct = _noul(answers['outcome_'+{'*':'star','#':'hash'}.get(first_choice,first_choice)]) if first_choice is not None else 0.
@@ -397,13 +426,16 @@ class PhraseJevInterpreter(JevInterpreter):
                             state['current_user_answer'] = current_answer
                         async with asyncio.timeout(max(0.,route_deadline-asyncio.get_running_loop().time())):
                             proof = await self.client.decide(state, checks)
-                        verified = verified_route(proof, evidence.confidence_by_key[proposed])
+                        diagnostic={}
+                        verified = verified_route(proof, evidence.confidence_by_key[proposed],diagnostic=diagnostic)
+                        emit_diagnostic(trace,'proposal',**diagnostic)
                         if verified is not None:
                             scores = {o.key: (verified.confidence if o.key == proposed else .4)
                                       for o in options}
                             route = verified
                             log.info('원문 후보 경로 검증 확정 key=%s', proposed)
                 except Exception as exc:
+                    emit_diagnostic(trace,'proposal',error=type(exc).__name__)
                     log.warning('원문 후보 경로 검증 보류: %s', type(exc).__name__)
             # A legacy one-candidate proof may have rescued an initially weak
             # verdict. Non-direct relationships still need the complete,
@@ -426,12 +458,15 @@ class PhraseJevInterpreter(JevInterpreter):
                         if remaining<=0:raise TimeoutError('route_audit_deadline')
                         async with asyncio.timeout(remaining):
                             audit = await self.client.decide(audit_state, audit_checks)
-                        authorized = verify_parent(audit, audit_checks, evidence, established=established)
+                        diagnostic={}
+                        authorized = verify_parent(audit, audit_checks, evidence, established=established,diagnostic=diagnostic)
+                        emit_diagnostic(trace,'parent',**diagnostic)
                         if authorized:
                             verified_key, route = authorized
                             scores = {o.key: route.confidence if o.key==verified_key else .4 for o in options}
                             log.info('상위 업무 경로 검증 확정 key=%s', verified_key)
                 except Exception as exc:
+                    emit_diagnostic(trace,'parent',error=type(exc).__name__)
                     log.warning('상위 업무 경로 검증 보류: %s', type(exc).__name__)
             selected = verified_key or mapping.get(answers['matching_key'].get('choice'))
             if route.status == 'proceed' and evidence.confidence_by_key.get(selected, 0.) < MIN_CONFIDENCE:
@@ -459,8 +494,10 @@ class PhraseJevInterpreter(JevInterpreter):
                 route = RouteAssessment()
                 scores = {o.key: .4 for o in options}
         except Exception as exc:
+            emit_diagnostic(trace,'selection',error=type(exc).__name__)
             log.warning('구절 경로 판단 불확실: %s', type(exc).__name__)
             scores, route = {o.key: .4 for o in options}, RouteAssessment()
+        emit_diagnostic(trace,'final',result=route.status,confidence=route.confidence,scores=scores)
         self._cache_matching(key, scores, route)
         return dict(scores)
 

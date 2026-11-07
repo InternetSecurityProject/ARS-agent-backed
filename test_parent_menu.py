@@ -18,6 +18,8 @@ class ParentAI(RecoveryAI):
                 if name=='next_step':
                     pick=next((k for k,v in q['criteria'].items() if isinstance(v,dict) and v.get('key')==self.audit_key),'none')
                     result[name]=answer(q,pick,self.pick_conf)
+                elif name=='current_user_requirement':
+                    result[name]=answer(q,'none' if self.ready>=.7 else 'unknown')
                 elif name=='user_choice_needed':result[name]={'type':'noul','noul':1-self.ready}
                 elif name.endswith('_bound'):result[name]={'type':'noul','noul':self.bound}
                 elif name.endswith('_relation'):
@@ -145,6 +147,7 @@ def test_legacy_single_proposal_cannot_bypass_full_parent_review():
                 for name,q in questions.items():
                     if name=='next_step':out[name]=answer(q,'c1')
                     elif name=='user_choice_needed':out[name]={'type':'noul','noul':.99}
+                    elif name=='current_user_requirement':out[name]=answer(q,'unknown')
                     elif name.endswith('_relation'):out[name]=answer(q,'parent')
                     else:out[name]={'type':'noul','noul':.99}
                 return out

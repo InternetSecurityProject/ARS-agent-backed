@@ -142,6 +142,11 @@ class Navigator:
                 return Decision('ask', reason='ambiguous', options=[], scores=scores,
                     note='원하는 결과를 구분할 사용자 용도 정보 부족', message=purpose_question())
             relevant = [o for o in options if o.key in route.clarification_keys]
+            if (not previous and route.status=='needs_info'
+                    and route.clarification_dimension=='entry_condition' and len(relevant)==1):
+                return Decision('ask',reason='ambiguous',options=[],scores=scores,
+                    note='현재 메뉴에 명시된 이용 조건 확인',
+                    message=f"안내의 ‘{relevant[0].label}’ 이용 조건에 해당하시나요?")
             if not previous and route.status == 'needs_info' and len(relevant) >= 2:
                 return Decision('ask', reason='ambiguous', options=relevant, scores=scores,
                     note='사용자 선택에 필요한 구체 정보 부족',

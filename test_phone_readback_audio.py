@@ -263,8 +263,10 @@ def test_missing_value_but_explicit_confirmation_keys_still_asks_transparently()
         rec.text='맞으면 1번, 다시 입력하시려면 2번을 눌러 주세요.'
         try:
             await ask_and_send(s);await readback_frames(s);await settle(lambda:s.stt_inflight==0)
-            assert s.pending and '번호를' in s.pending['message']
-            assert '010-' not in s.pending['message']  # never substitute what was typed
+            assert s.pending and '정확히 읽지 못했어요' in s.pending['message']
+            assert '입력한 번호: 010-0000-0000' in s.pending['message']
+            # The separately labelled recognized value is never filled from input.
+            assert '음성 인식 번호: 정확히 읽지 못했어요' in s.pending['message']
             assert {o['key']:o['label'] for o in s.pending['options']}=={'1':'맞아요','2':'다시 입력'}
         finally:await finish(s,worker)
     run(go())

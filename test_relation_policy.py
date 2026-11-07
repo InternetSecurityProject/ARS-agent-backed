@@ -15,6 +15,7 @@ class RelationProofAI(ParentAI):
         for name,q in questions.items():
             code=name.split('_')[0];key=code[1:]
             if name=='next_step':out[name]=answer(q,'c'+self.audit_key)
+            elif name=='current_user_requirement':out[name]=answer(q,'none')
             elif name=='user_choice_needed':out[name]={'type':'noul','noul':.01}
             elif name.endswith('_relation'):out[name]=answer(q,self.relations.get(key,'unknown'))
             elif name.endswith('_target'):out[name]={'type':'noul','noul':self.target}

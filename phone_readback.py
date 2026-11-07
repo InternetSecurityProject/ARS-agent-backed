@@ -25,7 +25,14 @@ _PHONE_INSTRUCTION = re.compile(
 _PHONE_DESCRIPTOR = re.compile(
     r'(?:받아보실|받으실|받을|수신하실|수신할|연락\s*가능한|수신\s*가능한|'
     r'사용하시는|사용\s*중인|명의의|본인의|본인|고객님의|고객님|위해서|위해)\s*$')
-_PREFIX_COORDINATION = re.compile(_JOIN, re.I)
+# Ignore noun-internal 과 only with a complete following case particle
+# (경과의, 결과를). A general token-boundary rule would miss joined mixed
+# fields such as "고향과본인명의의 휴대폰 번호". All other ambiguous Korean
+# conjunctions remain blocked, including unspaced ones.
+_PREFIX_COORDINATION = re.compile(
+    r'(?:그리고|하고|또는|혹은|및|와|[,，/+&]|'
+    r'(?<![A-Za-z])(?:and|or)(?![A-Za-z])|'
+    r'과(?!(?:의|를|가|는|로|도|만|에(?:서|게)?)(?=\s|$)))', re.I)
 
 
 def phone_only_request(label, source):
