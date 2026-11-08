@@ -8,7 +8,7 @@ __pycache__/
 .venv/
 venv/
 
-# Windows 전용 실행 스크립트 (각자 PC 에만 둔다)
+# Windows 전용 실행 스크립트 (로컬 전용, 저장소 제외)
 *.bat
 
 # 로그·임시 (api_check.py --audio 의 WAV 포함)
@@ -18,3 +18,23 @@ _to_delete/
 
 # 음성 가상 ARS 합성 음성 캐시
 .sim_audio/
+
+# 예외: STT 비교용 시험 음성 (합성 음성, 개인정보 없음)은 저장소에 포함
+!bench_clips/*.wav
+
+# 비교용 가상환경·측정 출력 (로컬 전용, 저장소 제외)
+.venv-qwen/
+bench-*.txt
+call-*.txt
+bench_real/
+
+# 통화 기록 자동 저장 폴더 (RECORDING_DIR, 기본 recordings/). ARS 되읽기 소리·인식 문장 포함으로 저장소 제외
+recordings/
+
+# bench 시나리오 녹음·단락·평가 결과 (저장소 제외)
+bench/raw/
+bench/data/
+bench/out/
+
+# 웹 화면 빌드용 외부 패키지 (web/build.py 준비 단계에서 내려받음)
+web/vendor/

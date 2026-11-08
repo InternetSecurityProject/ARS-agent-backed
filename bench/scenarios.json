@@ -1,0 +1,162 @@
+{
+ "version": 1,
+ "rules": [
+  "실존 인물의 번호와 겹칠 수 없는 가짜 번호만 입력한다 (주민등록번호: 월 13 이상·일 32 이상, 계좌·팩스: 0 연속)",
+  "되읽기 확인 뒤에 발급·발송·신청이 진행되는 경로에서는 1번(맞음)을 누르지 않는다",
+  "문자 발송 메뉴는 '지금 전화한 번호로 받기'(070)만 쓰고 다른 휴대폰 번호는 입력하지 않는다",
+  "팀원 본인 번호로 녹음하지 않는다",
+  "route 의 terminator(#)는 실제 안내를 듣고 확인한다. 안내에 없으면 지운다"
+ ],
+ "expect_tokens": {
+  "press:K": "키 K 를 누름",
+  "ask / ask:reason": "사용자에게 물음 (reason 을 적으면 사유까지 비교)",
+  "nopress": "누르지 않음 (질문·이전 단계·종료 모두 허용)",
+  "secure": "민감정보 직접 입력 요청",
+  "backtrack / end": "이전 계층 복귀 / 종료",
+  "any": "채점하지 않음",
+  "A|B": "둘 중 하나면 정답"
+ },
+ "scenarios": [
+  {
+   "id": "K1", "org": "KB국민은행", "phone": "15889999", "goal": "잔액 카톡으로 받고 싶어",
+   "route": [{"key": "3"}, {"key": "1"}, {"observe": 10}],
+   "check": "첫 메뉴(약 33초) 인식, 알림톡 발송 결과 판정",
+   "goals": [
+    {"goal": "잔액 카톡으로 받고 싶어", "expect": ["press:3", "press:1"]},
+    {"goal": "통장 잔액 알림톡으로 받을래", "expect": ["press:3", "press:1"]},
+    {"goal": "내 계좌에 얼마 있는지 문자로 보내 줘", "expect": ["press:3", "press:1"]},
+    {"goal": "자동차 보험 가입하고 싶어", "expect": ["nopress"]}
+   ]
+  },
+  {
+   "id": "K2", "org": "KB국민은행", "phone": "15889999", "goal": "통장 잔액 알고 싶어",
+   "route": [{"key": "3"}, {"key": "2"}, {"input": "991332", "terminator": "#", "kind": "주민등록번호 앞 6자리"}, {"observe": 20}],
+   "check": "민감정보 요청 감지, 잘못된 번호에 대한 입력 오류 안내, 숫자 되읽기",
+   "goals": [
+    {"goal": "통장 잔액 알고 싶어", "expect": ["press:3", "press:2", "secure"]},
+    {"goal": "전화로 잔액 바로 들을래", "expect": ["press:3", "press:2", "secure"]}
+   ]
+  },
+  {
+   "id": "K3", "org": "KB국민은행", "phone": "15889999", "goal": "최근 거래내역 보고 싶어",
+   "route": [{"key": "4"}, {"key": "1"}, {"observe": 10}],
+   "check": "메뉴 2단계, 문자 발송 종료",
+   "goals": [
+    {"goal": "최근 거래내역 보고 싶어", "expect": ["press:4", "press:1"]},
+    {"goal": "거래내역 문자로 받고 싶어", "expect": ["press:4", "press:1"]}
+   ]
+  },
+  {
+   "id": "K4", "org": "KB국민은행", "phone": "15889999", "goal": "체크카드 발급 문의하고 싶어",
+   "route": [{"key": "5"}, {"key": "3"}, {"key": "1"}, {"observe": 20}],
+   "check": "같은 종류 선택지(신용·체크카드 / 현금카드) 질문, 카드사 ARS 이관 판정",
+   "goals": [
+    {"goal": "체크카드 발급 문의하고 싶어", "expect": ["press:5", "press:3", "press:1"]},
+    {"goal": "신용카드 관련 문의", "expect": ["press:5", "press:3", "press:1"]},
+    {"goal": "카드 관련 문의하고 싶어", "expect": ["press:5|ask", "press:3|ask", "ask"]}
+   ]
+  },
+  {
+   "id": "K5", "org": "KB국민은행", "phone": "15889999", "goal": "자동이체 관련 문의하고 싶어",
+   "route": [{"key": "7"}, {"key": "4"}, {"key": "1"}, {"observe": 15}],
+   "check": "3단계 메뉴, 상담시간 외 안내 뒤 메인 메뉴 복귀",
+   "goals": [
+    {"goal": "자동이체 관련 문의하고 싶어", "expect": ["press:7|ask", "press:4", "press:1"]},
+    {"goal": "폰뱅킹으로 자동이체 신청하고 싶어", "expect": ["press:7", "press:4", "press:1"]}
+   ]
+  },
+  {
+   "id": "K6", "org": "KB국민은행", "phone": "15889999", "goal": "빠른말로 잔액 조회하고 싶어",
+   "route": [{"key": "#"}, {"key": "1"}, {"key": "3"}, {"key": "1"}, {"observe": 10}],
+   "check": "기호 키 선택지, 다른 경로로 같은 업무",
+   "goals": [
+    {"goal": "빠른말로 잔액 조회하고 싶어", "expect": ["press:#", "press:1", "press:3", "press:1|ask"]}
+   ]
+  },
+  {
+   "id": "K7", "org": "KB국민은행", "phone": "15889999", "goal": "청년미래적금 안내 받고 싶어",
+   "route": [{"key": "8"}, {"observe": 15}],
+   "check": "링크 발송 안내",
+   "goals": [
+    {"goal": "청년미래적금 안내 받고 싶어", "expect": ["press:8"]}
+   ]
+  },
+  {
+   "id": "K8", "org": "KB국민은행", "phone": "15889999", "goal": "상담원 연결해 줘",
+   "route": [{"key": "0"}, {"observe": 25}],
+   "check": "AI 상담사의 음성 응답 요구 판정",
+   "goals": [
+    {"goal": "상담원 연결해 줘", "expect": ["press:0"]},
+    {"goal": "상담직원이랑 통화하고 싶어", "expect": ["press:0"]}
+   ]
+  },
+  {
+   "id": "K9", "org": "KB국민은행", "phone": "15889999", "goal": "현금카드 분실 신고하고 싶어",
+   "route": [{"key": "*"}, {"key": "3"}, {"input": "991332", "terminator": "#", "kind": "주민등록번호 앞 6자리"}, {"observe": 15}],
+   "check": "별표 선택지, 분실신고 하위 메뉴의 같은 종류 선택지",
+   "goals": [
+    {"goal": "현금카드 분실 신고하고 싶어", "expect": ["press:*", "press:3", "secure"]},
+    {"goal": "직불카드 잃어버렸어", "expect": ["press:*", "press:3", "secure"]},
+    {"goal": "카드 잃어버렸어", "expect": ["press:*", "ask"]}
+   ]
+  },
+  {
+   "id": "N1", "org": "국민건강보험공단", "phone": "15771000", "goal": "증명서 발급 받고 싶어",
+   "route": [{"key": "1"}, {"key": "2"}, {"observe": 20}],
+   "check": "개인 정보가 필요한 확인 질문(65세 이상 여부) 질문, 막다른 안내(본인인증 필요)의 결과 판정",
+   "goals": [
+    {"goal": "증명서 발급 받고 싶어", "expect": ["press:1", "ask"]},
+    {"goal": "자동차 보험 가입하고 싶어", "expect": ["nopress"]}
+   ]
+  },
+  {
+   "id": "N2", "org": "국민건강보험공단", "phone": "15771000", "goal": "건강보험증 발급 받고 싶어",
+   "route": [{"key": "2"}, {"input": "9913321234567", "kind": "주민등록번호 13자리"}, {"key": "2", "para": 1, "max_wait": 30}, {"observe": 10}],
+   "check": "13자리 숫자 되읽기 인식, 되읽기 확인은 항상 질문 (2번=틀림만 누름)",
+   "goals": [
+    {"goal": "건강보험증 발급 받고 싶어", "expect": ["press:2", "secure", "ask"]},
+    {"goal": "보험증 새로 받고 싶어", "expect": ["press:2", "secure", "ask"]}
+   ]
+  },
+  {
+   "id": "N3", "org": "국민건강보험공단", "phone": "15771000", "goal": "건강보험 고지서 받고 싶어",
+   "route": [{"key": "3"}, {"key": "2"}, {"input": "9913321234567", "kind": "주민등록번호 13자리"}, {"key": "2", "para": 1, "max_wait": 30}, {"observe": 15}],
+   "check": "되읽기 뒤 재입력 요청이 새 입력 요청으로 처리되는지",
+   "goals": [
+    {"goal": "건강보험 고지서 받고 싶어", "expect": ["press:3", "press:2|ask", "secure", "ask"]}
+   ]
+  },
+  {
+   "id": "N4", "org": "국민건강보험공단", "phone": "15771000", "goal": "건강검진 추가 신청하고 싶어",
+   "route": [{"key": "4"}, {"key": "1"}, {"input": "20991399", "kind": "주민등록증 발급일자 8자리"}, {"observe": 15}],
+   "check": "개인 정보가 필요한 선택(신분증 종류) 질문, 8자리 날짜 입력, 진위 확인 실패 안내",
+   "goals": [
+    {"goal": "건강검진 추가 신청하고 싶어", "expect": ["press:4", "ask", "secure"]}
+   ]
+  },
+  {
+   "id": "N5", "org": "국민건강보험공단", "phone": "15771000", "goal": "팩스 발송 결과 조회하고 싶어",
+   "route": [{"key": "6"}, {"input": "0200000000", "terminator": "#", "kind": "팩스번호"}, {"key": "1", "para": 1, "max_wait": 30}, {"observe": 12}],
+   "check": "전화번호형 숫자 되읽기, 조회 실패 안내",
+   "goals": [
+    {"goal": "팩스 발송 결과 조회하고 싶어", "expect": ["press:6", "secure", "ask"]}
+   ]
+  },
+  {
+   "id": "N6", "org": "국민건강보험공단", "phone": "15771000", "goal": "앱 설치 문자 받고 싶어",
+   "route": [{"key": "8"}, {"key": "1"}, {"observe": 10}],
+   "check": "문자 발송 종료 (070 번호로 발송), 받을 번호 선택 질문",
+   "goals": [
+    {"goal": "앱 설치 문자 받고 싶어", "expect": ["press:8", "ask|press:1"]}
+   ]
+  },
+  {
+   "id": "N7", "org": "국민건강보험공단", "phone": "15771000", "goal": "내 보험료 계산해 보고 싶어",
+   "route": [{"key": "#"}, {"key": "1"}, {"observe": 10}],
+   "check": "기호 키 선택지, 발송 완료 안내",
+   "goals": [
+    {"goal": "내 보험료 계산해 보고 싶어", "expect": ["press:#", "ask|press:1"]}
+   ]
+  }
+ ]
+}
