@@ -31,6 +31,8 @@ body{display:flex;align-items:center;justify-content:center}
 .app.large-text{--text-scale:1.25}
 .app-viewport{position:relative;flex:1;min-height:0;width:100%;display:flex;flex-direction:column}
 .app-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;min-height:48px;padding:calc(4px + var(--safe-top)) max(12px,var(--safe-right)) 4px max(12px,var(--safe-left));background:#fff}
+.toolbar-info{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;min-width:0;flex:1}
+.toolbar-mode{font-size:var(--font-small);line-height:var(--line-small);font-weight:500;color:var(--secondary);white-space:nowrap}
 .text-size-toggle{margin-left:auto;flex:none;min-height:44px;padding:8px 12px;border-radius:12px;background:rgba(0,122,255,.08);color:var(--blue);font-family:var(--noto);font-weight:700;font-size:calc(16px * var(--text-scale));line-height:24px}
 .text-size-toggle:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
 @media (min-width:600px) and (min-height:700px){.app{height:min(100dvh,900px);border-radius:28px;box-shadow:0 12px 48px rgba(0,0,0,.18)}}
@@ -50,6 +52,10 @@ textarea,input{font:inherit;color:inherit}
 .t-headline{font-family:var(--noto);font-weight:700;font-size:calc(28px * var(--text-scale));line-height:calc(38px * var(--text-scale))}
 .call-number{font-size:28px;line-height:38px}
 .confirm-number{font-size:20px;line-height:28px}
+.call-header-tight{flex-direction:row;flex-wrap:wrap;justify-content:center}
+.call-frame{padding:0 20px}
+.large-text .agent-call .call-frame{padding:0 12px}
+.large-text .agent-call .card{padding:12px}
 .t-body{font-size:var(--font-body);line-height:var(--line-body)}
 .t-bodym{font-family:var(--noto);font-size:var(--font-small);line-height:var(--line-small)}
 .t-label{font-family:var(--noto);font-weight:500;font-size:var(--font-small);line-height:calc(18px * var(--text-scale))}
@@ -138,6 +144,7 @@ textarea,input{font:inherit;color:inherit}
 "use strict";
 const P = (() => { /*__PREACT__*/ })();
 const { html, render, useState, useEffect, useLayoutEffect, useRef, useMemo, useReducer } = P;
+const TextSizeContext = P.createContext(false);
 const ICONS = /*__ICONS__*/;
 
 /* ------------------------------------------------------------------ 공통 */
@@ -1577,6 +1584,7 @@ function BServerContent({ data, choiceInput, choiceSubmitted = false, answerInpu
 
 /* ------------------------------------------------------------------ 통화 화면 (CallScreens.kt) */
 function CallScreen({ state, dispatch, serverData = null, choiceInput = null, secureInput = null, liveControls = null, answerInput = null, purposeContent = null }) {
+  const largeText = P.useContext(TextSizeContext);
   // 영수증은 화면 분기보다 위에 배치: 한 번 보낸 요청이 다시 전송 가능 상태로 돌아가는 것 방지
   const choiceRef = useRef([]); const [, bump] = useReducer((x) => x + 1, 0);
   const requestId = serverData?.pendingRequest?.requestId ?? null;
@@ -1600,9 +1608,9 @@ function CallScreen({ state, dispatch, serverData = null, choiceInput = null, se
   const keypad = state.screen === "Call" && (secure || state.keypadOpen || secureContent != null);
   const compact = h < 600;
   const ended = state.screen === "Ended" || serverData?.isEnded === true || liveControls?.stateUnavailable === true;
-  return html`<div ref=${ref} style=${{ position: "relative", flex: "1 1 0", minHeight: 0, display: "flex", flexDirection: "column" }}>
-    <div class="col center grow" style=${{ padding: "0 20px" }}>
-      <${ResponsiveCallBody} state=${state} dispatch=${dispatch} keypad=${keypad} compact=${compact} topSpace=${topSpace} serverData=${serverData}
+  return html`<div ref=${ref} class=${"call-view" + (state.agent ? " agent-call" : "")} style=${{ position: "relative", flex: "1 1 0", minHeight: 0, display: "flex", flexDirection: "column" }}>
+    <div class="col center grow call-frame">
+      <${ResponsiveCallBody} state=${state} dispatch=${dispatch} keypad=${keypad} compact=${compact} topSpace=${topSpace} readingLayout=${largeText && state.agent} serverData=${serverData}
         choiceInput=${guardedChoiceInput} choiceSubmitted=${choiceSubmitted} secureContent=${secureContent} liveControls=${liveControls} answerInput=${answerInput} purposeContent=${purposeContent}/>
       ${secureContent != null ? html`
         <button class="fbtn wide" disabled=${!(secureContent.ready && secureContent.form.count > 0)} onClick=${() => {
@@ -1623,18 +1631,18 @@ function CallScreen({ state, dispatch, serverData = null, choiceInput = null, se
             enabled=${liveControls?.endEnabled ?? true}/>`}</div>`}
       <div style=${{ height: "22px", flex: "none" }}></div>
     </div>
-    <div class="top-label t-bodym sec">${liveControls != null ? "실제 ARS" : serverData != null ? "서버 데이터 · 오디오 미연결" : compact ? `${formatPhone(state.number)} · UI 데모` : "UI 데모 · 실제 통화 아님"}</div>
+    ${(!largeText || !state.agent) && html`<div class="top-label t-bodym sec">${liveControls != null ? "실제 ARS" : serverData != null ? "서버 데이터 · 오디오 미연결" : compact ? `${formatPhone(state.number)} · UI 데모` : "UI 데모 · 실제 통화 아님"}</div>`}
     ${(serverData == null || liveControls != null) && state.audioMenu && state.screen === "Call" &&
       html`<${AudioPopover} state=${state} dispatch=${dispatch} availableRoutes=${liveControls?.availableRoutes ?? null} selectedRoute=${liveControls == null ? state.audioRoute : liveControls.audioRoute}/>`}
   </div>`;
 }
 const Spacer = (px, grow = false) => html`<div style=${grow ? { flex: "1 1 0", minHeight: 0 } : { height: px + "px", flex: "none" }}></div>`;
-function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, serverData, choiceInput, choiceSubmitted, secureContent, liveControls, answerInput, purposeContent }) {
+function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, readingLayout = false, serverData, choiceInput, choiceSubmitted, secureContent, liveControls, answerInput, purposeContent }) {
   const grow = !compact;
   let body;
   if (secureContent != null) body = html`<${ServerSecureKeypad} content=${secureContent} grow=${grow} scrollable=${!compact} extraContent=${() => liveControls?.extras?.()}/>`;
   else if (keypad) body = html`<${CardFreeKeypad} state=${state} dispatch=${dispatch} grow=${grow} scrollable=${!compact} liveControls=${liveControls}/>`;
-  else if (state.screen === "Ended") body = compact ? html`<${CallHeader} state=${state}/>` : Spacer(0, true);
+  else if (state.screen === "Ended") body = compact && !readingLayout ? html`<${CallHeader} state=${state}/>` : Spacer(0, true);
   else if (!state.agent && (state.screen === "Call" || compact)) body = html`${!compact && Spacer(0, true)}<${NormalControls} state=${state} dispatch=${dispatch}/>${!compact && Spacer(16)}`;
   else body = html`
     <${ProgressCard} grow=${grow} scrollable=${!compact}>
@@ -1642,18 +1650,18 @@ function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, server
         liveControls=${liveControls} answerInput=${answerInput} purposeContent=${purposeContent}/>
     <//>
     ${(!compact || (state.screen === "Call" && serverData?.isEnded !== true)) && html`
-      ${Spacer(compact ? 16 : 20)}
-      ${!compact && state.screen === "Purpose" ? Spacer(88) : serverData?.isEnded !== true
+      ${Spacer(readingLayout ? 12 : compact ? 16 : 20)}
+      ${!compact && state.screen === "Purpose" ? Spacer(readingLayout ? 0 : 88) : serverData?.isEnded !== true
         ? html`<${AgentControls} state=${state} dispatch=${dispatch} interactive=${serverData == null || liveControls != null} liveControls=${liveControls}/>` : null}
       ${!compact && Spacer(16)}`}`;
   return html`<div class=${"col center grow" + (compact ? " scroll" : "")} style=${{ width: "100%" }}>
-    ${Spacer(compact ? 32 : topSpace)}
-    ${(!compact || serverData != null) && html`<${CallHeader} state=${state} serverData=${serverData} liveSeconds=${liveControls?.elapsedSeconds ?? null}/>${Spacer(compact ? 16 : 24)}`}
+    ${Spacer(readingLayout ? 12 : compact ? 32 : topSpace)}
+    ${(!compact || serverData != null || readingLayout) && html`<${CallHeader} state=${state} tight=${readingLayout} serverData=${serverData} liveSeconds=${liveControls?.elapsedSeconds ?? null}/>${Spacer(readingLayout ? 12 : compact ? 16 : 24)}`}
     ${body}
     ${(compact || keypad) && Spacer(16)}
   </div>`;
 }
-function CallHeader({ state, serverData = null, liveSeconds = null }) {
+function CallHeader({ state, serverData = null, liveSeconds = null, tight = false }) {
   const name = contactName(state.number);
   const subtitle = serverData?.isEnded === true ? (serverData.durationSeconds != null ? `통화 종료 · ${formatDuration(serverData.durationSeconds)}` : "통화 종료")
     : serverData != null ? (serverData.status === "dialing" ? `${name} · 연결 중` : name + (liveSeconds != null ? ` · ${formatDuration(liveSeconds)}` : ""))
@@ -1662,7 +1670,7 @@ function CallHeader({ state, serverData = null, liveSeconds = null }) {
     : state.phase === "Dialing" ? `${name} · 연결 중`
     : !state.agent ? `일반 전화 · ${formatDuration(state.elapsedSeconds)}`
     : `${name} · ${formatDuration(state.elapsedSeconds)}`;
-  return html`<div class="col center" style=${{ width: "100%", minHeight: "76px", gap: "10px", flex: "none" }}>
+  return html`<div class=${"col center" + (tight ? " call-header-tight" : "")} style=${{ width: "100%", minHeight: tight ? 0 : "76px", gap: tight ? "6px 12px" : "10px", flex: "none" }}>
     <div class="t-headline call-number tc">${formatPhone(state.number) || (serverData == null ? "131" : "번호 확인 전")}</div>
     <div class="sec tc">${subtitle}</div></div>`;
 }
@@ -2220,14 +2228,19 @@ function Root() {
   const phone = useStore(phoneModel.store);
   const entry = useStore(owner.entry);
   const server = useStore(owner.server.store);
-  return html`<div class=${"app" + (largeText ? " large-text" : "")}>
+  const hasCallView = entry != null || ["Purpose", "Call", "Ended"].includes(phone.screen);
+  return html`<${TextSizeContext.Provider} value=${largeText}><div class=${"app" + (largeText ? " large-text" : "")}>
     <header class="app-toolbar" aria-label="보기 설정">
-      <${PresenceBadge}/><${TextSizeControl} largeText=${largeText} onToggle=${toggle}/>
+      <div class="toolbar-info">
+        ${largeText && hasCallView && (entry != null || phone.agent) && html`<span class="toolbar-mode" aria-label=${entry != null ? "실제 ARS" : "UI 데모 · 실제 통화 아님"}>${entry != null ? "실제 ARS" : "UI 데모"}</span>`}
+        <${PresenceBadge}/>
+      </div>
+      <${TextSizeControl} largeText=${largeText} onToggle=${toggle}/>
     </header>
     <div class="app-viewport">
     <${MainLiveBindings} entry=${entry} state=${server}>${(voice, audio) => html`<${MainPhoneApp} phoneState=${phone} onPhoneAction=${phoneModel.dispatch} voice=${voice} audio=${audio}/>`}<//>
     </div>
-  </div>`;
+  </div><//>`;
 }
 render(html`<${Root}/>`, document.getElementById("root"));
 </script>

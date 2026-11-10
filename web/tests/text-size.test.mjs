@@ -8,9 +8,20 @@ import { chromium } from 'playwright';
 
 let browser, server, origin;
 before(async () => {
-  const html = await readFile(new URL('../../static/app.html', import.meta.url));
+  let html = await readFile(new URL('../../static/app.html', import.meta.url), 'utf8');
+  const fonts = new Map();
+  for (const [path, file, family, weight] of [
+    ['/_test/noto.ttf', process.env.WEB_TEST_NOTO_FONT, 'Noto Sans KR', '100 900'],
+    ['/_test/gowun.ttf', process.env.WEB_TEST_GOWUN_FONT, 'Gowun Batang', '400'],
+  ]) {
+    if (!file) continue;
+    fonts.set(path, await readFile(file));
+    html = html.replace('</head>', `<style>@font-face{font-family:'${family}';src:url('${path}');font-weight:${weight};font-display:block}</style></head>`);
+  }
   server = createServer((req, res) => {
-    if (req.url === '/app' && req.method === 'GET') {
+    if (fonts.has(req.url) && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'font/ttf' }); res.end(fonts.get(req.url));
+    } else if (req.url === '/app' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(html);
     } else { res.writeHead(403); res.end('Preview only: no backend'); }
   });
@@ -36,14 +47,15 @@ async function open(viewport = { width: 390, height: 844 }, blockedStorage = fal
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(origin + '/app');
   await page.getByRole('button', { name: '실제 ARS', exact: true }).waitFor();
+  await page.evaluate(() => document.fonts.ready);
   return { page, context, calls, errors };
 }
 const size = locator => locator.evaluate(el => parseFloat(getComputedStyle(el).fontSize));
 const toggle = page => page.getByRole('button', { name: /큰글씨 보기|기본 글씨로/ });
-async function demo(page, scenario) {
+async function demo(page, scenario, number = '131') {
   await page.getByRole('button', { name: '실제 ARS', exact: true }).click();
   await page.getByRole('button', { name: scenario, exact: true }).click();
-  await page.keyboard.type('131');
+  await page.keyboard.type(number);
   await page.getByRole('button', { name: 'ARS Agent 전화', exact: true }).click();
   await page.getByRole('textbox').fill('수원 오늘 날씨 알려줘');
 }
@@ -109,8 +121,9 @@ test('상단 안전 영역이 있는 화면에서도 큰글씨 버튼이 가려�
   } finally { await context.close(); }
 });
 
-test('목적 입력 중 크기를 바꿔도 입력칸이 재생성되거나 입력값이 지워지지 않는다', async () => {
-  const { page, context, calls } = await open();
+for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
+test(`목적 입력 중 크기를 바꿔도 입력칸과 값이 유지된다 (${viewport.width}px)`, async () => {
+  const { page, context, calls } = await open(viewport);
   try {
     await page.keyboard.type('131');
     await page.getByRole('button', { name: 'ARS Agent 전화', exact: true }).click();
@@ -125,6 +138,8 @@ test('목적 입력 중 크기를 바꿔도 입력칸이 재생성되거나 입�
     assert.deepEqual(calls, []);
   } finally { await context.close(); }
 });
+
+}
 
 test('종료 화면의 돌아가기 버튼도 확대되고 작은 화면의 대화상자를 닫을 수 있다', async () => {
   const { page, context } = await open({ width: 320, height: 568 });
@@ -141,6 +156,17 @@ test('종료 화면의 돌아가기 버튼도 확대되고 작은 화면의 대�
     const close = page.getByRole('button', { name: '닫기', exact: true });
     await withinScreen(close, page); await close.click();
     assert.equal(await page.getByRole('dialog').count(), 0);
+  } finally { await context.close(); }
+});
+
+test('작은 화면의 일반 전화 데모에서도 큰글씨 전환 후 번호를 확인할 수 있다', async () => {
+  const { page, context } = await open({ width: 320, height: 568 });
+  try {
+    await page.keyboard.type('01012345678');
+    await page.getByRole('button', { name: '일반 전화', exact: true }).click();
+    await toggle(page).click();
+    assert.equal(await page.locator('.top-label').count(), 1);
+    assert((await page.locator('.top-label').innerText()).includes('010-1234-5678'));
   } finally { await context.close(); }
 });
 
@@ -183,6 +209,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
       }
       const end = page.getByRole('button', { name: '종료', exact: true });
       await withinScreen(end, page); await end.click();
+      assert.equal(await page.getByText('131', { exact: true }).count(), 1, '종료 화면에서 번호가 중복되면 안 된다');
       await page.getByRole('button', { name: '키패드로 돌아가기', exact: true }).click();
       await page.getByRole('button', { name: /UI 데모 · 후보 선택/, exact: true }).click();
       await page.getByRole('button', { name: '민감정보 입력', exact: true }).click();
@@ -199,3 +226,54 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     } finally { await context.close(); }
   });
 }
+
+for (const viewport of [{ width: 400, height: 688 }, { width: 327, height: 688 }, { width: 390, height: 844 }, { width: 320, height: 568 }]) {
+  test(`큰글씨 정보 카드 공간을 확보하고 종료 원의 위치를 유지한다 (${viewport.width}x${viewport.height})`, async () => {
+    const { page, context, calls } = await open(viewport);
+    try {
+      await demo(page, '후보 선택');
+      await page.getByText('어떤 정보를 원하시나요?', { exact: true }).waitFor({ timeout: 12000 });
+      const card = page.locator('.card');
+      const end = page.getByRole('button', { name: '종료', exact: true }).locator('.round');
+      const normalCard = await card.boundingBox(), normalEnd = await end.boundingBox();
+      const normalFont = await size(page.locator('.option .t-bodym').first());
+      await toggle(page).click();
+      const largeCard = await card.boundingBox(), largeEnd = await end.boundingBox();
+      assert(largeCard.height >= normalCard.height - 1, JSON.stringify({ normalCard, largeCard }));
+      assert((await size(page.locator('.option .t-bodym').first())) >= normalFont * 1.2);
+      assert(Math.abs(largeEnd.y - normalEnd.y) <= 3, JSON.stringify({ normalEnd, largeEnd }));
+      assert.equal(largeEnd.width, normalEnd.width); assert.equal(largeEnd.height, normalEnd.height);
+      const mode = page.locator('.app-toolbar .toolbar-mode');
+      assert.equal(await mode.innerText(), 'UI 데모');
+      const modeBox = await mode.boundingBox(), toggleBox = await toggle(page).boundingBox();
+      assert(Math.abs(modeBox.y + modeBox.height / 2 - toggleBox.y - toggleBox.height / 2) <= 2);
+      if (viewport.height === 688) {
+        const lastOption = await page.getByRole('button', { name: '중기 10일 예보 5번' }).boundingBox();
+        assert(lastOption.y + lastOption.height <= largeCard.y + largeCard.height - 8, '후보 세 개가 카드 안에 보여야 한다');
+        await page.screenshot({ path: fileURLToPath(new URL(`../test-results/large-text-layout-${viewport.width}.png`, import.meta.url)) });
+      }
+      await page.getByRole('button', { name: '중기 10일 예보 5번' }).scrollIntoViewIfNeeded();
+      await withinScreen(page.getByRole('button', { name: '종료', exact: true }), page);
+      await toggle(page).click();
+      const restoredCard = await card.boundingBox(), restoredEnd = await end.boundingBox();
+      assert.equal(restoredCard.height, normalCard.height);
+      assert.equal(restoredEnd.y, normalEnd.y);
+      assert.deepEqual(calls, []);
+    } finally { await context.close(); }
+  });
+}
+
+test('긴 전화번호는 큰글씨 헤더에서 줄을 나누어 표시하고 가로로 잘리지 않는다', async () => {
+  const { page, context, calls } = await open({ width: 320, height: 568 });
+  try {
+    await toggle(page).click();
+    await demo(page, '후보 선택', '07012345678');
+    await page.getByText('어떤 정보를 원하시나요?', { exact: true }).waitFor({ timeout: 12000 });
+    const header = page.locator('.call-header-tight');
+    const number = header.getByText('070-1234-5678', { exact: true });
+    await number.scrollIntoViewIfNeeded(); await withinScreen(number, page);
+    assert.equal(await size(number), 28);
+    assert.equal(await header.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
+    assert.deepEqual(calls, []);
+  } finally { await context.close(); }
+});
