@@ -1639,6 +1639,7 @@ function CallScreen({ state, dispatch, serverData = null, choiceInput = null, se
 const Spacer = (px, grow = false) => html`<div style=${grow ? { flex: "1 1 0", minHeight: 0 } : { height: px + "px", flex: "none" }}></div>`;
 function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, readingLayout = false, serverData, choiceInput, choiceSubmitted, secureContent, liveControls, answerInput, purposeContent }) {
   const grow = !compact;
+  const controlsToEndGap = readingLayout && state.screen === "Call" && !keypad && serverData?.isEnded !== true ? 4 : 16;
   let body;
   if (secureContent != null) body = html`<${ServerSecureKeypad} content=${secureContent} grow=${grow} scrollable=${!compact} extraContent=${() => liveControls?.extras?.()}/>`;
   else if (keypad) body = html`<${CardFreeKeypad} state=${state} dispatch=${dispatch} grow=${grow} scrollable=${!compact} liveControls=${liveControls}/>`;
@@ -1653,12 +1654,12 @@ function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, readin
       ${Spacer(readingLayout ? 12 : compact ? 16 : 20)}
       ${!compact && state.screen === "Purpose" ? Spacer(readingLayout ? 0 : 88) : serverData?.isEnded !== true
         ? html`<${AgentControls} state=${state} dispatch=${dispatch} interactive=${serverData == null || liveControls != null} liveControls=${liveControls}/>` : null}
-      ${!compact && Spacer(16)}`}`;
+      ${!compact && Spacer(controlsToEndGap)}`}`;
   return html`<div class=${"col center grow" + (compact ? " scroll" : "")} style=${{ width: "100%" }}>
     ${Spacer(readingLayout ? 12 : compact ? 32 : topSpace)}
     ${(!compact || serverData != null || readingLayout) && html`<${CallHeader} state=${state} tight=${readingLayout} serverData=${serverData} liveSeconds=${liveControls?.elapsedSeconds ?? null}/>${Spacer(readingLayout ? 12 : compact ? 16 : 24)}`}
     ${body}
-    ${(compact || keypad) && Spacer(16)}
+    ${(compact || keypad) && Spacer(controlsToEndGap)}
   </div>`;
 }
 function CallHeader({ state, serverData = null, liveSeconds = null, tight = false }) {
