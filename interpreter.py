@@ -1,15 +1,15 @@
 """
-AI 슬롯필링 연동 지점 (팀원 담당)
+AI 슬롯필링 연동 지점
 
-서버는 이 파일의 Interpreter 프로토콜만 호출한다. 판단 로직(목적 이해, 안내 분류, 선택지 일치율,
-요약 문장 생성)은 AI 담당 팀원이 구현하며, 입출력 형식은 API 명세서 v0.3 의 9장을 따른다.
+서버가 호출하는 Interpreter 프로토콜 정의. 판단 로직(목적 이해, 안내 분류, 선택지 일치율,
+요약 문장 생성)은 구현체에서 처리, 입출력 형식은 API 명세서 v0.3 의 9장 기준.
 
-현재 기본값은 MockInterpreter 이다. 판단 로직 없이 mock_ai.json 의 목 데이터만 돌려준다.
-팀원 구현이 들어오면 .env 에 INTERPRETER=모듈명:클래스명 을 지정하여 교체한다. 서버 코드는 바뀌지 않는다.
+기본값은 MockInterpreter: 판단 로직 없이 mock_ai.json 의 목 데이터만 반환.
+다른 구현체는 .env 의 INTERPRETER=모듈명:클래스명 지정으로 교체 (서버 코드 변경 없음).
 
 입력 규칙
-  - 민감정보 입력값은 이 모듈에 전달되지 않는다.
-  - ARS 가 입력값을 다시 읽어 주는 구간의 문장은 숫자를 '*' 로 가린 뒤 전달된다.
+  - 민감정보 입력값은 이 모듈에 전달되지 않음.
+  - ARS 가 입력값을 다시 읽어 주는 구간의 문장은 숫자를 '*' 로 가린 뒤 전달됨.
 """
 
 from __future__ import annotations
@@ -27,20 +27,41 @@ def _norm(text: str) -> str:
     return re.sub(r"[^0-9A-Za-z가-힣]", "", text)
 
 
+# 상담원·상담사·상담직원 (띄어 쓴 '상담 직원', 붙여 쓴 '상담원하고' 포함). 모든 ARS 공통 표현이라 규칙으로 사용.
+# '상담 원하시면·원하는·원해'('원하다' 활용), '상담 사전·사항·사례·사이트' 는 제외
+AGENT_LABEL_RE = re.compile(r"상담\s?(?:원(?!하(?:시|면|는|신|셔)|해|함|합)|사(?![전항례이])|직원)")
+AGENT_CATEGORY = "상담원 연결"
+
+
+def is_agent_option(o: "Option") -> bool:
+    """상담원 연결 선택지인지 (모델이 붙인 범주 또는 선택지 이름으로 판단)."""
+    return o.category == AGENT_CATEGORY or bool(AGENT_LABEL_RE.search(o.label))
+
+
 # ---------------------------------------------------------------------------
-# 데이터 구조 (서버와 AI 사이의 계약, 명세서 9.2)
+# 데이터 구조 (서버와 AI 사이의 계약, API 명세서 v0.3 9.2)
 # ---------------------------------------------------------------------------
 @dataclass
 class Option:
     key: str
     label: str                    # ARS 가 말한 선택지 이름 그대로 (예: "상담직원 연결")
-    category: str | None = None   # [AI] 선택지를 정규화한 카테고리 (예: "상담원 연결")
+    category: str | None = None   # 해석기(AI)가 선택지를 정규화한 카테고리 (예: "상담원 연결")
 
     def as_dict(self) -> dict:
         return {"key": self.key, "label": self.label, "category": self.category}
 
 
-# Prompt.kind 값 (명세서 9.2)
+@dataclass(frozen=True)
+class RouteAssessment:
+    """JEV 해석기(jev_interpreter.py)의 경로 판단 결과. 메뉴 점수와 별도 보관.
+    unknown 은 판단 실패 의미이며 업무 부재의 근거 아님."""
+    status: str = "unknown"  # proceed / needs_info / unavailable / unknown
+    confidence: float = 0.0
+    clarification_keys: tuple[str, ...] = ()
+    clarification_dimension: str = ""
+
+
+# Prompt.kind 값 (API 명세서 v0.3 9.2)
 #   menu          번호 선택 메뉴
 #   confirm       확인 질문 ("맞으면 1번")
 #   sensitive     민감정보 입력 요청 (주민번호·계좌번호·비밀번호 등)
@@ -65,6 +86,12 @@ class Prompt:
     label: str | None = None         # sensitive: 입력 항목명
     terminator: str | None = None    # sensitive: 입력 뒤 종료 키
     critical: bool = False           # 결제·계약·해지 최종 승인 등
+    readback_of: str | None = None   # confirm: 입력값 되읽기 확인이면 그 입력 항목명 (경로 표시용, 값은 아님)
+    shown: str | None = None         # 자막·결과 요약용 문장 (받아쓰기 고침 반영). None 이면 text 사용
+    fixes: list[tuple[str, str]] = field(default_factory=list)  # 적용한 받아쓰기 고침 (잘못 적힌 말, 고친 말)
+    # 화면에만 적용할 받아쓰기 고침 (LLM_FIX_TRANSCRIPT=separate). 선택지 이름(label)은 원문 유지,
+    # 자막·경로·재질문 요청·상태 문구 출력 시에만 적용 (판단은 원문 기준)
+    display_fixes: list[tuple[str, str]] = field(default_factory=list)
 
     def all_options(self) -> list[Option]:
         out = list(self.options)
@@ -93,19 +120,19 @@ class Prompt:
 
 
 class Interpreter(Protocol):
-    """[AI 담당] 서버가 호출하는 7개 함수. 입출력은 명세서 9.1 표를 따른다."""
+    """서버가 호출하는 7개 함수. 입출력은 API 명세서 v0.3 9.1 표 기준."""
 
     async def summarize_goal(self, goal: str) -> str:
         """AI 가 이해한 목적을 한 문장으로 요약 (승인 질문 아님). 예: '수원 오늘 날씨를 찾아드릴게요.'"""
 
     async def classify(self, text: str) -> Prompt:
-        """ARS 안내 한 단락을 분류하고 선택지를 추출한다.
-        선택지마다 ARS 가 말한 이름(label)을 카테고리(category)로 정규화한다. 미리 정한 단어 목록이 아니라
-        그 단계에서 들은 선택지를 매번 정규화한다."""
+        """ARS 안내 한 단락의 분류와 선택지 추출.
+        선택지마다 ARS 가 말한 이름(label)을 카테고리(category)로 정규화. 미리 정한 단어 목록이 아닌
+        그 단계에서 들은 선택지 기준으로 매번 정규화."""
 
     async def score(self, goal: str, options: list[Option], path: list[str] | None = None) -> dict[str, float]:
         """사용자 목적을 이 단계 선택지의 정규화 카테고리에 맞춘 신뢰도 (선택지 키 → 0~1).
-        서버는 0.50 이상을 일치, 0.30~0.50 을 불확실(low_confidence 재질문), 0.30 미만을 불일치로 본다.
+        서버 기준: 0.50 이상 일치, 0.30~0.50 불확실(low_confidence 재질문), 0.30 미만 불일치.
         path: 지금까지 선택한 메뉴의 카테고리 (첫 메뉴부터 순서대로)."""
 
     async def answer_confirm(self, goal: str, prompt: Prompt) -> str | None:
@@ -122,7 +149,7 @@ class Interpreter(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# 목 구현: mock_ai.json 의 값을 그대로 돌려준다 (판단 로직 없음)
+# 목 구현: mock_ai.json 의 값을 그대로 반환 (판단 로직 없음)
 # ---------------------------------------------------------------------------
 class MockInterpreter:
     def __init__(self, path: str | Path = HERE / "mock_ai.json") -> None:

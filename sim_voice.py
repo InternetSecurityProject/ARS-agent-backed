@@ -1,12 +1,12 @@
 """
-음성 가상 ARS (실통화 없음, Windows 전용)
+음성 가상 ARS (전화 연결 없이 실행, Windows 전용)
 
-가상 ARS(SimCall)와 같은 메뉴 트리를 쓰되, 안내를 문장이 아닌 소리로 보낸다.
-  - 안내 문장을 Windows 한국어 TTS(Microsoft Heami)로 합성해 8kHz μ-law 20ms 프레임으로 실시간 송출한다
-    (말하지 않는 구간은 약한 회선 잡음). 서버는 실통화와 같이 Segmenter → STT → 해석 경로로 처리한다.
-  - 서버가 보낸 키는 DTMF 톤으로 만든 뒤 detect_dtmf 로 해독하여 받는다 (톤 생성·인식 확인).
-  - 안내 중 키를 받으면 안내를 끊고 다음 안내로 넘어간다 (ARS 끼어들기).
-합성 음성은 .sim_audio/ 에 저장해 두고 다시 쓴다.
+가상 ARS(SimCall)와 같은 메뉴 트리 사용, 안내는 문장이 아닌 소리로 전달.
+  - 안내 문장을 Windows 한국어 TTS(Microsoft Heami)로 합성해 8kHz μ-law 20ms 프레임으로 실시간 송출
+    (말하지 않는 구간은 약한 회선 잡음). 서버는 실제 통화와 같은 Segmenter → STT → 해석 경로로 처리.
+  - 서버가 보낸 키는 DTMF 톤으로 만든 뒤 detect_dtmf 로 해독하여 수신 (톤 생성·인식 확인).
+  - 안내 중 키를 받으면 안내를 끊고 다음 안내로 이동 (ARS 끼어들기).
+합성 음성은 .sim_audio/ 에 저장해 재사용.
 
   python app.py --sim --sim-voice
 """
@@ -40,7 +40,7 @@ def _noise_frame(level: float = 60.0) -> bytes:
 def _synth(text: str) -> bytes:
     with tempfile.TemporaryDirectory() as tmp:
         src, wav = Path(tmp) / "t.txt", Path(tmp) / "t.wav"
-        src.write_text(text, encoding="utf-8")  # 콘솔 입력은 cp949 로 읽혀 한글이 깨지므로 파일로 넘긴다
+        src.write_text(text, encoding="utf-8")  # 콘솔 입력의 cp949 해석에 따른 한글 깨짐 방지: 파일로 전달
         ps = ("Add-Type -AssemblyName System.Speech;"
               "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer;"
               "$s.SelectVoice('Microsoft Heami Desktop');"
@@ -53,7 +53,7 @@ def _synth(text: str) -> bytes:
 
 
 def speech_ulaw(text: str) -> bytes:
-    """안내 문장의 합성 음성 (μ-law 8kHz). 없으면 합성하여 저장한다."""
+    """안내 문장의 합성 음성 (μ-law 8kHz). 없으면 합성 후 저장."""
     CACHE.mkdir(exist_ok=True)
     f = CACHE / (hashlib.sha1(text.encode("utf-8")).hexdigest()[:16] + ".ulaw")
     if not f.exists():
@@ -79,7 +79,7 @@ def hold_music(seconds: float) -> bytes:
 
 
 def prepare(tree: dict) -> None:
-    """메뉴 트리의 모든 안내를 미리 합성한다 (첫 실행 시 문장당 1~2초)."""
+    """메뉴 트리의 모든 안내를 미리 합성 (첫 실행 시 문장당 1~2초)."""
     texts = [n["say"] for n in tree["nodes"].values()] + [n["human"] for n in tree["nodes"].values() if n.get("human")]
     texts += [tree.get("timeout_say", "입력 시간이 초과되었습니다."), "잘못 누르셨습니다.", "입력이 없어 통화를 종료합니다.",
               "상담원 김민지입니다. 무엇을 도와드릴까요?"]
@@ -116,7 +116,7 @@ class VoiceSimCall(SimCall):
     async def _play_node(self) -> None:
         n = self.node
         if n.get("type") == "agent" and n.get("hold_s"):
-            # 상담원 연결: 대기 안내 → 대기 음악 → 상담원이 받으면 음악이 끊기고 바로 말한다 (사이에 무음 없음)
+            # 상담원 연결: 대기 안내 → 대기 음악 → 상담원이 받으면 음악이 끊기고 바로 발화 (사이에 무음 없음)
             self._input_gen += 1
             gen = self._input_gen
             await self._say(n["say"])
@@ -145,25 +145,29 @@ class VoiceSimCall(SimCall):
             await asyncio.sleep(max(0.0, t0 + i * 0.02 - time.monotonic()))
 
     async def send_audio(self, ulaw: bytes) -> None:
-        pass  # 사용자 마이크 음성 (상담원 연결 중). 가상 ARS 는 듣지 않는다
+        pass  # 사용자 마이크 음성 (상담원 연결 중). 가상 ARS 는 듣지 않음
 
     async def send_keys(self, keys: str) -> float:
         tone = dtmf_ulaw(keys)
-        heard = detect_dtmf(tone)  # 실제 ARS 처럼 톤을 듣고 키를 알아낸다
+        heard = detect_dtmf(tone)  # 실제 ARS 처럼 톤을 듣고 키 판별
         if heard != keys:
-            log.warning("DTMF 인식 불일치: 보낸 %s, 들은 %s", keys, heard)
+            log.warning("DTMF 인식 불일치: 보낸 %d자리, 들은 %d자리", len(keys), len(heard))  # 값은 남기지 않음 (민감정보일 수 있음)
         dur = len(tone) / 8000
         self._spawn(self._keys_after(heard, dur))
         return dur
 
+    def _shown(self, keys: str) -> str:
+        """로그에 남길 키: 메뉴의 한 자리 키만 값, 입력 노드(민감정보 입력)·여러 자리는 자릿수만 (한 자씩 입력도 한 자리씩 들어오므로 노드 종류로 구분)."""
+        return keys if len(keys) == 1 and self.node.get("type") != "input" else f"{len(keys)}자리"
+
     async def _keys_after(self, keys: str, dur: float) -> None:
         await asyncio.sleep(dur)
         if self._out:
-            log.info("키 응답: 안내 도중 '%s' (끼어들기)", keys if len(keys) == 1 else f"{len(keys)}자리")
+            log.info("키 응답: 안내 도중 '%s' (끼어들기)", self._shown(keys))
             self._cut = True
         elif self.said_end is not None:
-            log.info("키 응답: 안내 끝 → '%s' %.1f초 (입력 대기 %.1f초)", keys if len(keys) == 1 else f"{len(keys)}자리",
+            log.info("키 응답: 안내 끝 → '%s' %.1f초 (입력 대기 %.1f초)", self._shown(keys),
                      time.monotonic() - dur - self.said_end, self.tree.get("timeout_s", 12) * self.speed)
-        self._out.clear()  # 끼어들기: 안내 중 키를 누르면 안내를 멈춘다
+        self._out.clear()  # 끼어들기: 안내 중 키를 누르면 안내 중단
         for ch in keys:
             await self._key_later(ch)

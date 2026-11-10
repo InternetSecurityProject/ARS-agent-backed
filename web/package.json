@@ -1,0 +1,14 @@
+{
+  "name": "ars-agent-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "python3 build.py",
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "preview": "node preview.mjs"
+  },
+  "devDependencies": {
+    "htm": "3.1.1",
+    "playwright": "1.62.1"
+  }
+}
