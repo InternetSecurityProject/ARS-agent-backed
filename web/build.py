@@ -10,7 +10,11 @@ from pathlib import Path
 
 here = Path(__file__).parent
 src = (here / "app.src.html").read_text(encoding="utf-8")
-vendor = (here / "vendor/package/preact/standalone.module.js").read_text(encoding="utf-8")
+# npm ci is the reproducible frontend setup; keep the older npm-pack layout usable.
+vendor_path = here / "node_modules/htm/preact/standalone.module.js"
+if not vendor_path.exists():
+    vendor_path = here / "vendor/package/preact/standalone.module.js"
+vendor = vendor_path.read_text(encoding="utf-8")
 icons_dir = Path(sys.argv[1])
 out = Path(sys.argv[2])
 

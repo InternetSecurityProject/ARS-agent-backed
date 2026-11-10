@@ -26,12 +26,19 @@
 html,body{margin:0;height:100%;background:#E5E5EA;color:var(--ink);font-family:var(--noto);font-size:15px;line-height:23px;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
 body{display:flex;align-items:center;justify-content:center}
 #root{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
-.app{position:relative;width:100%;max-width:430px;height:100%;height:100dvh;overflow:hidden;background:#fff}
+/* Typography is shared by every screen; keypad digits and phone numbers retain their own scale. */
+.app{--safe-top:env(safe-area-inset-top,0px);--safe-left:env(safe-area-inset-left,0px);--safe-right:env(safe-area-inset-right,0px);--text-scale:1;--font-body:calc(15px * var(--text-scale));--line-body:calc(23px * var(--text-scale));--font-small:calc(13px * var(--text-scale));--line-small:calc(20px * var(--text-scale));--font-action:calc(14px * var(--text-scale));--line-action:calc(20px * var(--text-scale));position:relative;width:100%;max-width:430px;height:100%;height:100dvh;overflow:hidden;background:#fff;display:flex;flex-direction:column;font-size:var(--font-body);line-height:var(--line-body)}
+.app.large-text{--text-scale:1.25}
+.app-viewport{position:relative;flex:1;min-height:0;width:100%;display:flex;flex-direction:column}
+.app-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;min-height:48px;padding:calc(4px + var(--safe-top)) max(12px,var(--safe-right)) 4px max(12px,var(--safe-left));background:#fff}
+.text-size-toggle{margin-left:auto;flex:none;min-height:44px;padding:8px 12px;border-radius:12px;background:rgba(0,122,255,.08);color:var(--blue);font-family:var(--noto);font-weight:700;font-size:calc(16px * var(--text-scale));line-height:24px}
+.text-size-toggle:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
 @media (min-width:600px) and (min-height:700px){.app{height:min(100dvh,900px);border-radius:28px;box-shadow:0 12px 48px rgba(0,0,0,.18)}}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;-webkit-appearance:none;appearance:none}
 button:disabled{cursor:default}
 textarea,input{font:inherit;color:inherit}
 .screen{position:absolute;inset:0;display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.app-viewport .screen{padding-top:0}
 .screen.white{background:#fff}
 .screen.grad{background:var(--grad)}
 .col{display:flex;flex-direction:column}
@@ -39,31 +46,33 @@ textarea,input{font:inherit;color:inherit}
 .grow{flex:1 1 0;min-height:0}
 .scroll{overflow-y:auto;-webkit-overflow-scrolling:touch}
 .center{align-items:center}
-.t-title{font-family:var(--noto);font-weight:700;font-size:20px;line-height:28px}
-.t-headline{font-family:var(--noto);font-weight:700;font-size:28px;line-height:38px}
-.t-body{font-size:15px;line-height:23px}
-.t-bodym{font-family:var(--noto);font-size:13px;line-height:20px}
-.t-label{font-family:var(--noto);font-weight:500;font-size:13px;line-height:18px}
-.t-17{font-size:17px;line-height:28px}
+.t-title{font-family:var(--noto);font-weight:700;font-size:calc(20px * var(--text-scale));line-height:calc(28px * var(--text-scale))}
+.t-headline{font-family:var(--noto);font-weight:700;font-size:calc(28px * var(--text-scale));line-height:calc(38px * var(--text-scale))}
+.call-number{font-size:28px;line-height:38px}
+.confirm-number{font-size:20px;line-height:28px}
+.t-body{font-size:var(--font-body);line-height:var(--line-body)}
+.t-bodym{font-family:var(--noto);font-size:var(--font-small);line-height:var(--line-small)}
+.t-label{font-family:var(--noto);font-weight:500;font-size:var(--font-small);line-height:calc(18px * var(--text-scale))}
+.t-17{font-size:calc(17px * var(--text-scale));line-height:calc(28px * var(--text-scale))}
 .sec{color:var(--secondary)}.blue{color:var(--blue)}.red{color:var(--red)}
 .tc{text-align:center}
 .pre{white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere}
 .icon{display:inline-flex;flex:none}.icon svg{width:100%!important;height:100%!important;display:block}
 /* 버튼 */
-.tbtn{color:var(--blue);font-family:var(--noto);font-weight:500;font-size:14px;line-height:20px;min-height:40px;padding:10px 12px;border-radius:20px;align-self:flex-start;text-align:center}
+.tbtn{color:var(--blue);font-family:var(--noto);font-weight:500;font-size:var(--font-action);line-height:var(--line-action);min-height:calc(40px * var(--text-scale));padding:10px 12px;border-radius:20px;align-self:flex-start;text-align:center}
 .tbtn:disabled{color:rgba(28,28,30,.38)}
 .tbtn:active:not(:disabled){background:rgba(0,122,255,.08)}
 .tbtn.c{align-self:center}
-.fbtn{background:var(--blue);color:#fff;font-family:var(--noto);font-weight:500;font-size:14px;line-height:20px;min-height:40px;padding:10px 24px;border-radius:20px;align-self:flex-start}
+.fbtn{background:var(--blue);color:#fff;font-family:var(--noto);font-weight:500;font-size:var(--font-action);line-height:var(--line-action);min-height:calc(40px * var(--text-scale));padding:10px 24px;border-radius:20px;align-self:flex-start}
 .fbtn:disabled{background:rgba(28,28,30,.12);color:rgba(28,28,30,.38)}
 .fbtn.wide{width:100%;min-height:48px;border-radius:16px;align-self:stretch}
-.obtn{border:1px solid var(--border);border-radius:16px;min-height:52px;width:100%;color:var(--blue);font-family:var(--noto);font-weight:500;font-size:14px}
+.obtn{border:1px solid var(--border);border-radius:16px;min-height:52px;width:100%;color:var(--blue);font-family:var(--noto);font-weight:500;font-size:var(--font-action);line-height:var(--line-action)}
 /* 원형 동작 버튼 */
 .ra{width:96px;display:flex;flex-direction:column;align-items:center;padding:2px 0;border-radius:12px;flex:none}
 .ra.w{flex:1 1 0;width:auto;min-width:0}
 .ra:disabled{opacity:.38}
 .ra .round{border-radius:50%;display:flex;align-items:center;justify-content:center}
-.ra .t-label{margin-top:8px;text-align:center}
+.ra .t-label{margin-top:8px;text-align:center;word-break:keep-all}
 .ra:active:not(:disabled) .round{filter:brightness(.93)}
 /* 키패드 */
 .keypad{width:100%;max-width:280px;display:flex;flex-direction:column}
@@ -75,43 +84,43 @@ textarea,input{font:inherit;color:inherit}
 .key-letters{font-size:10px;line-height:12px;min-height:12px}
 /* 카드 */
 .card{background:#fff;border-radius:20px;box-shadow:0 1px 3px rgba(0,0,0,.10),0 1px 2px rgba(0,0,0,.06);padding:16px;display:flex;flex-direction:column;gap:8px;font-family:var(--batang);width:100%}
-.card .bm{font-family:var(--batang);font-size:13px;line-height:20px}
-.option{display:flex;align-items:center;width:100%;min-height:48px;background:var(--neutral);border-radius:12px;padding:12px;text-align:left;gap:12px}
+.card .bm{font-family:var(--batang);font-size:var(--font-small);line-height:var(--line-small)}
+.option{display:flex;align-items:center;width:100%;min-height:calc(48px * var(--text-scale));background:var(--neutral);border-radius:12px;padding:12px;text-align:left;gap:12px}
 .option:active:not(:disabled){filter:brightness(.95)}
-.option .t-bodym{flex:1}
+.option .t-bodym{flex:1;min-width:0;overflow-wrap:anywhere}
 .option .t-bodym.blue{flex:none}
 /* 음성 입력 */
 .vin{display:flex;align-items:center;width:100%;min-height:64px;background:var(--neutral);border:1px solid var(--border);border-radius:16px;padding:8px 14px;gap:8px}
-.vin textarea{flex:1;border:0;background:transparent;outline:none;resize:none;font-family:var(--noto);font-size:15px;line-height:23px;color:var(--ink);padding:0;min-height:23px;max-height:160px}
+.vin textarea{flex:1;border:0;background:transparent;outline:none;resize:none;font-family:var(--noto);font-size:var(--font-body);line-height:var(--line-body);color:var(--ink);padding:0;min-height:23px;max-height:160px}
 .vin textarea::placeholder,.vin .goal-text::placeholder{color:var(--secondary)}
-.vin .goal-text{flex:1;border:0;background:transparent;outline:none;font-family:var(--noto);font-size:15px;line-height:23px;color:var(--ink);padding:0;min-width:0}
+.vin .goal-text{flex:1;border:0;background:transparent;outline:none;font-family:var(--noto);font-size:var(--font-body);line-height:var(--line-body);color:var(--ink);padding:0;min-width:0}
 .vin .mic{width:48px;height:48px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;flex:none}
 /* 대화상자 */
 .scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center;padding:24px;z-index:50}
 .dialog{background:#F7F2FA;border-radius:28px;padding:24px;width:100%;max-width:312px;max-height:90%;display:flex;flex-direction:column;gap:16px;box-shadow:0 8px 24px rgba(0,0,0,.2)}
-.dialog h2{margin:0;font-family:var(--noto);font-weight:400;font-size:24px;line-height:32px}
-.dialog .dtext{font-family:var(--noto);font-size:14px;line-height:20px;color:#49454F;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
-.dialog .dbtns{display:flex;justify-content:flex-end;gap:8px}
+.dialog h2{margin:0;font-family:var(--noto);font-weight:400;font-size:calc(24px * var(--text-scale));line-height:calc(32px * var(--text-scale))}
+.dialog .dtext{font-family:var(--noto);font-size:var(--font-action);line-height:var(--line-action);color:#49454F;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.dialog .dbtns{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;flex:none}
 .field{position:relative;border:1px solid #79747E;border-radius:4px;padding:16px 12px 8px}
-.field label{position:absolute;top:-9px;left:10px;background:#F7F2FA;padding:0 4px;font-size:12px;line-height:16px;color:var(--blue)}
-.field input{border:0;outline:none;background:transparent;width:100%;font-size:16px;line-height:24px}
-.field select{border:0;outline:none;background:transparent;width:100%;font-size:16px;line-height:24px;padding:2px 0}
+.field label{position:absolute;top:-9px;left:10px;background:#F7F2FA;padding:0 4px;font-size:calc(12px * var(--text-scale));line-height:calc(16px * var(--text-scale));color:var(--blue)}
+.field input{border:0;outline:none;background:transparent;width:100%;font-size:calc(16px * var(--text-scale));line-height:calc(24px * var(--text-scale))}
+.field select{border:0;outline:none;background:transparent;width:100%;font-size:calc(16px * var(--text-scale));line-height:calc(24px * var(--text-scale));padding:2px 0}
 /* 오디오 팝오버 */
 .pop-scrim{position:absolute;inset:0;background:rgba(28,28,30,.12);z-index:30}
 .pop{position:absolute;right:20px;bottom:240px;width:224px;background:#fff;border-radius:18px;border:1px solid rgba(209,209,214,.5);box-shadow:0 8px 24px rgba(0,0,0,.18);padding:8px;z-index:31}
 .pop button{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:0 8px;font-weight:500}
 .pop button:disabled{opacity:.38}
 /* 탭 */
-.tabs{display:flex;min-height:60px;background:#fff;border-radius:999px;box-shadow:0 4px 12px rgba(0,0,0,.14);padding:4px}
+.tabs{display:flex;flex:none;min-height:calc(60px * var(--text-scale));background:#fff;border-radius:999px;box-shadow:0 4px 12px rgba(0,0,0,.14);padding:4px}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;border-radius:999px;padding:5px 0}
 .tab.on{background:var(--neutral)}
 .search{display:flex;align-items:center;gap:8px;background:var(--neutral);border-radius:12px;padding:12px}
-.search input{flex:1;border:0;outline:none;background:transparent;font-size:15px;line-height:23px}
+.search input{flex:1;border:0;outline:none;background:transparent;font-size:var(--font-body);line-height:var(--line-body)}
 .contact{display:flex;align-items:center;width:100%;padding:16px 0;border-bottom:1px solid var(--neutral);text-align:left;gap:12px}
 .avatar{width:40px;height:40px;border-radius:50%;background:var(--neutral);display:flex;align-items:center;justify-content:center;flex:none}
 .box{background:var(--neutral);border-radius:12px;padding:16px;width:100%}
 .top-label{position:absolute;top:8px;left:0;right:0;text-align:center;pointer-events:none}
-.presence{position:absolute;top:8px;right:12px;z-index:5;pointer-events:none;font-size:12px;line-height:18px;padding:1px 8px;border-radius:10px;background:rgba(0,0,0,.06);color:var(--secondary)}
+.presence{pointer-events:none;flex:none;font-size:12px;line-height:18px;padding:1px 8px;border-radius:10px;background:rgba(0,0,0,.06);color:var(--secondary)}
 .presence.multi{color:var(--red);background:rgba(255,59,48,.10)}
 /* 듣기 표시 점 */
 .dots span{color:transparent}
@@ -1654,7 +1663,7 @@ function CallHeader({ state, serverData = null, liveSeconds = null }) {
     : !state.agent ? `일반 전화 · ${formatDuration(state.elapsedSeconds)}`
     : `${name} · ${formatDuration(state.elapsedSeconds)}`;
   return html`<div class="col center" style=${{ width: "100%", minHeight: "76px", gap: "10px", flex: "none" }}>
-    <div class="t-headline tc">${formatPhone(state.number) || (serverData == null ? "131" : "번호 확인 전")}</div>
+    <div class="t-headline call-number tc">${formatPhone(state.number) || (serverData == null ? "131" : "번호 확인 전")}</div>
     <div class="sec tc">${subtitle}</div></div>`;
 }
 const Eyebrow = (text) => T(text, "t-label blue");
@@ -1914,7 +1923,7 @@ function LiveConfirmDialog({ target, confirm, dismiss }) {
   return html`<${Dialog} title="실제로 전화를 걸까요?" onDismiss=${dismiss}
     dismiss=${html`<${TextButton} onClick=${dismiss}>취소<//>`}
     confirm=${html`<button class="tbtn" data-testid="live-dial" disabled=${!valid} onClick=${go}>실제 발신</button>`}>
-    <div class="t-title" style=${{ fontWeight: 700, color: C.Ink }}>${formatPhone(target.number)}</div>
+    <div class="t-title confirm-number" style=${{ fontWeight: 700, color: C.Ink }}>${formatPhone(target.number)}</div>
     <div class="pre">${target.goal}</div>
     <div>서버의 070 회선으로 실제 전화가 걸려요. 통화 시간과 요금이 발생할 수 있어요.</div>
     <div class="field"><label>API 키</label><input type="password" data-testid="live-key" autocomplete="off" autocapitalize="off" spellcheck="false" value=${key}
@@ -2191,13 +2200,33 @@ function PresenceBadge() {
   if (count == null) return null;
   return html`<div class=${"presence" + (count >= 2 ? " multi" : "")} data-testid="presence" title="이 서버에서 진행 중인 통화 수 (10초마다 갱신)">접속 중 ${count}명</div>`;
 }
+/** Browser-only reading preference. This hook never changes a call or its draft inputs. */
+function useTextSizePreference() {
+  const [largeText, setLargeText] = useState(() => Prefs.get("largeText") === "1");
+  const toggle = () => setLargeText(current => {
+    const next = !current;
+    Prefs.set("largeText", next ? "1" : null);
+    return next;
+  });
+  return { largeText, toggle };
+}
+function TextSizeControl({ largeText, onToggle }) {
+  return html`<button type="button" class="text-size-toggle" aria-pressed=${largeText} onClick=${onToggle}>
+    ${largeText ? "기본 글씨로" : "큰글씨 보기"}
+  </button>`;
+}
 function Root() {
+  const { largeText, toggle } = useTextSizePreference();
   const phone = useStore(phoneModel.store);
   const entry = useStore(owner.entry);
   const server = useStore(owner.server.store);
-  return html`<div class="app">
-    <${PresenceBadge}/>
+  return html`<div class=${"app" + (largeText ? " large-text" : "")}>
+    <header class="app-toolbar" aria-label="보기 설정">
+      <${PresenceBadge}/><${TextSizeControl} largeText=${largeText} onToggle=${toggle}/>
+    </header>
+    <div class="app-viewport">
     <${MainLiveBindings} entry=${entry} state=${server}>${(voice, audio) => html`<${MainPhoneApp} phoneState=${phone} onPhoneAction=${phoneModel.dispatch} voice=${voice} audio=${audio}/>`}<//>
+    </div>
   </div>`;
 }
 render(html`<${Root}/>`, document.getElementById("root"));
