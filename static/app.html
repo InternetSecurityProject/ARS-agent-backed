@@ -98,10 +98,33 @@ textarea,input{font:inherit;color:inherit}
 .task-cue{align-self:flex-start;font-family:var(--noto);font-size:var(--font-small);line-height:var(--line-small);font-weight:500;padding:3px 10px;border-radius:8px;color:var(--secondary);background:var(--neutral);flex:none}
 .task-cue.response{color:#005CC8;background:rgba(0,122,255,.08)}
 .card .bm{font-family:var(--batang);font-size:var(--font-small);line-height:var(--line-small)}
-.option{display:flex;align-items:center;width:100%;min-height:calc(48px * var(--text-scale));background:var(--neutral);border-radius:12px;padding:12px;text-align:left;gap:12px}
-.option:active:not(:disabled){filter:brightness(.95)}
-.option .t-bodym{flex:1;min-width:0;overflow-wrap:anywhere}
-.option .t-bodym.blue{flex:none}
+.card .t-label.blue{color:#005CC8}
+.choice-options{display:flex;flex-direction:column;gap:10px;flex:none;width:100%}
+.option{display:flex;align-items:center;flex:none;width:100%;min-height:calc(56px * var(--text-scale));background:var(--neutral);border:1px solid #E0E2EA;border-radius:12px;padding:12px 14px;text-align:left;gap:12px;scroll-margin-block:12px}
+.option:active:not(:disabled){background:rgba(0,122,255,.10)}
+.option:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.option .t-bodym{flex:1;min-width:0;overflow-wrap:anywhere;font-size:calc(16px * var(--text-scale));line-height:calc(24px * var(--text-scale));font-weight:500}
+.option .t-bodym.blue{flex:none;min-width:40px;padding:2px 8px;border-radius:8px;text-align:center;color:#005CC8;background:rgba(0,122,255,.08);font-weight:700}
+.option:disabled{border-color:transparent}
+.option:disabled .t-bodym{color:var(--secondary)}
+.option:disabled .t-bodym.blue{background:#E5E5EA}
+.progress-details,.caption-details{display:flex;flex-direction:column;gap:8px;flex:none;width:100%;min-width:0}
+.caption-details{display:grid;grid-template-columns:minmax(0,1fr) auto}
+.caption-details > .t-label{grid-column:1;grid-row:1;align-self:center}
+.caption-details > .ars-caption{grid-column:1 / -1;grid-row:2}
+.recent-menu + .caption-details{margin-top:calc(12px * var(--text-scale))}
+.disclosure-toggle{display:flex;align-items:center;gap:8px;min-height:44px;width:100%;padding:8px 12px;border-radius:10px;text-align:left;background:var(--neutral);color:#005CC8;font-family:var(--noto);font-size:var(--font-action);line-height:var(--line-action);font-weight:500;cursor:pointer;list-style:none}
+.disclosure-toggle::-webkit-details-marker{display:none}
+.disclosure-toggle:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.disclosure-toggle span[aria-hidden]{width:16px;flex:none;text-align:center}
+.caption-toggle{grid-column:1 / -1;grid-row:3;justify-self:start;width:auto;min-width:44px;align-self:start;gap:4px;padding:0;margin-top:-4px;border-radius:6px;background:transparent}
+.caption-toggle[aria-expanded="true"]{grid-column:2;grid-row:1;justify-self:end;align-self:center;margin-top:0}
+.caption-toggle span[aria-hidden]{display:flex;align-items:center;justify-content:center}
+.caption-toggle:hover span:not([aria-hidden]){text-decoration:underline;text-underline-offset:3px}
+.path-history{list-style:none;display:flex;flex-direction:column;gap:8px;margin:8px 0 0;padding:0}
+.path-history li{border-left:2px solid rgba(0,122,255,.18);padding-left:12px}
+.ars-caption{flex:none;width:100%}
+.ars-caption.preview{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden}
 /* 음성 입력 */
 .vin{display:flex;align-items:center;width:100%;min-height:64px;background:var(--neutral);border:1px solid var(--border);border-radius:16px;padding:8px 14px;gap:8px}
 .vin textarea{flex:1;border:0;background:transparent;outline:none;resize:none;font-family:var(--noto);font-size:var(--font-body);line-height:var(--line-body);color:var(--ink);padding:0;min-height:23px;max-height:160px}
@@ -1355,22 +1378,26 @@ function PhoneKeypad({ onKey, compact = false, enabled = true, keyEnabled = () =
         <span class="key-digit">${d}</span><span class="key-letters">${LETTERS[d] || ""}</span></button>`;
     })}</div>`)}</div>`;
 }
-function ProgressCard({ grow, scrollable = true, children, cue = null }) {
+function ProgressCard({ grow, scrollable = true, children, cue = null, history = null }) {
   const ref = useRef();
   const seen = useRef(null);
   const responseKey = cue?.mode === "response" ? cue.key : null;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (responseKey == null || seen.current === responseKey) return;
     seen.current = responseKey;
+    // Small screens scroll the surrounding body; taller screens scroll this card.
+    // Reset only for a new response, preserving reading/input during ordinary updates.
+    const scroller = ref.current?.closest(".scroll");
+    if (scroller) scroller.scrollTop = 0;
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const animation = ref.current?.animate?.([{ outlineColor: "rgba(0,122,255,.65)" }, { outlineColor: "rgba(0,122,255,.24)" }], { duration: 900, easing: "ease-out" });
     return () => animation?.cancel();
   }, [responseKey]);
   return html`<div ref=${ref} class=${"card" + (grow ? " grow" : "") + (scrollable ? " scroll" : "") + (responseKey != null ? " needs-response" : "")}>
-    <${CallTaskLabel} cue=${cue}/>${children}</div>`;
+    <${CallTaskLabel} cue=${cue}/>${history}${children}</div>`;
 }
 function CallTaskLabel({ cue, center = false }) {
-  return cue && html`<div class=${"task-cue" + (cue.mode === "response" ? " response" : "")} style=${center ? { alignSelf: "center" } : null}>${cue.label}</div>`;
+  return cue?.mode === "response" && html`<div class="task-cue response" style=${center ? { alignSelf: "center" } : null}>${cue.label}</div>`;
 }
 function VoiceInput({ value, placeholder, onValue, onExample, microphoneDescription = "예시 음성 문장 입력, 녹음하지 않음", microphoneEnabled = true, inputEnabled = true }) {
   const ref = useRef();
@@ -1422,12 +1449,13 @@ function bCallData(snapshot, result = null) {
   const status = ended ? "ended" : snapshot.status;
   const steps = result != null ? result.path : snapshot.path;
   const pendingRequest = ended ? null : snapshot.pendingRequest;
+  const caption = result != null ? null : [...snapshot.captions].reverse().find(c => c.speaker === "ars");
   return {
     status, title: STATUS_TITLES[status] ?? "진행 상태 확인 중",
     message: result != null ? "서버에서 통화 종료를 확인했어요." : snapshot.message,
     goal: !isBlank(snapshot.goalSummary) ? snapshot.goalSummary : !isBlank(snapshot.goal) ? snapshot.goal : null,
     path: [...steps].sort((a, b) => a.step - b.step).map((p) => { const k = p.selected.key; return `${p.selected.label} (${k}${k && /^[0-9]+$/.test(k) ? "번" : ""})`; }),
-    caption: result != null ? null : ([...snapshot.captions].reverse().find((c) => c.speaker === "ars")?.text ?? null),
+    caption: caption?.text ?? null,
     // 최종 결과 요약이 null 이거나 비어 있어도 이전 요약 복원 없음
     summary: result != null ? result.summary : snapshot.summary?.summary ?? null,
     keyInfo: result != null ? result.keyInfo : snapshot.summary?.keyInfo ?? [],
@@ -1459,7 +1487,7 @@ function ServerChoiceContent({ request, input, submitted }) {
     ${T(request.message, "t-title")}
     ${request.reason === "critical_action" && T("중요한 선택이에요. 버튼으로 선택해 주세요.", "bm sec")}
     ${note != null && T(note, "bm sec")}
-    ${request.options.map((o) => {
+    ${request.options.length > 0 && html`<div class="choice-options">${request.options.map((o) => {
       const enabled = input?.canSend === true && !expired && !submitted && select(o.key) != null;
       return html`<button class="option" disabled=${!enabled} onClick=${() => {
         // 누를 때 재확인: 화면을 그린 뒤 요청 만료 가능
@@ -1468,7 +1496,7 @@ function ServerChoiceContent({ request, input, submitted }) {
           if (action) input.onSelect(action); else setExpired(!(deadline != null && deadline > Date.now()));
         }
       }}><span class="t-bodym">${o.label.trim() ? o.label : o.key}</span><span class="t-bodym blue">${/^[0-9]+$/.test(o.key) ? o.key + "번" : o.key}</span></button>`;
-    })}`;
+    })}</div>`}`;
 }
 function ServerAnswerContent({ request, input }) {
   // 기한만 갱신된 같은 질문은 작성 중인 답변을 유지한다.
@@ -1581,7 +1609,56 @@ function ServerSecureKeypad({ content, grow, scrollable = true, extraContent, cu
     <div style=${{ height: "8px", flex: "none" }}></div>
   </div>`;
 }
-function BServerContent({ data, choiceInput, choiceSubmitted = false, answerInput, listeningConnected = true }) {
+let captionDisclosureSequence = 0;
+function CaptionDisclosure({ caption, canCollapse, details }) {
+  const ref = useRef();
+  const id = useRef(null);
+  if (id.current == null) id.current = "ars-caption-" + (++captionDisclosureSequence);
+  const [long, setLong] = useState(false);
+  useLayoutEffect(() => {
+    let live = true;
+    const measure = () => {
+      const el = ref.current; if (!live || !el) return;
+      const line = parseFloat(getComputedStyle(el).lineHeight);
+      setLong(canCollapse && line > 0 && el.scrollHeight > line * 3 + 1);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (ref.current) observer.observe(ref.current);
+    document.fonts?.ready.then(measure);
+    document.fonts?.addEventListener("loadingdone", measure);
+    return () => { live = false; observer.disconnect(); document.fonts?.removeEventListener("loadingdone", measure); };
+  }, [caption, canCollapse]);
+  const transcript = html`<div key="transcript" ref=${ref} id=${id.current} class=${"pre t-17 ars-caption" + (canCollapse && !details.captionOpen ? " preview" : "")}>${caption}</div>`;
+  const toggle = canCollapse && long && html`<button key="toggle" type="button" class="disclosure-toggle caption-toggle" aria-controls=${id.current} aria-expanded=${details.captionOpen} onClick=${details.toggleCaption}>
+    <span>${details.captionOpen ? "접기" : "더보기"}</span><span aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d=${details.captionOpen ? "M6 15L12 9L18 15" : "M6 9L12 15L18 9"} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>`;
+  return html`<div class="caption-details">
+    ${T("ARS 안내", "t-label blue")}
+    ${details.captionOpen ? [toggle, transcript] : [transcript, toggle]}
+  </div>`;
+}
+function PathHistoryDisclosure({ path, details }) {
+  if (path.length < 2) return null;
+  return html`<details open=${details.pathOpen}>
+      <summary class="disclosure-toggle" onClick=${e => { e.preventDefault(); details.setPathOpen(open => !open); }}><span aria-hidden="true">${details.pathOpen ? "▾" : "▸"}</span><span>${details.pathOpen ? "지나온 메뉴 접기" : "지나온 메뉴 보기"}</span></summary>
+      <ol class="path-history">${path.map((step, i) => html`<li key=${i}>${T(step, "t-17")}</li>`)}</ol>
+    </details>`;
+}
+function demoProgressPath(state) {
+  if (state.phase !== "Selecting") return [];
+  const label = { 3: "현재 날씨", 5: "중기예보" }[state.selectedKey] ?? "단기예보";
+  return ["경기 지역", "수원", `${label} (${state.selectedKey}번)`];
+}
+const DEMO_WEATHER_OPTIONS = [{ key: "1", label: "오늘·내일·모레 단기예보" }, { key: "3", label: "현재 날씨" }, { key: "5", label: "중기 10일 예보" }];
+const DEMO_WEATHER_CAPTION = "오늘·내일·모레 단기예보는 1번, 현재 날씨는 3번, 중기 10일 예보는 5번을 눌러 주세요. 원하시는 날씨 정보에 해당하는 번호를 선택해 주세요.";
+function CallProgressDetails({ path, caption = null, status, details }) {
+  if (path.length === 0 && isBlank(caption)) return null;
+  return html`<div class="progress-details">
+    ${path.length > 0 && html`${T("최근 선택한 메뉴", "t-label blue")}${T(path[path.length - 1], "t-17 recent-menu")}`}
+    ${!isBlank(caption) && html`<${CaptionDisclosure} caption=${caption} canCollapse=${["listening", "selecting"].includes(status)} details=${details}/>`}
+  </div>`;
+}
+function BServerContent({ data, choiceInput, choiceSubmitted = false, answerInput, listeningConnected = true, details }) {
   const pending = data.pendingRequest;
   const head = !data.isEnded ? (data.status === "listening" ? html`<${ListeningProgressTitle} running=${data.animateListening(listeningConnected)}/>` : T(data.title, "t-title")) : null;
   const stateLine = data.title === "진행 상태 확인 중" ? T("서버 상태 · " + data.status, "bm sec") : null;
@@ -1602,8 +1679,7 @@ function BServerContent({ data, choiceInput, choiceSubmitted = false, answerInpu
     ${!isBlank(data.handoffScript) && T(data.handoffScript)}
     ${!hasSummary && html`
       ${data.status === "dialing" && data.goal != null && T(data.goal)}
-      ${data.path.length > 0 && html`${T("이동 경로", "t-label blue")}${T(data.path.join(" → "), "t-17")}`}
-      ${!isBlank(data.caption) && html`${T("ARS 안내", "t-label blue")}${T(data.caption, "t-17")}`}`}
+      <${CallProgressDetails} path=${data.path} caption=${data.caption} status=${data.status} details=${details}/>`}
     ${needsMessage && !isBlank(data.message) && data.message !== data.summary && T(data.message)}`;
 }
 
@@ -1641,6 +1717,9 @@ function useCallCue(state, data, choiceInput, choiceSubmitted, secureContent, co
 }
 function CallScreen({ state, dispatch, serverData = null, choiceInput = null, secureInput = null, liveControls = null, answerInput = null, purposeContent = null }) {
   const largeText = P.useContext(TextSizeContext);
+  const [pathOpen, setPathOpen] = useState(false);
+  const [captionOpen, setCaptionOpen] = useState(false);
+  const details = { pathOpen, setPathOpen, captionOpen, toggleCaption: () => setCaptionOpen(open => !open) };
   // 영수증은 화면 분기보다 위에 배치: 한 번 보낸 요청이 다시 전송 가능 상태로 돌아가는 것 방지
   const choiceRef = useRef([]); const [, bump] = useReducer((x) => x + 1, 0);
   const requestId = serverData?.pendingRequest?.requestId ?? null;
@@ -1668,7 +1747,7 @@ function CallScreen({ state, dispatch, serverData = null, choiceInput = null, se
   return html`<div ref=${ref} class=${"call-view" + (state.agent ? " agent-call" : "")} style=${{ position: "relative", flex: "1 1 0", minHeight: 0, display: "flex", flexDirection: "column" }}>
     <div class="col center grow call-frame">
       <${ResponsiveCallBody} state=${state} dispatch=${dispatch} keypad=${keypad} compact=${compact} topSpace=${topSpace} readingLayout=${largeText && state.agent} serverData=${serverData} cue=${cue}
-        choiceInput=${guardedChoiceInput} choiceSubmitted=${choiceSubmitted} secureContent=${secureContent} liveControls=${liveControls} answerInput=${answerInput} purposeContent=${purposeContent}/>
+        choiceInput=${guardedChoiceInput} choiceSubmitted=${choiceSubmitted} secureContent=${secureContent} liveControls=${liveControls} answerInput=${answerInput} purposeContent=${purposeContent} details=${details}/>
       ${secureContent != null ? html`
         <button class="fbtn wide" disabled=${!(secureContent.ready && secureContent.form.count > 0)} onClick=${() => {
           if (secureCanSend && !secureRef.current.includes(secureToken)) {
@@ -1694,18 +1773,21 @@ function CallScreen({ state, dispatch, serverData = null, choiceInput = null, se
   </div>`;
 }
 const Spacer = (px, grow = false) => html`<div style=${grow ? { flex: "1 1 0", minHeight: 0 } : { height: px + "px", flex: "none" }}></div>`;
-function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, readingLayout = false, serverData, choiceInput, choiceSubmitted, secureContent, liveControls, answerInput, purposeContent, cue }) {
+function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, readingLayout = false, serverData, choiceInput, choiceSubmitted, secureContent, liveControls, answerInput, purposeContent, cue, details }) {
   const grow = !compact;
+  const tightHeader = readingLayout && state.screen !== "Ended" && serverData?.isEnded !== true;
   const controlsToEndGap = readingLayout && state.screen === "Call" && !keypad && serverData?.isEnded !== true ? 4 : 16;
+  const historyPath = liveControls?.stateUnavailable ? [] : serverData != null
+    ? (serverData.pendingRequest == null && isBlank(serverData.summary) ? serverData.path : []) : demoProgressPath(state);
   let body;
   if (secureContent != null) body = html`<${ServerSecureKeypad} content=${secureContent} grow=${grow} scrollable=${!compact} extraContent=${() => liveControls?.extras?.()} cue=${cue}/>`;
   else if (keypad) body = html`<${CardFreeKeypad} state=${state} dispatch=${dispatch} grow=${grow} scrollable=${!compact} liveControls=${liveControls} cue=${cue}/>`;
   else if (state.screen === "Ended") body = compact && !readingLayout ? html`<${CallHeader} state=${state}/>` : Spacer(0, true);
   else if (!state.agent && (state.screen === "Call" || compact)) body = html`${!compact && Spacer(0, true)}<${NormalControls} state=${state} dispatch=${dispatch}/>${!compact && Spacer(16)}`;
   else body = html`
-    <${ProgressCard} grow=${grow} scrollable=${!compact} cue=${cue}>
+    <${ProgressCard} grow=${grow} scrollable=${!compact} cue=${cue} history=${html`<${PathHistoryDisclosure} path=${historyPath} details=${details}/>`}>
       <${AgentContent} state=${state} dispatch=${dispatch} serverData=${serverData} choiceInput=${choiceInput} choiceSubmitted=${choiceSubmitted}
-        liveControls=${liveControls} answerInput=${answerInput} purposeContent=${purposeContent}/>
+        liveControls=${liveControls} answerInput=${answerInput} purposeContent=${purposeContent} details=${details}/>
     <//>
     ${(!compact || (state.screen === "Call" && serverData?.isEnded !== true)) && html`
       ${Spacer(readingLayout ? 12 : compact ? 16 : 20)}
@@ -1714,7 +1796,7 @@ function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, readin
       ${!compact && Spacer(controlsToEndGap)}`}`;
   return html`<div class=${"col center grow" + (compact ? " scroll" : "")} style=${{ width: "100%" }}>
     ${Spacer(readingLayout ? 12 : compact ? 32 : topSpace)}
-    ${(!compact || serverData != null || readingLayout) && html`<${CallHeader} state=${state} tight=${readingLayout} serverData=${serverData} liveSeconds=${liveControls?.elapsedSeconds ?? null}/>${Spacer(readingLayout ? 12 : compact ? 16 : 24)}`}
+    ${(!compact || serverData != null || readingLayout) && html`<${CallHeader} state=${state} tight=${tightHeader} serverData=${serverData} liveSeconds=${liveControls?.elapsedSeconds ?? null}/>${Spacer(readingLayout ? 12 : compact ? 16 : 24)}`}
     ${body}
     ${(compact || keypad) && Spacer(controlsToEndGap)}
   </div>`;
@@ -1736,10 +1818,10 @@ function CallHeader({ state, serverData = null, liveSeconds = null, tight = fals
     ${tight && showName && html`<div class="call-institution t-bodym sec tc">${name}</div>`}</div>`;
 }
 const Eyebrow = (text) => T(text, "t-label blue");
-function AgentContent({ state, dispatch, serverData, choiceInput, choiceSubmitted, liveControls, answerInput, purposeContent }) {
+function AgentContent({ state, dispatch, serverData, choiceInput, choiceSubmitted, liveControls, answerInput, purposeContent, details }) {
   if (liveControls?.stateUnavailable === true) return html`${T("통화 상태 확인 불가", "t-title")}${liveControls.extras?.()}`;
   if (serverData != null) return html`<${BServerContent} data=${serverData} choiceInput=${choiceInput} choiceSubmitted=${choiceSubmitted} answerInput=${answerInput}
-    listeningConnected=${liveControls?.progressConnected ?? true}/>${liveControls?.extras?.()}`;
+    listeningConnected=${liveControls?.progressConnected ?? true} details=${details}/>${liveControls?.extras?.()}`;
   if (state.screen === "Purpose") {
     if (purposeContent) return purposeContent();
     return html`${T("어떤 일을 도와드릴까요?", "t-title")}<div style=${{ height: "4px" }}></div>
@@ -1749,14 +1831,13 @@ function AgentContent({ state, dispatch, serverData, choiceInput, choiceSubmitte
   }
   switch (state.phase) {
     case "Dialing": return html`${T(state.goal, "t-title")}${T("연결되면 Agent가 메뉴를 찾아요.", "sec")}`;
-    case "Listening": return html`<${ListeningProgressTitle} running=${true}/>${Eyebrow("ARS 안내")}${T("“단기예보는 1번, 현재 날씨는 3번…”", "t-17")}`;
-    case "Selecting": { const label = { 3: "현재 날씨", 5: "중기예보" }[state.selectedKey] ?? "단기예보";
-      return html`${T("원하는 메뉴를 찾고 있어요", "t-title")}${Eyebrow("이동 경로")}${T(`경기 지역 → 수원 → ${label} (${state.selectedKey}번)`, "t-17")}`; }
+    case "Listening": return html`<${ListeningProgressTitle} running=${true}/><${CallProgressDetails} path=${[]} caption=${DEMO_WEATHER_CAPTION} status="listening" details=${details}/>`;
+    case "Selecting": return html`${T("원하는 메뉴를 찾고 있어요", "t-title")}<${CallProgressDetails} path=${demoProgressPath(state)} caption=${DEMO_WEATHER_CAPTION} status="selecting" details=${details}/>`;
     case "ListeningResult": return html`${Eyebrow("기관 안내")}${T("“오후에는 구름이 많고 한때 비가 옵니다. 강수확률은 20~60%입니다.”", "t-17")}`;
     case "Done": return html`${T("오늘 오후, 비가 올 수 있어요", "t-title")}${T("수원 · 강수확률 20~60%", "sec")}`;
     case "Choice": return html`${T("어떤 정보를 원하시나요?", "t-title")}
-      ${[["1", "오늘·내일·모레 단기예보"], ["3", "현재 날씨"], ["5", "중기 10일 예보"]].map(([k, l]) => html`<button class="option" onClick=${() => dispatch({ type: "Select", key: k })}>
-        <span class="t-bodym">${l}</span><span class="t-bodym blue">${k}번</span></button>`)}`;
+      <div class="choice-options">${DEMO_WEATHER_OPTIONS.map(({ key: k, label: l }) => html`<button class="option" onClick=${() => dispatch({ type: "Select", key: k })}>
+        <span class="t-bodym">${l}</span><span class="t-bodym blue">${k}번</span></button>`)}</div>`;
     case "Answer": return html`${T("어느 지역의 날씨인가요?", "t-title")}
       <${VoiceInput} value=${state.answerDraft} placeholder="지역을 말씀해 주세요" onValue=${(t) => dispatch({ type: "AnswerChanged", text: t })}
         onExample=${() => dispatch({ type: "AnswerChanged", text: "수원시 날씨가 궁금해요" })}/>

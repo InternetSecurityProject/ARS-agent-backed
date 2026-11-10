@@ -259,8 +259,13 @@ for (const viewport of [{ width: 400, height: 688 }, { width: 327, height: 688 }
           const target = await button.boundingBox();
           assert(target.x + target.width <= endTarget.x || target.x >= endTarget.x + endTarget.width || target.y + target.height <= endTarget.y, '보조 버튼과 종료 버튼의 터치 영역이 겹치면 안 된다');
         }
-        const lastOption = await page.getByRole('button', { name: '중기 10일 예보 5번' }).boundingBox();
-        assert(lastOption.y + lastOption.height <= largeCard.y + largeCard.height - 8, '후보 세 개가 카드 안에 보여야 한다');
+        // 커진 후보는 카드 내부에서 스크롤하며 하단 종료 버튼은 고정한다.
+        const last = page.getByRole('button', { name: '중기 10일 예보 5번' });
+        await last.scrollIntoViewIfNeeded();
+        const lastOption = await last.boundingBox();
+        await page.screenshot({ path: fileURLToPath(new URL(`../test-results/choice-scroll-${viewport.width}.png`, import.meta.url)) });
+        assert(lastOption.y + lastOption.height <= largeCard.y + largeCard.height - 8, JSON.stringify({ message: '마지막 후보에 카드 스크롤로 접근할 수 있어야 한다', largeCard, lastOption }));
+        assert(lastOption.y >= largeCard.y);
         await page.screenshot({ path: fileURLToPath(new URL(`../test-results/large-text-layout-${viewport.width}.png`, import.meta.url)) });
       }
       await page.getByRole('button', { name: '중기 10일 예보 5번' }).scrollIntoViewIfNeeded();
