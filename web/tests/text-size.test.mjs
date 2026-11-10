@@ -274,7 +274,7 @@ for (const viewport of [{ width: 400, height: 688 }, { width: 327, height: 688 }
   });
 }
 
-test('긴 전화번호는 큰글씨 헤더에서 줄을 나누어 표시하고 가로로 잘리지 않는다', async () => {
+test('긴 전화번호는 큰글씨 헤더에서 가로로 잘리지 않는다', async () => {
   const { page, context, calls } = await open({ width: 320, height: 568 });
   try {
     await toggle(page).click();
@@ -288,3 +288,46 @@ test('긴 전화번호는 큰글씨 헤더에서 줄을 나누어 표시하고 �
     assert.deepEqual(calls, []);
   } finally { await context.close(); }
 });
+
+test('목적 입력과 Agent 통화 헤더에서 기관명 없이 통화 시간은 유지한다', async () => {
+  const { page, context, calls } = await open();
+  try {
+    await page.keyboard.type('131');
+    await page.getByRole('button', { name: 'ARS Agent 전화', exact: true }).click();
+    assert.equal(await page.getByText(/기상청 기상콜센터/).count(), 0);
+    await page.getByRole('button', { name: '취소', exact: true }).click();
+    await page.getByRole('button', { name: '전체 지우기', exact: true }).click();
+    await demo(page, '후보 선택');
+    await page.getByText('어떤 정보를 원하시나요?', { exact: true }).waitFor({ timeout: 12000 });
+    for (const large of [false, true]) {
+      if (large) await toggle(page).click();
+      assert.equal(await page.getByText(/기상청 기상콜센터/).count(), 0);
+      assert.match(await page.locator('.call-number + .sec').innerText(), /^\d{2}:\d{2}$/);
+    }
+    assert.deepEqual(calls, []);
+  } finally { await context.close(); }
+});
+
+for (const viewport of [{ width: 320, height: 568 }, { width: 327, height: 688 }, { width: 390, height: 844 }]) {
+  test(`010-5555-5555 번호를 기본·큰글씨 키패드와 통화에서 잘림 없이 표시한다 (${viewport.width}px)`, async () => {
+    const { page, context, calls } = await open(viewport);
+    try {
+      await page.keyboard.type('01055555555');
+      const dialNumber = page.getByText('010-5555-5555', { exact: true });
+      await withinScreen(dialNumber, page);
+      await toggle(page).click(); await withinScreen(dialNumber, page);
+      await toggle(page).click();
+      assert.equal(await page.getByRole('button', { name: 'ARS Agent 전화', exact: true }).count(), 0);
+      await page.getByRole('button', { name: '일반 전화', exact: true }).click();
+      for (const large of [false, true]) {
+        if (large) await toggle(page).click();
+        const number = page.locator('.call-number,.top-label').filter({ hasText: '010-5555-5555' });
+        assert.equal(await number.count(), 1);
+        await withinScreen(number, page);
+        assert.equal(await number.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
+      }
+      await page.screenshot({ path: fileURLToPath(new URL(`../test-results/long-phone-${viewport.width}.png`, import.meta.url)) });
+      assert.deepEqual(calls, []);
+    } finally { await context.close(); }
+  });
+}

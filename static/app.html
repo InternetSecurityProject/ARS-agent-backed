@@ -1666,17 +1666,16 @@ function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, readin
   </div>`;
 }
 function CallHeader({ state, serverData = null, liveSeconds = null, tight = false }) {
-  const name = contactName(state.number);
   const subtitle = serverData?.isEnded === true ? (serverData.durationSeconds != null ? `통화 종료 · ${formatDuration(serverData.durationSeconds)}` : "통화 종료")
-    : serverData != null ? (serverData.status === "dialing" ? `${name} · 연결 중` : name + (liveSeconds != null ? ` · ${formatDuration(liveSeconds)}` : ""))
-    : state.screen === "Purpose" ? name
+    : serverData != null ? (serverData.status === "dialing" ? "연결 중" : (liveSeconds != null ? formatDuration(liveSeconds) : "통화 중"))
+    : state.screen === "Purpose" ? ""
     : state.screen === "Ended" ? `통화 종료 · ${formatDuration(state.elapsedSeconds)}`
-    : state.phase === "Dialing" ? `${name} · 연결 중`
+    : state.phase === "Dialing" ? "연결 중"
     : !state.agent ? `일반 전화 · ${formatDuration(state.elapsedSeconds)}`
-    : `${name} · ${formatDuration(state.elapsedSeconds)}`;
-  return html`<div class=${"col center" + (tight ? " call-header-tight" : "")} style=${{ width: "100%", minHeight: tight ? 0 : "76px", gap: tight ? "6px 12px" : "10px", flex: "none" }}>
+    : formatDuration(state.elapsedSeconds);
+  return html`<div class=${"col center" + (tight ? " call-header-tight" : "")} style=${{ width: "100%", minHeight: tight || !subtitle ? 0 : "76px", gap: tight ? "6px 12px" : "10px", flex: "none" }}>
     <div class="t-headline call-number tc">${formatPhone(state.number) || (serverData == null ? "131" : "번호 확인 전")}</div>
-    <div class="sec tc">${subtitle}</div></div>`;
+    ${subtitle && html`<div class="sec tc">${subtitle}</div>`}</div>`;
 }
 const Eyebrow = (text) => T(text, "t-label blue");
 function AgentContent({ state, dispatch, serverData, choiceInput, choiceSubmitted, liveControls, answerInput, purposeContent }) {
