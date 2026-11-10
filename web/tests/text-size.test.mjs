@@ -248,6 +248,17 @@ for (const viewport of [{ width: 400, height: 688 }, { width: 327, height: 688 }
       const modeBox = await mode.boundingBox(), toggleBox = await toggle(page).boundingBox();
       assert(Math.abs(modeBox.y + modeBox.height / 2 - toggleBox.y - toggleBox.height / 2) <= 2);
       if (viewport.height === 688) {
+        const middle = await page.getByRole('button', { name: '키패드', exact: true }).locator('.round').boundingBox();
+        const circleGap = largeEnd.y - middle.y - middle.height;
+        assert(circleGap <= 44, JSON.stringify({ circleGap, middle, largeEnd }));
+        const endTarget = await page.getByRole('button', { name: '종료', exact: true }).boundingBox();
+        for (const name of ['ARS 소리 켜기', '키패드', '오디오']) {
+          const button = page.getByRole('button', { name, exact: true });
+          const circle = await button.locator('.round').boundingBox();
+          assert.equal(circle.width, 60); assert.equal(circle.height, 60);
+          const target = await button.boundingBox();
+          assert(target.x + target.width <= endTarget.x || target.x >= endTarget.x + endTarget.width || target.y + target.height <= endTarget.y, '보조 버튼과 종료 버튼의 터치 영역이 겹치면 안 된다');
+        }
         const lastOption = await page.getByRole('button', { name: '중기 10일 예보 5번' }).boundingBox();
         assert(lastOption.y + lastOption.height <= largeCard.y + largeCard.height - 8, '후보 세 개가 카드 안에 보여야 한다');
         await page.screenshot({ path: fileURLToPath(new URL(`../test-results/large-text-layout-${viewport.width}.png`, import.meta.url)) });

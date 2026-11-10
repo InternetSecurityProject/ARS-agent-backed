@@ -80,6 +80,9 @@ textarea,input{font:inherit;color:inherit}
 .ra .round{border-radius:50%;display:flex;align-items:center;justify-content:center}
 .ra .t-label{margin-top:8px;text-align:center;word-break:keep-all}
 .ra:active:not(:disabled) .round{filter:brightness(.93)}
+.agent-controls{max-width:304px;width:100%;min-height:88px;gap:8px;justify-content:center;flex:none}
+/* Reserve a one-line center caption. The left two-line caption uses its own column beside End. */
+.agent-controls.close-to-end{height:96px;min-height:96px;align-items:flex-start}
 /* 키패드 */
 .keypad{width:100%;max-width:280px;display:flex;flex-direction:column}
 .keypad-row{display:flex;justify-content:space-between}
@@ -1653,7 +1656,7 @@ function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, readin
     ${(!compact || (state.screen === "Call" && serverData?.isEnded !== true)) && html`
       ${Spacer(readingLayout ? 12 : compact ? 16 : 20)}
       ${!compact && state.screen === "Purpose" ? Spacer(readingLayout ? 0 : 88) : serverData?.isEnded !== true
-        ? html`<${AgentControls} state=${state} dispatch=${dispatch} interactive=${serverData == null || liveControls != null} liveControls=${liveControls}/>` : null}
+        ? html`<${AgentControls} state=${state} dispatch=${dispatch} closeToEnd=${readingLayout && !compact} interactive=${serverData == null || liveControls != null} liveControls=${liveControls}/>` : null}
       ${!compact && Spacer(controlsToEndGap)}`}`;
   return html`<div class=${"col center grow" + (compact ? " scroll" : "")} style=${{ width: "100%" }}>
     ${Spacer(readingLayout ? 12 : compact ? 32 : topSpace)}
@@ -1705,9 +1708,9 @@ function AgentContent({ state, dispatch, serverData, choiceInput, choiceSubmitte
     default: return null;
   }
 }
-function AgentControls({ state, dispatch, interactive = true, liveControls = null }) {
+function AgentControls({ state, dispatch, interactive = true, liveControls = null, closeToEnd = false }) {
   const enabled = interactive && liveControls?.stateUnavailable !== true;
-  return html`<div class="row" style=${{ maxWidth: "304px", width: "100%", minHeight: "88px", gap: "8px", justifyContent: "center", flex: "none" }}>
+  return html`<div class=${"row agent-controls" + (closeToEnd ? " close-to-end" : "")}>
     <${RoundAction} label=${state.audioOn ? "ARS 소리 끄기" : "ARS 소리 켜기"} icon="agent_blue" onClick=${() => dispatch({ type: "ToggleAudio" })} weight=${true} shadowElevation=${2}
       enabled=${enabled && (liveControls?.arsAvailable ?? state.phase !== "Dialing")}/>
     <${RoundAction} label="키패드" icon="keypad" onClick=${() => dispatch({ type: "OpenKeypad" })} weight=${true} shadowElevation=${2}
