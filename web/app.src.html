@@ -53,6 +53,7 @@ textarea,input{font:inherit;color:inherit}
 .call-number{font-size:28px;line-height:38px}
 .confirm-number{font-size:20px;line-height:28px}
 .call-header-tight{flex-direction:row;flex-wrap:wrap;justify-content:center}
+.call-institution{flex-basis:100%;width:100%;overflow-wrap:anywhere}
 .call-frame{padding:0 20px}
 .large-text .agent-call .call-frame{padding:0 12px}
 .large-text .agent-call .card{padding:12px}
@@ -93,6 +94,9 @@ textarea,input{font:inherit;color:inherit}
 .key-letters{font-size:10px;line-height:12px;min-height:12px}
 /* 카드 */
 .card{background:#fff;border-radius:20px;box-shadow:0 1px 3px rgba(0,0,0,.10),0 1px 2px rgba(0,0,0,.06);padding:16px;display:flex;flex-direction:column;gap:8px;font-family:var(--batang);width:100%}
+.card.needs-response{outline:2px solid rgba(0,122,255,.24);outline-offset:-2px}
+.task-cue{align-self:flex-start;font-family:var(--noto);font-size:var(--font-small);line-height:var(--line-small);font-weight:500;padding:3px 10px;border-radius:8px;color:var(--secondary);background:var(--neutral);flex:none}
+.task-cue.response{color:#005CC8;background:rgba(0,122,255,.08)}
 .card .bm{font-family:var(--batang);font-size:var(--font-small);line-height:var(--line-small)}
 .option{display:flex;align-items:center;width:100%;min-height:calc(48px * var(--text-scale));background:var(--neutral);border-radius:12px;padding:12px;text-align:left;gap:12px}
 .option:active:not(:disabled){filter:brightness(.95)}
@@ -1351,8 +1355,22 @@ function PhoneKeypad({ onKey, compact = false, enabled = true, keyEnabled = () =
         <span class="key-digit">${d}</span><span class="key-letters">${LETTERS[d] || ""}</span></button>`;
     })}</div>`)}</div>`;
 }
-function ProgressCard({ grow, scrollable = true, children }) {
-  return html`<div class=${"card" + (grow ? " grow" : "") + (scrollable ? " scroll" : "")}>${children}</div>`;
+function ProgressCard({ grow, scrollable = true, children, cue = null }) {
+  const ref = useRef();
+  const seen = useRef(null);
+  const responseKey = cue?.mode === "response" ? cue.key : null;
+  useEffect(() => {
+    if (responseKey == null || seen.current === responseKey) return;
+    seen.current = responseKey;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const animation = ref.current?.animate?.([{ outlineColor: "rgba(0,122,255,.65)" }, { outlineColor: "rgba(0,122,255,.24)" }], { duration: 900, easing: "ease-out" });
+    return () => animation?.cancel();
+  }, [responseKey]);
+  return html`<div ref=${ref} class=${"card" + (grow ? " grow" : "") + (scrollable ? " scroll" : "") + (responseKey != null ? " needs-response" : "")}>
+    <${CallTaskLabel} cue=${cue}/>${children}</div>`;
+}
+function CallTaskLabel({ cue, center = false }) {
+  return cue && html`<div class=${"task-cue" + (cue.mode === "response" ? " response" : "")} style=${center ? { alignSelf: "center" } : null}>${cue.label}</div>`;
 }
 function VoiceInput({ value, placeholder, onValue, onExample, microphoneDescription = "예시 음성 문장 입력, 녹음하지 않음", microphoneEnabled = true, inputEnabled = true }) {
   const ref = useRef();
@@ -1393,11 +1411,11 @@ function ListeningProgressTitle({ running }) {
   const fg = useForeground();
   const active = running && fg;
   return html`<div class="row t-title" style=${{ width: "100%", alignItems: "baseline" }}>
-    <span>ARS 안내를 듣는 중</span><span class=${"dots" + (active ? " on" : "")} aria-hidden="true" style=${{ paddingLeft: "4px" }}><span>.</span><span>.</span><span>.</span></span></div>`;
+    <span>원하는 메뉴를 찾고 있어요</span><span class=${"dots" + (active ? " on" : "")} aria-hidden="true" style=${{ paddingLeft: "4px" }}><span>.</span><span>.</span><span>.</span></span></div>`;
 }
 
 /* ------------------------------------------------------------------ 서버 화면 데이터 (BCallData.kt) */
-const STATUS_TITLES = { dialing: "기관에 연결 중", listening: "ARS 안내를 듣는 중", selecting: "메뉴 선택 중", listening_result: "기관 안내", agent_done: "안내 결과",
+const STATUS_TITLES = { dialing: "기관에 연결 중", listening: "원하는 메뉴를 찾고 있어요", selecting: "원하는 메뉴를 찾고 있어요", listening_result: "기관 안내", agent_done: "안내 결과",
   awaiting_user: "입력이 필요해요", waiting_agent: "상담원 연결 대기", connected_to_agent: "상담원 연결", ended: "통화 종료" };
 function bCallData(snapshot, result = null) {
   const ended = result != null || snapshot.status === "ended";
@@ -1436,11 +1454,11 @@ function ServerChoiceContent({ request, input, submitted }) {
   const select = (key) => (request.kind !== "clarification" || isBlank(request.requestId) || isBlank(key) || !(deadline != null && deadline > Date.now()) ||
     request.options.filter((o) => o.key === key).length !== 1 ? null : { requestId: request.requestId, key });
   const note = request.options.length === 0 ? "선택 가능한 메뉴가 없어요." : expired ? "선택 시간이 지났어요. 새 안내를 기다려 주세요."
-    : submitted ? "선택을 전달했어요. 응답을 기다려 주세요." : input == null ? "선택 기능 연결 전이에요." : !input.canSend ? "연결 상태를 확인하고 있어요." : "시간 내 선택해 주세요.";
+    : submitted ? "선택을 전달했어요. 응답을 기다려 주세요." : input == null ? "선택 기능 연결 전이에요." : !input.canSend ? "연결 상태를 확인하고 있어요." : null;
   return html`
-    ${T(request.message)}
+    ${T(request.message, "t-title")}
     ${request.reason === "critical_action" && T("중요한 선택이에요. 버튼으로 선택해 주세요.", "bm sec")}
-    ${T(note, "bm sec")}
+    ${note != null && T(note, "bm sec")}
     ${request.options.map((o) => {
       const enabled = input?.canSend === true && !expired && !submitted && select(o.key) != null;
       return html`<button class="option" disabled=${!enabled} onClick=${() => {
@@ -1453,15 +1471,18 @@ function ServerChoiceContent({ request, input, submitted }) {
     })}`;
 }
 function ServerAnswerContent({ request, input }) {
-  const rk = jsonKey(request);
+  // 기한만 갱신된 같은 질문은 작성 중인 답변을 유지한다.
+  const rk = jsonKey({ ...request, expiresAt: null });
   const [value, setValue] = useState("");
   const expiry = parseInstant(request.expiresAt);
   const [expired, setExpired] = useState(() => !(expiry != null && expiry > Date.now()));
+  useLayoutEffect(() => { setValue(""); }, [rk]);
   useEffect(() => {
-    setValue(""); setExpired(!(expiry != null && expiry > Date.now()));
+    const nowExpired = !(expiry != null && expiry > Date.now());
+    setExpired(nowExpired); if (nowExpired) setValue("");
     const t = later(expiry == null ? 0 : expiry - Date.now(), () => { setExpired(true); setValue(""); });
     return () => clearTimeout(t);
-  }, [rk]);
+  }, [rk, expiry]);
   useEffect(() => { if (!input.canSend) setValue(""); }, [input.canSend]);
   if (request.kind !== "clarification" || request.reason === "critical_action" || isBlank(request.requestId)) return null;
   const enabled = input.canSend && !expired;
@@ -1540,12 +1561,13 @@ function useServerSecureForm(request, retryVersion, canSend) {
   }, [form, expiresAt]);
   return form;
 }
-function ServerSecureKeypad({ content, grow, scrollable = true, extraContent }) {
+function ServerSecureKeypad({ content, grow, scrollable = true, extraContent, cue }) {
   const { request, form, ready, submitted } = content;
   const prompt = !isBlank(request.message) ? request.message : request.arsPrompt ?? "";
   const note = form.expired ? "입력 시간이 지났어요. 새 안내를 기다려 주세요." : form.stopped ? "입력을 중단했어요."
     : submitted ? "입력을 전달했어요. 응답을 기다려 주세요." : !ready ? "입력 기능 연결 전이거나 연결을 확인하고 있어요." : null;
   return html`<div class=${"col center" + (grow ? " grow" : "") + (scrollable ? " scroll" : "")} style=${{ width: "100%", gap: "8px" }}>
+    <${CallTaskLabel} cue=${cue} center=${true}/>
     ${T(!isBlank(request.label) ? request.label : "개인정보 입력", "t-title tc")}
     ${!isBlank(prompt) && prompt !== request.label && T(prompt, "tc")}
     ${note != null && T(note, "t-bodym sec tc")}
@@ -1567,8 +1589,8 @@ function BServerContent({ data, choiceInput, choiceSubmitted = false, answerInpu
     if (pending.kind === "clarification") {
       const choice = pending.options.length > 0 || answerInput == null || pending.reason === "critical_action"
         ? html`<${ServerChoiceContent} request=${pending} input=${choiceInput && { ...choiceInput, canSend: choiceInput.canSend && data.status === "awaiting_user" }} submitted=${choiceSubmitted}/>`
-        : T(pending.message);
-      return html`${head}${stateLine}${choice}${answerInput != null && html`<${ServerAnswerContent} request=${pending} input=${answerInput}/>`}`;
+        : T(pending.message, "t-title");
+      return html`${stateLine}${choice}${answerInput != null && html`<${ServerAnswerContent} request=${pending} input=${answerInput}/>`}`;
     }
     return html`${head}${stateLine}${T(pending.message)}${T("입력 화면 연결 전이에요.", "bm sec")}`;
   }
@@ -1586,6 +1608,37 @@ function BServerContent({ data, choiceInput, choiceSubmitted = false, answerInpu
 }
 
 /* ------------------------------------------------------------------ 통화 화면 (CallScreens.kt) */
+function useCallCue(state, data, choiceInput, choiceSubmitted, secureContent, controls, answerInput) {
+  const pending = data?.pendingRequest;
+  const deadline = parseInstant(pending?.expiresAt);
+  const [, refresh] = useReducer(x => x + 1, 0);
+  useEffect(() => {
+    if (deadline == null || deadline <= Date.now()) return;
+    const timer = later(deadline - Date.now(), refresh);
+    return () => clearTimeout(timer);
+  }, [pending?.requestId, deadline]);
+  if (!state.agent || state.screen !== "Call" || data?.isEnded || controls?.stateUnavailable) return null;
+  const waiting = { mode: "waiting", label: "기다려 주세요" };
+  if (data != null) {
+    if (pending != null) {
+      const current = !isBlank(pending.requestId) && deadline != null && deadline > Date.now() && data.status === "awaiting_user" && controls?.progressConnected !== false;
+      if (pending.kind === "secure_input") return current && secureContent?.ready && !secureContent.submitted
+        ? { mode: "response", label: "입력해 주세요", key: `secure:${pending.requestId}:${secureContent.request.kind}` } : waiting;
+      if (pending.kind === "clarification") {
+        const hasChoice = pending.options.some(o => !isBlank(o.key) && pending.options.filter(other => other.key === o.key).length === 1);
+        const canChoose = hasChoice && choiceInput?.canSend;
+        const canAnswer = pending.reason !== "critical_action" && answerInput?.canSend;
+        return current && !choiceSubmitted && (canChoose || canAnswer)
+          ? { mode: "response", label: hasChoice ? "선택해 주세요" : "답변해 주세요", key: `question:${pending.requestId}:${choiceInput?.retryVersion ?? 0}` } : waiting;
+      }
+      return null;
+    }
+    return ["dialing", "listening", "selecting", "awaiting_user", "waiting_agent"].includes(data.status) ? waiting : null;
+  }
+  if (["Choice", "Answer", "Secure"].includes(state.phase)) return { mode: "response", key: "demo:" + state.phase,
+    label: { Choice: "선택해 주세요", Answer: "답변해 주세요", Secure: "입력해 주세요" }[state.phase] };
+  return ["Dialing", "Listening", "Selecting", "WaitingAgent", "Sending"].includes(state.phase) ? waiting : null;
+}
 function CallScreen({ state, dispatch, serverData = null, choiceInput = null, secureInput = null, liveControls = null, answerInput = null, purposeContent = null }) {
   const largeText = P.useContext(TextSizeContext);
   // 영수증은 화면 분기보다 위에 배치: 한 번 보낸 요청이 다시 전송 가능 상태로 돌아가는 것 방지
@@ -1611,9 +1664,10 @@ function CallScreen({ state, dispatch, serverData = null, choiceInput = null, se
   const keypad = state.screen === "Call" && (secure || state.keypadOpen || secureContent != null);
   const compact = h < 600;
   const ended = state.screen === "Ended" || serverData?.isEnded === true || liveControls?.stateUnavailable === true;
+  const cue = useCallCue(state, serverData, choiceInput, choiceSubmitted, secureContent, liveControls, answerInput);
   return html`<div ref=${ref} class=${"call-view" + (state.agent ? " agent-call" : "")} style=${{ position: "relative", flex: "1 1 0", minHeight: 0, display: "flex", flexDirection: "column" }}>
     <div class="col center grow call-frame">
-      <${ResponsiveCallBody} state=${state} dispatch=${dispatch} keypad=${keypad} compact=${compact} topSpace=${topSpace} readingLayout=${largeText && state.agent} serverData=${serverData}
+      <${ResponsiveCallBody} state=${state} dispatch=${dispatch} keypad=${keypad} compact=${compact} topSpace=${topSpace} readingLayout=${largeText && state.agent} serverData=${serverData} cue=${cue}
         choiceInput=${guardedChoiceInput} choiceSubmitted=${choiceSubmitted} secureContent=${secureContent} liveControls=${liveControls} answerInput=${answerInput} purposeContent=${purposeContent}/>
       ${secureContent != null ? html`
         <button class="fbtn wide" disabled=${!(secureContent.ready && secureContent.form.count > 0)} onClick=${() => {
@@ -1640,16 +1694,16 @@ function CallScreen({ state, dispatch, serverData = null, choiceInput = null, se
   </div>`;
 }
 const Spacer = (px, grow = false) => html`<div style=${grow ? { flex: "1 1 0", minHeight: 0 } : { height: px + "px", flex: "none" }}></div>`;
-function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, readingLayout = false, serverData, choiceInput, choiceSubmitted, secureContent, liveControls, answerInput, purposeContent }) {
+function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, readingLayout = false, serverData, choiceInput, choiceSubmitted, secureContent, liveControls, answerInput, purposeContent, cue }) {
   const grow = !compact;
   const controlsToEndGap = readingLayout && state.screen === "Call" && !keypad && serverData?.isEnded !== true ? 4 : 16;
   let body;
-  if (secureContent != null) body = html`<${ServerSecureKeypad} content=${secureContent} grow=${grow} scrollable=${!compact} extraContent=${() => liveControls?.extras?.()}/>`;
-  else if (keypad) body = html`<${CardFreeKeypad} state=${state} dispatch=${dispatch} grow=${grow} scrollable=${!compact} liveControls=${liveControls}/>`;
+  if (secureContent != null) body = html`<${ServerSecureKeypad} content=${secureContent} grow=${grow} scrollable=${!compact} extraContent=${() => liveControls?.extras?.()} cue=${cue}/>`;
+  else if (keypad) body = html`<${CardFreeKeypad} state=${state} dispatch=${dispatch} grow=${grow} scrollable=${!compact} liveControls=${liveControls} cue=${cue}/>`;
   else if (state.screen === "Ended") body = compact && !readingLayout ? html`<${CallHeader} state=${state}/>` : Spacer(0, true);
   else if (!state.agent && (state.screen === "Call" || compact)) body = html`${!compact && Spacer(0, true)}<${NormalControls} state=${state} dispatch=${dispatch}/>${!compact && Spacer(16)}`;
   else body = html`
-    <${ProgressCard} grow=${grow} scrollable=${!compact}>
+    <${ProgressCard} grow=${grow} scrollable=${!compact} cue=${cue}>
       <${AgentContent} state=${state} dispatch=${dispatch} serverData=${serverData} choiceInput=${choiceInput} choiceSubmitted=${choiceSubmitted}
         liveControls=${liveControls} answerInput=${answerInput} purposeContent=${purposeContent}/>
     <//>
@@ -1666,16 +1720,20 @@ function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, readin
   </div>`;
 }
 function CallHeader({ state, serverData = null, liveSeconds = null, tight = false }) {
-  const subtitle = serverData?.isEnded === true ? (serverData.durationSeconds != null ? `통화 종료 · ${formatDuration(serverData.durationSeconds)}` : "통화 종료")
+  const name = contactName(state.number);
+  const showName = state.agent && state.screen !== "Ended" && serverData?.isEnded !== true;
+  const detail = serverData?.isEnded === true ? (serverData.durationSeconds != null ? `통화 종료 · ${formatDuration(serverData.durationSeconds)}` : "통화 종료")
     : serverData != null ? (serverData.status === "dialing" ? "연결 중" : (liveSeconds != null ? formatDuration(liveSeconds) : "통화 중"))
     : state.screen === "Purpose" ? ""
     : state.screen === "Ended" ? `통화 종료 · ${formatDuration(state.elapsedSeconds)}`
     : state.phase === "Dialing" ? "연결 중"
     : !state.agent ? `일반 전화 · ${formatDuration(state.elapsedSeconds)}`
     : formatDuration(state.elapsedSeconds);
+  const subtitle = !tight && showName ? (detail ? `${name} · ${detail}` : name) : detail;
   return html`<div class=${"col center" + (tight ? " call-header-tight" : "")} style=${{ width: "100%", minHeight: tight || !subtitle ? 0 : "76px", gap: tight ? "6px 12px" : "10px", flex: "none" }}>
     <div class="t-headline call-number tc">${formatPhone(state.number) || (serverData == null ? "131" : "번호 확인 전")}</div>
-    ${subtitle && html`<div class="sec tc">${subtitle}</div>`}</div>`;
+    ${subtitle && html`<div class="sec tc">${subtitle}</div>`}
+    ${tight && showName && html`<div class="call-institution t-bodym sec tc">${name}</div>`}</div>`;
 }
 const Eyebrow = (text) => T(text, "t-label blue");
 function AgentContent({ state, dispatch, serverData, choiceInput, choiceSubmitted, liveControls, answerInput, purposeContent }) {
@@ -1693,10 +1751,10 @@ function AgentContent({ state, dispatch, serverData, choiceInput, choiceSubmitte
     case "Dialing": return html`${T(state.goal, "t-title")}${T("연결되면 Agent가 메뉴를 찾아요.", "sec")}`;
     case "Listening": return html`<${ListeningProgressTitle} running=${true}/>${Eyebrow("ARS 안내")}${T("“단기예보는 1번, 현재 날씨는 3번…”", "t-17")}`;
     case "Selecting": { const label = { 3: "현재 날씨", 5: "중기예보" }[state.selectedKey] ?? "단기예보";
-      return html`${Eyebrow("이동 경로")}${T(`경기 지역 → 수원 → ${label} (${state.selectedKey}번)`, "t-17")}`; }
+      return html`${T("원하는 메뉴를 찾고 있어요", "t-title")}${Eyebrow("이동 경로")}${T(`경기 지역 → 수원 → ${label} (${state.selectedKey}번)`, "t-17")}`; }
     case "ListeningResult": return html`${Eyebrow("기관 안내")}${T("“오후에는 구름이 많고 한때 비가 옵니다. 강수확률은 20~60%입니다.”", "t-17")}`;
     case "Done": return html`${T("오늘 오후, 비가 올 수 있어요", "t-title")}${T("수원 · 강수확률 20~60%", "sec")}`;
-    case "Choice": return html`${T("어떤 정보를 원하시나요?", "t-title")}${T("시간 내 선택해 주세요.", "bm sec")}
+    case "Choice": return html`${T("어떤 정보를 원하시나요?", "t-title")}
       ${[["1", "오늘·내일·모레 단기예보"], ["3", "현재 날씨"], ["5", "중기 10일 예보"]].map(([k, l]) => html`<button class="option" onClick=${() => dispatch({ type: "Select", key: k })}>
         <span class="t-bodym">${l}</span><span class="t-bodym blue">${k}번</span></button>`)}`;
     case "Answer": return html`${T("어느 지역의 날씨인가요?", "t-title")}
@@ -1730,9 +1788,10 @@ function NormalControls({ state, dispatch }) {
       <${RoundAction} label=${state.held ? "보류 해제" : "보류"} icon="hold" onClick=${() => dispatch({ type: "ToggleHold" })} size=${72}/>
     </div></div>`;
 }
-function CardFreeKeypad({ state, dispatch, grow, scrollable = true, liveControls = null }) {
+function CardFreeKeypad({ state, dispatch, grow, scrollable = true, liveControls = null, cue }) {
   const secure = state.phase === "Secure" || state.phase === "Sending";
   return html`<div class=${"col center" + (grow ? " grow" : "") + (scrollable ? " scroll" : "")} style=${{ width: "100%" }}>
+    ${secure && html`<${CallTaskLabel} cue=${cue} center=${true}/>${Spacer(8)}`}
     ${T(secure ? "생년월일 6자리 입력" : "번호를 직접 눌러 주세요", "t-title tc")}
     ${Spacer(8)}
     ${T(secure ? "6자리 입력 후 ‘입력 완료’를 눌러 주세요." : liveControls != null ? "누른 번호가 바로 전송돼요." : "누른 번호가 바로 전송돼요. AI는 입력 후 10초간 기다려요.", "t-bodym sec tc")}

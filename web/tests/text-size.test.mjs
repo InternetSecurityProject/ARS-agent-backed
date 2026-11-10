@@ -289,20 +289,28 @@ test('긴 전화번호는 큰글씨 헤더에서 가로로 잘리지 않는다',
   } finally { await context.close(); }
 });
 
-test('목적 입력과 Agent 통화 헤더에서 기관명 없이 통화 시간은 유지한다', async () => {
+test('기관명을 복원하고 큰글씨에서는 번호·시간 아래 한 줄로 표시한다', async () => {
   const { page, context, calls } = await open();
   try {
     await page.keyboard.type('131');
     await page.getByRole('button', { name: 'ARS Agent 전화', exact: true }).click();
-    assert.equal(await page.getByText(/기상청 기상콜센터/).count(), 0);
+    assert.equal(await page.getByText(/기상청 기상콜센터/).count(), 1);
     await page.getByRole('button', { name: '취소', exact: true }).click();
     await page.getByRole('button', { name: '전체 지우기', exact: true }).click();
     await demo(page, '후보 선택');
     await page.getByText('어떤 정보를 원하시나요?', { exact: true }).waitFor({ timeout: 12000 });
     for (const large of [false, true]) {
       if (large) await toggle(page).click();
-      assert.equal(await page.getByText(/기상청 기상콜센터/).count(), 0);
-      assert.match(await page.locator('.call-number + .sec').innerText(), /^\d{2}:\d{2}$/);
+      assert.equal(await page.getByText(/기상청 기상콜센터/).count(), 1);
+      assert.match(await page.locator('.call-number + .sec').innerText(), /\d{2}:\d{2}$/);
+      if (large) {
+        const institution = page.locator('.call-institution');
+        assert.equal(await institution.innerText(), '기상청 기상콜센터');
+        const numberBox = await page.locator('.call-number').boundingBox();
+        const nameBox = await institution.boundingBox();
+        assert(nameBox.y >= numberBox.y + numberBox.height);
+        assert.equal(await institution.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
+      }
     }
     assert.deepEqual(calls, []);
   } finally { await context.close(); }
