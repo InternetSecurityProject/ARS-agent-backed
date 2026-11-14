@@ -250,7 +250,10 @@ for (const viewport of [{ width: 400, height: 688 }, { width: 327, height: 688 }
       if (viewport.height === 688) {
         const middle = await page.getByRole('button', { name: '키패드', exact: true }).locator('.round').boundingBox();
         const circleGap = largeEnd.y - middle.y - middle.height;
-        assert(circleGap <= 44, JSON.stringify({ circleGap, middle, largeEnd }));
+        // Four demo columns need a complete two-line label row; the old three-column
+        // layout could let its left label extend beside End. Keep both cases compact.
+        const fourControls = await page.locator('.agent-controls > button').count() === 4;
+        assert(circleGap <= (fourControls ? 64 : 44), JSON.stringify({ circleGap, middle, largeEnd }));
         const endTarget = await page.getByRole('button', { name: '종료', exact: true }).boundingBox();
         for (const name of ['ARS 소리 켜기', '키패드', '오디오']) {
           const button = page.getByRole('button', { name, exact: true });

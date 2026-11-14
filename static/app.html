@@ -84,6 +84,9 @@ textarea,input{font:inherit;color:inherit}
 .agent-controls{max-width:304px;width:100%;min-height:88px;gap:8px;justify-content:center;flex:none}
 /* Reserve a one-line center caption. The left two-line caption uses its own column beside End. */
 .agent-controls.close-to-end{height:96px;min-height:96px;align-items:flex-start}
+.agent-controls.with-handoff{max-width:352px;gap:4px;align-items:flex-start}
+.agent-controls.with-handoff.close-to-end{height:auto;min-height:96px}
+.agent-controls.with-handoff .t-label{overflow-wrap:anywhere}
 /* 키패드 */
 .keypad{width:100%;max-width:280px;display:flex;flex-direction:column}
 .keypad-row{display:flex;justify-content:space-between}
@@ -1262,7 +1265,9 @@ const Tones = {
 /* ------------------------------------------------------------------ UI 데모 상태 (PhoneState.kt, AppViewModel.kt) */
 const appState0 = () => ({ screen: "Home", tab: "Keypad", number: "", agent: false, phase: "Dialing", goal: "", goalDraft: "", answerDraft: "", secureCount: 0,
   elapsedSeconds: 0, scenario: "Weather", audioOn: false, audioMenu: false, audioRoute: "Phone", muted: false, held: false, keypadOpen: false, manualDigits: "",
-  manualInputRevision: 0, selectedKey: "1" });
+  manualInputRevision: 0, selectedKey: "1", handoffRequest: null, handoffGoal: "" });
+const canRequestDemoHandoff = s => s.screen === "Call" && s.agent && !s.handoffRequest &&
+  ["Listening", "Selecting", "ListeningResult", "Done", "Choice", "Answer"].includes(s.phase);
 const SCENARIOS = [["Weather", "날씨 안내"], ["Choice", "후보 선택"], ["Answer", "추가 답변"], ["Secure", "민감정보 입력"], ["Handoff", "상담원 연결"]];
 const scenarioTitle = (s) => SCENARIOS.find(([k]) => k === s)?.[1] ?? s;
 function reduce(s, a) {
@@ -1282,6 +1287,12 @@ function reduce(s, a) {
     case "AnswerChanged": return s.screen === "Call" && s.phase === "Answer" ? { ...s, answerDraft: a.text.slice(0, 160) } : s;
     case "CommitAnswer": return s.screen === "Call" && s.phase === "Answer" && !isBlank(s.answerDraft) ? { ...s, phase: "Selecting", answerDraft: "" } : s;
     case "Select": return s.screen === "Call" && s.phase === "Choice" && ["1", "3", "5"].includes(a.key) ? { ...s, phase: "Selecting", selectedKey: a.key } : s;
+    case "RequestHandoff": return canRequestDemoHandoff(s)
+      ? { ...s, handoffRequest: { draft: s.handoffGoal || s.goal }, keypadOpen: false, audioMenu: false } : s;
+    case "HandoffGoalChanged": return s.handoffRequest ? { ...s, handoffRequest: { draft: a.text.slice(0, 160) } } : s;
+    case "CancelHandoff": return s.handoffRequest ? { ...s, handoffRequest: null } : s;
+    case "CommitHandoff": return s.handoffRequest && !isBlank(s.handoffRequest.draft)
+      ? { ...s, handoffGoal: s.handoffRequest.draft.trim(), handoffRequest: null, phase: "Selecting", keypadOpen: false, audioMenu: false } : s;
     case "Key":
       if (s.screen !== "Call") return s;
       if (s.phase === "Secure") return /[0-9]/.test(a.digit) && s.secureCount < 6 ? { ...s, secureCount: s.secureCount + 1 } : s;
@@ -1296,19 +1307,20 @@ function reduce(s, a) {
     case "ToggleMute": return s.screen === "Call" && !s.agent ? { ...s, muted: !s.muted } : s;
     case "ToggleHold": return s.screen === "Call" && !s.agent ? { ...s, held: !s.held } : s;
     case "Back":
+      if (s.handoffRequest) return { ...s, handoffRequest: null };
       if (s.audioMenu) return { ...s, audioMenu: false };
       if (s.screen === "Call" && s.keypadOpen) return { ...s, keypadOpen: false };
       if (s.screen === "Call") return s;
       if (s.screen === "Detail") return { ...s, screen: "Home" };
       return { ...s, screen: "Home", tab: "Keypad", goalDraft: "", answerDraft: "", secureCount: 0, audioMenu: false };
-    case "End": return s.screen === "Call" ? { ...s, screen: "Ended", secureCount: 0, goalDraft: "", answerDraft: "", goal: "", manualDigits: "", audioMenu: false, keypadOpen: false, audioOn: false } : s;
+    case "End": return s.screen === "Call" ? { ...s, screen: "Ended", secureCount: 0, goalDraft: "", answerDraft: "", goal: "", manualDigits: "", audioMenu: false, keypadOpen: false, audioOn: false, handoffRequest: null, handoffGoal: "" } : s;
     case "Tick": return s.screen === "Call" && s.phase !== "Dialing" ? { ...s, elapsedSeconds: s.elapsedSeconds + 1 } : s;
     case "DemoAdvance":
-      if (s.screen !== "Call" || !s.agent || s.keypadOpen) return s;
+      if (s.screen !== "Call" || !s.agent || s.keypadOpen || s.handoffRequest) return s;
       switch (s.phase) {
         case "Dialing": return { ...s, phase: "Listening" };
         case "Listening": return { ...s, phase: { Weather: "Selecting", Choice: "Choice", Answer: "Answer", Secure: "Secure", Handoff: "WaitingAgent" }[s.scenario] };
-        case "Selecting": return { ...s, phase: "ListeningResult" };
+        case "Selecting": return { ...s, phase: s.handoffGoal ? "WaitingAgent" : "ListeningResult" };
         case "ListeningResult": return { ...s, phase: "Done" };
         case "Sending": return { ...s, phase: "Selecting" };
         default: return s;
@@ -1322,10 +1334,10 @@ class AppViewModel {
     this.store = new Store(appState0());
     this.dispatch = (a) => this.store.update((s) => reduce(s, a));
     this.watch((s) => (s.screen === "Purpose" && !isBlank(s.goalDraft) ? "g:" + s.goalDraft : null), () => later(1200, () => this.dispatch({ type: "CommitGoal" })));
-    this.watch((s) => (s.screen === "Call" && s.phase === "Answer" && !isBlank(s.answerDraft) ? "a:" + s.answerDraft : null), () => later(1200, () => this.dispatch({ type: "CommitAnswer" })));
-    this.watch((s) => `${s.screen}|${s.phase}|${s.keypadOpen}`, () => {
+    this.watch((s) => (s.screen === "Call" && !s.handoffRequest && s.phase === "Answer" && !isBlank(s.answerDraft) ? "a:" + s.answerDraft : null), () => later(1200, () => this.dispatch({ type: "CommitAnswer" })));
+    this.watch((s) => `${s.screen}|${s.phase}|${s.keypadOpen}|${!!s.handoffRequest}|${s.handoffGoal}`, () => {
       const s = this.store.value;
-      if (s.screen === "Call" && !s.keypadOpen && s.agent && ["Dialing", "Listening", "Selecting", "ListeningResult", "Sending"].includes(s.phase))
+      if (s.screen === "Call" && !s.keypadOpen && !s.handoffRequest && s.agent && ["Dialing", "Listening", "Selecting", "ListeningResult", "Sending"].includes(s.phase))
         return later(s.phase === "Sending" ? 500 : 3000, () => this.dispatch({ type: "DemoAdvance" }));
       return null;
     }, true);
@@ -1645,6 +1657,7 @@ function PathHistoryDisclosure({ path, details }) {
     </details>`;
 }
 function demoProgressPath(state) {
+  if (state.handoffRequest || state.handoffGoal) return [];
   if (state.phase !== "Selecting") return [];
   const label = { 3: "현재 날씨", 5: "중기예보" }[state.selectedKey] ?? "단기예보";
   return ["경기 지역", "수원", `${label} (${state.selectedKey}번)`];
@@ -1694,6 +1707,7 @@ function useCallCue(state, data, choiceInput, choiceSubmitted, secureContent, co
     return () => clearTimeout(timer);
   }, [pending?.requestId, deadline]);
   if (!state.agent || state.screen !== "Call" || data?.isEnded || controls?.stateUnavailable) return null;
+  if (data == null && state.handoffRequest) return { mode: "response", key: "demo:handoff-purpose", label: "업무를 알려주세요" };
   const waiting = { mode: "waiting", label: "기다려 주세요" };
   if (data != null) {
     if (pending != null) {
@@ -1775,9 +1789,11 @@ function CallScreen({ state, dispatch, serverData = null, choiceInput = null, se
 const Spacer = (px, grow = false) => html`<div style=${grow ? { flex: "1 1 0", minHeight: 0 } : { height: px + "px", flex: "none" }}></div>`;
 function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, readingLayout = false, serverData, choiceInput, choiceSubmitted, secureContent, liveControls, answerInput, purposeContent, cue, details }) {
   const grow = !compact;
+  // Keep all four demo controls above End; only the content scrolls on short screens.
+  const fixedDemoControls = compact && serverData == null && liveControls == null && state.agent && state.screen === "Call" && !keypad;
   const tightHeader = readingLayout && state.screen !== "Ended" && serverData?.isEnded !== true;
   const controlsToEndGap = readingLayout && state.screen === "Call" && !keypad && serverData?.isEnded !== true ? 4 : 16;
-  const historyPath = liveControls?.stateUnavailable ? [] : serverData != null
+  const historyPath = liveControls?.stateUnavailable || state.handoffRequest ? [] : serverData != null
     ? (serverData.pendingRequest == null && isBlank(serverData.summary) ? serverData.path : []) : demoProgressPath(state);
   let body;
   if (secureContent != null) body = html`<${ServerSecureKeypad} content=${secureContent} grow=${grow} scrollable=${!compact} extraContent=${() => liveControls?.extras?.()} cue=${cue}/>`;
@@ -1791,15 +1807,15 @@ function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, readin
     <//>
     ${(!compact || (state.screen === "Call" && serverData?.isEnded !== true)) && html`
       ${Spacer(readingLayout ? 12 : compact ? 16 : 20)}
-      ${!compact && state.screen === "Purpose" ? Spacer(readingLayout ? 0 : 88) : serverData?.isEnded !== true
-        ? html`<${AgentControls} state=${state} dispatch=${dispatch} closeToEnd=${readingLayout && !compact} interactive=${serverData == null || liveControls != null} liveControls=${liveControls}/>` : null}
+      ${!compact && state.screen === "Purpose" ? Spacer(readingLayout ? 0 : 88) : serverData?.isEnded !== true && !fixedDemoControls
+        ? html`<${AgentControls} state=${state} dispatch=${dispatch} closeToEnd=${readingLayout && !compact} interactive=${serverData == null || liveControls != null} liveControls=${liveControls} demoHandoff=${serverData == null && liveControls == null}/>` : null}
       ${!compact && Spacer(controlsToEndGap)}`}`;
   return html`<div class=${"col center grow" + (compact ? " scroll" : "")} style=${{ width: "100%" }}>
     ${Spacer(readingLayout ? 12 : compact ? 32 : topSpace)}
     ${(!compact || serverData != null || readingLayout) && html`<${CallHeader} state=${state} tight=${tightHeader} serverData=${serverData} liveSeconds=${liveControls?.elapsedSeconds ?? null}/>${Spacer(readingLayout ? 12 : compact ? 16 : 24)}`}
     ${body}
-    ${(compact || keypad) && Spacer(controlsToEndGap)}
-  </div>`;
+    ${(compact || keypad) && !fixedDemoControls && Spacer(controlsToEndGap)}
+  </div>${fixedDemoControls && html`${Spacer(12)}<${AgentControls} state=${state} dispatch=${dispatch} demoHandoff=${true}/>${Spacer(4)}`}`;
 }
 function CallHeader({ state, serverData = null, liveSeconds = null, tight = false }) {
   const name = contactName(state.number);
@@ -1822,6 +1838,7 @@ function AgentContent({ state, dispatch, serverData, choiceInput, choiceSubmitte
   if (liveControls?.stateUnavailable === true) return html`${T("통화 상태 확인 불가", "t-title")}${liveControls.extras?.()}`;
   if (serverData != null) return html`<${BServerContent} data=${serverData} choiceInput=${choiceInput} choiceSubmitted=${choiceSubmitted} answerInput=${answerInput}
     listeningConnected=${liveControls?.progressConnected ?? true} details=${details}/>${liveControls?.extras?.()}`;
+  if (state.handoffRequest) return html`<${DemoHandoffPurpose} state=${state} dispatch=${dispatch}/>`;
   if (state.screen === "Purpose") {
     if (purposeContent) return purposeContent();
     return html`${T("어떤 일을 도와드릴까요?", "t-title")}<div style=${{ height: "4px" }}></div>
@@ -1832,7 +1849,9 @@ function AgentContent({ state, dispatch, serverData, choiceInput, choiceSubmitte
   switch (state.phase) {
     case "Dialing": return html`${T(state.goal, "t-title")}${T("연결되면 Agent가 메뉴를 찾아요.", "sec")}`;
     case "Listening": return html`<${ListeningProgressTitle} running=${true}/><${CallProgressDetails} path=${[]} caption=${DEMO_WEATHER_CAPTION} status="listening" details=${details}/>`;
-    case "Selecting": return html`${T("원하는 메뉴를 찾고 있어요", "t-title")}<${CallProgressDetails} path=${demoProgressPath(state)} caption=${DEMO_WEATHER_CAPTION} status="selecting" details=${details}/>`;
+    case "Selecting": return state.handoffGoal
+      ? html`${T("상담원 연결 메뉴를 찾고 있어요", "t-title")}${Eyebrow("상담 업무")}${T(state.handoffGoal, "t-17")}${T("업무에 맞는 메뉴로 이동하며 상담원 연결 메뉴를 우선 선택해요.", "sec")}${T("화면 전환 예시 · 실제 탐색이나 연결은 하지 않아요.", "t-bodym sec")}`
+      : html`${T("원하는 메뉴를 찾고 있어요", "t-title")}<${CallProgressDetails} path=${demoProgressPath(state)} caption=${DEMO_WEATHER_CAPTION} status="selecting" details=${details}/>`;
     case "ListeningResult": return html`${Eyebrow("기관 안내")}${T("“오후에는 구름이 많고 한때 비가 옵니다. 강수확률은 20~60%입니다.”", "t-17")}`;
     case "Done": return html`${T("오늘 오후, 비가 올 수 있어요", "t-title")}${T("수원 · 강수확률 20~60%", "sec")}`;
     case "Choice": return html`${T("어떤 정보를 원하시나요?", "t-title")}
@@ -1842,19 +1861,29 @@ function AgentContent({ state, dispatch, serverData, choiceInput, choiceSubmitte
       <${VoiceInput} value=${state.answerDraft} placeholder="지역을 말씀해 주세요" onValue=${(t) => dispatch({ type: "AnswerChanged", text: t })}
         onExample=${() => dispatch({ type: "AnswerChanged", text: "수원시 날씨가 궁금해요" })}/>
       ${T("답변을 듣고 있어요. 내용이 확인되면 자동으로 진행해요.", "bm sec")}`;
-    case "WaitingAgent": return html`${T("상담원 연결을 기다리고 있어요", "t-title")}${T("상담원과 연결되면 Agent는 종료돼요.")}`;
+    case "WaitingAgent": return html`${T("상담원 연결을 기다리고 있어요", "t-title")}${state.handoffGoal && html`${Eyebrow("상담 업무")}${T(state.handoffGoal, "t-17")}`}${T("상담원과 연결되면 Agent는 종료돼요.")}`;
     default: return null;
   }
 }
-function AgentControls({ state, dispatch, interactive = true, liveControls = null, closeToEnd = false }) {
-  const enabled = interactive && liveControls?.stateUnavailable !== true;
-  return html`<div class=${"row agent-controls" + (closeToEnd ? " close-to-end" : "")}>
+function DemoHandoffPurpose({ state, dispatch }) {
+  return html`${T("상담원 연결을 위해선 원하는 목적을 말씀해주세요", "t-title")}
+    <${VoiceInput} value=${state.handoffRequest.draft} placeholder="예: 카드 발급 문의" onValue=${text => dispatch({ type: "HandoffGoalChanged", text })}
+      onExample=${() => dispatch({ type: "HandoffGoalChanged", text: "카드 발급 문의" })}/>
+    ${T("데모에서는 마이크를 누르면 예시 문장이 입력돼요.", "t-bodym sec")}
+    <button class="fbtn wide" disabled=${isBlank(state.handoffRequest.draft)} onClick=${() => dispatch({ type: "CommitHandoff" })}>상담원 연결 요청</button>
+    <${TextButton} onClick=${() => dispatch({ type: "CancelHandoff" })}>돌아가기<//>`;
+}
+function AgentControls({ state, dispatch, interactive = true, liveControls = null, closeToEnd = false, demoHandoff = false }) {
+  const enabled = interactive && liveControls?.stateUnavailable !== true && !state.handoffRequest;
+  return html`<div class=${"row agent-controls" + (closeToEnd ? " close-to-end" : "") + (demoHandoff ? " with-handoff" : "")}>
     <${RoundAction} label=${state.audioOn ? "ARS 소리 끄기" : "ARS 소리 켜기"} icon="agent_blue" onClick=${() => dispatch({ type: "ToggleAudio" })} weight=${true} shadowElevation=${2}
       enabled=${enabled && (liveControls?.arsAvailable ?? state.phase !== "Dialing")}/>
     <${RoundAction} label="키패드" icon="keypad" onClick=${() => dispatch({ type: "OpenKeypad" })} weight=${true} shadowElevation=${2}
       enabled=${enabled && (liveControls?.keypadAvailable ?? state.phase !== "Dialing")}/>
     <${RoundAction} label="오디오" icon="speaker" onClick=${() => dispatch({ type: "ToggleAudioMenu" })} weight=${true} shadowElevation=${2}
       enabled=${enabled && (liveControls?.availableRoutes ? liveControls.availableRoutes.size > 0 : true)}/>
+    ${demoHandoff && html`<${RoundAction} label="상담원 연결" icon="contacts" onClick=${() => dispatch({ type: "RequestHandoff" })} weight=${true} shadowElevation=${2}
+      enabled=${enabled && canRequestDemoHandoff(state)}/>`}
   </div>`;
 }
 function NormalControls({ state, dispatch }) {
