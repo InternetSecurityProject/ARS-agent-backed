@@ -87,11 +87,34 @@ textarea,input{font:inherit;color:inherit}
 /* 키패드 */
 .keypad{width:100%;max-width:280px;display:flex;flex-direction:column}
 .keypad-row{display:flex;justify-content:space-between}
-.key{width:72px;height:72px;border-radius:50%;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.16);display:flex;flex-direction:column;align-items:center;justify-content:center;flex:none}
+.key{position:relative;width:72px;height:72px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.08);display:flex;flex-direction:column;align-items:center;justify-content:center;flex:none}
 .key.compact{background:rgba(255,255,255,.76);box-shadow:none}
+/* A fine glass rim; the key face, label contrast and hit area stay unchanged. */
+.key::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1.5px;pointer-events:none;background:rgba(136,168,183,.2);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask-composite:exclude}
+.key::after{content:"";position:absolute;inset:1.5px;border-radius:inherit;pointer-events:none;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.4)}
 .key:active:not(:disabled){filter:brightness(.9)}
 .key-digit{font-family:system-ui,-apple-system,"Roboto",sans-serif;font-size:32px;line-height:36px}
 .key-letters{font-size:10px;line-height:12px;min-height:12px}
+/* Reference phone dialer: keep these proportions separate from in-call input. */
+.keypad-home{--dial-key-size:clamp(64px,19.4vw,80px)}
+.dialer .keypad{max-width:calc(var(--dial-key-size) * 3 + 48px)}
+.dialer .key{width:var(--dial-key-size);height:var(--dial-key-size);background:#FDFDFD;box-shadow:0 6px 22px rgba(0,0,0,.065)}
+.dialer .key::before{padding:1px;background:rgba(255,255,255,.95)}
+.dialer .key::after{inset:1px}
+.dialer .key-digit{font-size:36px;line-height:40px;font-weight:400}
+.dialer .key-letters{font-family:system-ui,-apple-system,"Roboto",sans-serif;font-size:10px;line-height:12px;font-weight:700;letter-spacing:2px;padding-left:2px}
+.dialer .key[aria-label="키 0"] .key-letters{font-size:16px;letter-spacing:0;padding-left:0}
+.dialer-call-actions .ra{width:116px}
+.dialer-call-actions .round{width:var(--dial-key-size)!important;height:var(--dial-key-size)!important}
+.keypad-home .tabs{margin-top:24px;margin-bottom:8px;box-shadow:0 5px 24px rgba(0,0,0,.065)}
+.keypad-home .tab{justify-content:center}
+.keypad-home .tab.on{background:#EDEDED;color:var(--blue)}
+.keypad-home .tab .t-label{margin-top:2px}
+.keypad-home .tab .icon{width:28px!important;height:28px!important}
+.keypad-home .tab:nth-child(1) svg path:first-child,.keypad-home .tab:nth-child(2) svg path:first-child{fill:currentColor}
+.keypad-home .tab:nth-child(1) svg path:nth-child(2){stroke:#fff}
+.keypad-home .tab:nth-child(2) svg path:not(:first-child){fill:#fff}
+.keypad-home .tab:nth-child(3) svg path{stroke:currentColor;stroke-width:1.5px}
 /* 카드 */
 .card{background:#fff;border-radius:20px;box-shadow:0 1px 3px rgba(0,0,0,.10),0 1px 2px rgba(0,0,0,.06);padding:16px;display:flex;flex-direction:column;gap:8px;font-family:var(--batang);width:100%}
 .card.needs-response{outline:2px solid rgba(0,122,255,.24);outline-offset:-2px}
@@ -1278,7 +1301,7 @@ function reduce(s, a) {
     case "StartNormal": return home && PhoneNumber(s.number).canCall ? { ...appState0(), screen: "Call", tab: s.tab, number: s.number, phase: "Listening", scenario: s.scenario } : s;
     case "GoalChanged": return s.screen === "Purpose" ? { ...s, goalDraft: a.text.slice(0, 160) } : s;
     case "CommitGoal": return s.screen === "Purpose" && !isBlank(s.goalDraft)
-      ? { ...s, screen: "Call", phase: "Dialing", goal: s.goalDraft.trim(), goalDraft: "", secureCount: 0, manualDigits: "", audioOn: false, audioMenu: false, keypadOpen: false } : s;
+      ? { ...s, screen: "Call", phase: "Dialing", goal: s.goalDraft.trim(), goalDraft: "", secureCount: 0, manualDigits: "", audioOn: true, audioMenu: false, keypadOpen: false } : s;
     case "AnswerChanged": return s.screen === "Call" && s.phase === "Answer" ? { ...s, answerDraft: a.text.slice(0, 160) } : s;
     case "CommitAnswer": return s.screen === "Call" && s.phase === "Answer" && !isBlank(s.answerDraft) ? { ...s, phase: "Selecting", answerDraft: "" } : s;
     case "Select": return s.screen === "Call" && s.phase === "Choice" && ["1", "3", "5"].includes(a.key) ? { ...s, phase: "Selecting", selectedKey: a.key } : s;
@@ -1902,7 +1925,8 @@ function ArsApp({ state, onAction, modeLabel, onModeMenu }) {
   </div>`;
 }
 function PhoneHome({ state, dispatch, openScenarios, modeLabel }) {
-  return html`<div class="col grow" style=${{ padding: "0 20px" }}>
+  const dialer = state.screen === "Home" && state.tab === "Keypad";
+  return html`<div class=${"col grow" + (dialer ? " keypad-home" : "")} style=${{ padding: "0 20px" }}>
     <${TextButton} onClick=${openScenarios}><span class="t-label">${modeLabel ?? "UI 데모 · " + scenarioTitle(state.scenario)}</span><//>
     ${state.screen === "Detail" ? html`<${ContactDetail} state=${state} dispatch=${dispatch}/>` : state.tab === "Keypad" ? html`<${Dialer} state=${state} dispatch=${dispatch}/>` : html`<${ContactList} tab=${state.tab} dispatch=${dispatch}/>`}
     ${Spacer(8)}
@@ -1921,7 +1945,7 @@ function Dialer({ state, dispatch }) {
     };
     addEventListener("keydown", f); return () => removeEventListener("keydown", f);
   });
-  return html`<div class="col center grow scroll" style=${{ width: "100%" }}>
+  return html`<div class="col center grow scroll dialer" style=${{ width: "100%" }}>
     ${Spacer(32)}
     <div style=${{ width: "100%", minHeight: "64px", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
       <span style=${{ fontFamily: "system-ui,-apple-system,Roboto,sans-serif", fontSize: "32px", lineHeight: "44px", textAlign: "center" }}>${formatPhone(state.number)}</span></div>
@@ -1929,16 +1953,16 @@ function Dialer({ state, dispatch }) {
       ${state.number && html`<${TextButton} onClick=${() => dispatch({ type: "ClearDial" })}><span class="t-bodym">전체 지우기</span><//><${TextButton} onClick=${() => dispatch({ type: "DeleteDial" })}>⌫<//>`}
     </div>
     ${Spacer(0, true)}
-    <${PhoneKeypad} onKey=${press}/>
-    ${Spacer(16)}
-    <${CallActions} number=${state.number} dispatch=${dispatch}/>
+    <${PhoneKeypad} onKey=${press} rowSpacing=${18}/>
+    ${Spacer(18)}
+    <${CallActions} number=${state.number} dispatch=${dispatch} dialer=${true}/>
   </div>`;
 }
-function CallActions({ number, dispatch }) {
+function CallActions({ number, dispatch, dialer = false }) {
   const phone = PhoneNumber(number);
-  return html`<div class="row" style=${{ width: "100%", minHeight: "104px", gap: "32px", justifyContent: "center", flex: "none" }}>
-    <${RoundAction} label="일반 전화" icon="call_white" onClick=${() => dispatch({ type: "StartNormal" })} size=${72} color=${C.Green} enabled=${phone.canCall}/>
-    ${phone.canUseAgent && html`<${RoundAction} label="ARS Agent 전화" icon="agent_white" onClick=${() => dispatch({ type: "StartAgent" })} size=${72} color=${C.Blue} labelColor=${C.Blue}/>`}
+  return html`<div class=${"row" + (dialer ? " dialer-call-actions" : "")} style=${{ width: "100%", minHeight: "104px", gap: dialer ? "24px" : "32px", justifyContent: "center", flex: "none" }}>
+    <${RoundAction} label="일반 전화" icon="call_white" onClick=${() => dispatch({ type: "StartNormal" })} size=${72} iconSize=${dialer ? 32 : 24} color=${C.Green} enabled=${phone.canCall}/>
+    ${phone.canUseAgent && html`<${RoundAction} label="ARS Agent 전화" icon="agent_white" onClick=${() => dispatch({ type: "StartAgent" })} size=${72} iconSize=${dialer ? 32 : 24} color=${C.Blue} labelColor=${C.Blue}/>`}
   </div>`;
 }
 function BottomTabs({ selected, onTab }) {
@@ -2068,7 +2092,7 @@ function LiveConfirmDialog({ target, confirm, dismiss }) {
   const refused = info?.activeSession != null ? ((info.linesTotal ?? 1) > 1 ? NO_FREE_LINE : "다른 세션이 진행 중이에요. 해당 테스트가 끝난 뒤 다시 확인해 주세요.") : null;
   const valid = !isBlank(key) && asciiPrintable(key);
   // health 미수신(느림·실패) 시 저장된 선택 전송. 발신 때 서버 health 로 재확인 (comboFor)
-  const go = () => { if (!valid) return; const consumed = key; Prefs.appKey = consumed; Prefs.record = record;
+  const go = () => { if (!valid) return; audioCtx(); const consumed = key; Prefs.appKey = consumed; Prefs.record = record;
     const chosen = combos && combo ? combo : info == null ? Prefs.combo : null; if (combos && combo) Prefs.combo = combo; confirm(consumed, record, chosen); };
   useEffect(() => { if (matchMedia(DESKTOP_QUERY).matches) document.querySelector(stored ? '[data-testid="live-dial"]' : '[data-testid="live-key"]')?.focus(); }, []);
   return html`<${Dialog} title="실제로 전화를 걸까요?" onDismiss=${dismiss}
@@ -2253,6 +2277,7 @@ function useVoiceBinding(state) {
   const audio = useStore(player.store);
   const [session, setSession] = useState(null);
   const sessionRef = useRef(null);
+  const autoPlayedSession = useRef(null);
   const [consent, setConsent] = useState(false);
   const disclosed = useRef(false);
   const visible = useRef(document.visibilityState === "visible");
@@ -2260,9 +2285,17 @@ function useVoiceBinding(state) {
   // 브라우저는 음성 인식 시작 시 마이크 권한 요청. 사용자 조작 흐름이 끊기지 않도록 즉시 시작
   const enable = () => { if (visible.current) activation.grant(); else activation.cancel(); };
   useEffect(() => {
-    sessions.observe((value) => { if (sessionRef.current !== value) { player.stop(); voice.sessionChanged(value?.sessionId ?? null); sessionRef.current = value; setSession(value); } });
+    sessions.observe((value) => {
+      if (sessionRef.current === value) return;
+      player.stop(); voice.sessionChanged(value?.sessionId ?? null);
+      autoPlayedSession.current = visible.current ? null : (value?.sessionId ?? null);
+      sessionRef.current = value; setSession(value);
+    });
     const onVis = () => {
-      if (document.visibilityState !== "visible") { visible.current = false; setConsent(false); activation.cancel(); voice.foreground(false); player.stop(); }
+      if (document.visibilityState !== "visible") {
+        visible.current = false; autoPlayedSession.current = sessionRef.current?.sessionId ?? autoPlayedSession.current;
+        setConsent(false); activation.cancel(); voice.foreground(false); player.stop();
+      }
       else { visible.current = true; voice.foreground(true); }
     };
     document.addEventListener("visibilitychange", onVis);
@@ -2271,6 +2304,12 @@ function useVoiceBinding(state) {
   useLayoutEffect(() => {
     voice.update(state);
     if (!isActive(state) || state.snapshot.status === "connected_to_agent") player.stop();
+    // One initial attempt per connected call. Manual mute, errors and foreground return
+    // must not restart playback on subsequent server updates.
+    else if (visible.current && session && !["idle", "dialing"].includes(state.snapshot.status) && autoPlayedSession.current !== session.sessionId) {
+      autoPlayedSession.current = session.sessionId;
+      player.start(session);
+    }
   });
   // 긴 음성 안내·인식 중 기한이 지나면 결과만 거르지 않고 입력 자체 중단
   const pend = state.snapshot.pendingRequest;
@@ -2287,8 +2326,14 @@ function useVoiceBinding(state) {
     answer: () => voice.listenAnswer(),
     cancelInput: () => { activation.cancel(); setConsent(false); voice.cancelInput(); },
     toggleArs: () => {
-      if (audio.enabled) player.stop();
-      else if (visible.current && isActive(latest.current) && latest.current.snapshot.status !== "connected_to_agent") { const s = sessionRef.current; if (s) player.start(s); }
+      const s = sessionRef.current;
+      if (audio.enabled) {
+        if (s) autoPlayedSession.current = s.sessionId;
+        player.stop();
+      } else if (s && visible.current && isActive(latest.current) && latest.current.snapshot.status !== "connected_to_agent") {
+        autoPlayedSession.current = s.sessionId;
+        player.start(s);
+      }
     },
   };
   const dialog = consent && html`<${Dialog} title="Agent와 음성으로 대화할까요?" onDismiss=${() => { setConsent(false); activation.cancel(); }}
