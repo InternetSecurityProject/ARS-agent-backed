@@ -72,6 +72,18 @@ const set = (page, value) => page.evaluate(patch => window.fixtureSet(patch), va
 const request = (overrides = {}) => ({ kind: 'clarification', requestId: 'q1', message: '신용·체크카드와 현금카드 중 어떤 카드를 원하세요?', reason: 'ambiguous', expiresAt: new Date(Date.now() + 60000).toISOString(), options: [{ key: '1', label: '신용·체크카드' }, { key: '2', label: '현금카드' }], ...overrides });
 const highlighted = page => page.locator('.card.needs-response');
 
+test('서버 통화에는 데모 전용 상담원 연결 버튼을 추가하지 않는다', async () => {
+  const { page, context, calls, errors } = await open();
+  try {
+    assert.equal(await page.locator('.agent-controls > button').count(), 3);
+    assert.equal(await page.getByRole('button', { name: '상담원 연결', exact: true }).count(), 0);
+    await set(page, { status: 'awaiting_user', request: request() });
+    await highlighted(page).waitFor();
+    assert.equal(await page.getByRole('button', { name: '상담원 연결', exact: true }).count(), 0);
+    assert.deepEqual(calls, []); assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
 for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }]) {
   for (const demo of [false, true]) {
     test(`큰글씨 종료 화면은 번호 아래에 종료 상태·시간을 표시하고 확대를 유지한다 (${viewport.width}px, ${demo ? '데모' : '서버'})`, async () => {
