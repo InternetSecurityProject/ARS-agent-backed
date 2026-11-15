@@ -3564,17 +3564,33 @@ def test_cut_paragraph_without_continuation_is_handled_alone():
         session_mod.HELD_HEAD_CHECK_S = old
 
 
-def test_cut_paragraph_is_not_joined_across_a_key_press():
-    """잘린 앞부분을 잡아 둔 사이에 키를 보냈으면 이어 붙이지 않음: 앞부분을 먼저 따로 처리한 뒤 새 단락 처리."""
+def test_cut_paragraph_is_not_joined_across_a_key_press(monkeypatch):
+    """키 전후 안내는 따로 처리하고, 키 이전에 잘린 일반 안내는 자막에서 제외한다."""
     async def go():
         s, call = await manual("통장 잔액 알고 싶어", clarify_expire_s=5, clarify_drop_s=10)
-        t0 = time.monotonic()
-        await s._deliver("첫 부분 안내입니다.", t0, forced=True)
-        assert s._held_head is not None and not s.captions
-        s.last_key_at = time.monotonic()                                    # 사용자가 키패드로 누름
-        await s._deliver("두 번째 안내입니다.", time.monotonic())
-        texts = [c["text"] for c in s.captions]
-        assert texts == ["첫 부분 안내입니다.", "두 번째 안내입니다."] and s._held_head is None
+        delivered = []
+        on_paragraph = s.on_paragraph
+
+        async def observe(text, started_at=None):
+            delivered.append((text, started_at))
+            await on_paragraph(text, started_at)  # 실처리를 생략하지 않고 전달 경계만 기록
+
+        monkeypatch.setattr(s, "on_paragraph", observe)
+        try:
+            # 실제로 먼저 시작된 발화. 시계 해상도가 낮아도 키 전송 시각과 같아지지 않게 한다.
+            t0 = time.monotonic() - 1.0
+            await s._deliver("첫 부분 안내입니다.", t0, forced=True)
+            assert s._held_head is not None and not s.captions and call.keys == []
+            await s.action({"type": "key", "key": "1"})                    # 모의 통화의 실제 사용자 키 전송 경로
+            assert call.keys == ["1"]
+            t1 = time.monotonic()
+            await s._deliver("두 번째 안내입니다.", t1)
+            assert delivered == [("첫 부분 안내입니다.", t0), ("두 번째 안내입니다.", t1)]
+            assert [c["text"] for c in s.captions] == ["두 번째 안내입니다."]
+            assert s._held_head is None and call.keys == ["1"]            # 보류 해제·불필요한 추가 키 없음
+        finally:
+            if not s.ended:
+                await s.action({"type": "cancel"})
     run(go())
 
 
