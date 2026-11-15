@@ -255,7 +255,7 @@ for (const viewport of [{ width: 400, height: 688 }, { width: 327, height: 688 }
         const fourControls = await page.locator('.agent-controls > button').count() === 4;
         assert(circleGap <= (fourControls ? 64 : 44), JSON.stringify({ circleGap, middle, largeEnd }));
         const endTarget = await page.getByRole('button', { name: '종료', exact: true }).boundingBox();
-        for (const name of ['ARS 소리 켜기', '키패드', '오디오']) {
+        for (const name of ['ARS 소리 끄기', '키패드', '오디오']) {
           const button = page.getByRole('button', { name, exact: true });
           const circle = await button.locator('.round').boundingBox();
           assert.equal(circle.width, 60); assert.equal(circle.height, 60);
