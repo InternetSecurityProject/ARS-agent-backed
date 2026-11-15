@@ -312,6 +312,83 @@ def test_rule_critical_ignores_certificate_names():
     assert extract_prompt("송금을 확인하시려면 1번, 취소하시려면 2번을 눌러주십시오.").critical is True
 
 
+# 2026-11-15 실통화 전사문. 전화번호·통화 식별자·사용자 입력값은 포함하지 않는다.
+TRANSFER_INQUIRY_MENU = (
+    "송금취소 관련 문의는 1번, 오픈뱅킹 자동이체 관련 문자는 2번, 송금한도 관련 문의는 3번, "
+    "거래내역서 발송 관련 문의는 4번, 이전 단계로 돌아가시려면 샵, 다시 들으시려면 별표, "
+    "상담사 연결은 0번을 눌러주세요."
+)
+
+
+@pytest.mark.parametrize("text", [
+    TRANSFER_INQUIRY_MENU,
+    "송금 취소 관련 문의는 1번, 송금 한도 문의는 3번을 눌러주세요.",
+    "결제취소 관련 안내는 1번, 결제금액 조회는 2번을 눌러주세요.",
+    "자동이체 취소 안내는 1번, 자동이체 내역 조회는 2번을 눌러주세요.",
+    "송금 취소 내역은 1번, 송금 한도 조회는 3번을 눌러주세요.",
+    "결제 취소 조회는 1번, 결제 예정금액 조회는 2번을 눌러주세요.",
+])
+def test_cancellation_inquiry_does_not_require_transaction_approval(text, monkeypatch):
+    """'취소 관련 문의' 명칭 때문에 안내 메뉴 전체를 최종 승인으로 막지 않는다."""
+    from jev_interpreter import extract_prompt
+    monkeypatch.setenv("JEV_RULE_CRITICAL", "1")
+    p = extract_prompt(text)
+    assert p.kind == "menu" and p.options
+    assert not p.critical
+
+
+def test_transfer_limit_request_can_pass_the_real_navigation_gate(monkeypatch):
+    """고정된 유효 점수에서 실제 Navigator가 3번을 선택: 모델 정확도 평가가 아닌 승인 게이트 회귀 시험."""
+    from navigator import Navigator, NavState
+    monkeypatch.setenv("JEV_RULE_CRITICAL", "1")
+
+    async def go():
+        h, _, _ = make(pick="3")
+        h.bench_reset("송금 한도 알려줘")
+        p = await h.classify(TRANSFER_INQUIRY_MENU)
+        decision = await Navigator(h).decide(NavState("송금 한도 알려줘"), p, [])
+        assert decision.action == "press" and decision.key == "3"
+
+    run(go())
+
+
+@pytest.mark.parametrize("text", [
+    "송금을 취소하시려면 1번, 취소하지 않으려면 2번을 눌러주세요.",
+    "송금 취소는 1번, 이전 메뉴는 2번을 눌러주세요.",
+    "송금 취소를 승인하시면 1번, 아니면 2번을 눌러주세요.",
+    "이체를 진행하시려면 1번, 이전 메뉴는 2번을 눌러주세요.",
+    "계약에 동의하시면 1번, 동의하지 않으시면 2번을 눌러주세요.",
+    "송금취소 관련 문의는 1번, 송금을 진행하시려면 2번을 눌러주세요.",
+    "송금취소 관련 안내는 1번, 송금 취소를 승인하시려면 2번을 눌러주세요.",
+])
+def test_actual_financial_approval_is_still_blocked(text, monkeypatch):
+    from jev_interpreter import extract_prompt
+    monkeypatch.setenv("JEV_RULE_CRITICAL", "1")
+    assert extract_prompt(text).critical
+
+
+def test_model_critical_judgment_is_not_cleared_for_an_inquiry_menu(monkeypatch):
+    """규칙 오탐만 고친다. 모델의 별도 위험 판정은 fail closed로 유지한다."""
+    from jev_interpreter import JevInterpreter
+    from navigator import Navigator, NavState
+    monkeypatch.setenv("JEV_RULE_CRITICAL", "1")
+
+    class CriticalJev(FakeJev):
+        async def decide(self, state, questions):
+            answer = await super().decide(state, questions)
+            if "critical" in answer:
+                answer["critical"]["noul"] = 0.9
+            return answer
+
+    async def go():
+        interp = JevInterpreter(CriticalJev(pick="3"))
+        p = await interp.classify(TRANSFER_INQUIRY_MENU)
+        decision = await Navigator(interp).decide(NavState("송금 한도 알려줘"), p, [])
+        assert p.critical and decision.action == "ask" and decision.reason == "critical_action"
+
+    run(go())
+
+
 # 받아쓰기 고침 따로 묻기 (LLM_FIX_TRANSCRIPT=separate) --------------------------------------------
 HEARD = "KB국민은행입니다. 보이스티싱 신고는 1번, 잔액조회는 3번을 눌러 주십시오."   # 실통화에서 들린 오인식 형태
 FIX = {"from": "보이스티싱", "to": "보이스피싱"}
