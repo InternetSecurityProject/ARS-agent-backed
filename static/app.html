@@ -2443,13 +2443,15 @@ function LiveSessionExtras({ server, voice, audio, compactInput }) {
   if (server.sessionUnavailable) return T("서버에서 실제 통화 종료를 확인하지 못했어요. 기본 화면으로 돌아가도 통화가 남아 있을 수 있어요. 서버 담당자에게 확인해 주세요.", "sec");
   const request = server.snapshot.pendingRequest;
   const agentLine = server.snapshot.status === "connected_to_agent";
+  // 익명 모드(시연용)에서는 통화 기록 받기·서버 기록 지우기를 표시하지 않음 (시연 화면에 운영 정보가 보이지 않게)
+  const anon = Prefs.get("anonymous") === "1";
   return html`
     ${server.error && T(server.error, "red")}
     ${server.busy && T("요청을 전달하고 있어요.", "sec")}
     ${server.hasSession && isActive(server) && (!server.streamConnected || server.actionUncertain) && html`
       ${T("서버 상태를 다시 확인해 주세요.", "sec")}<${TextButton} enabled=${!server.busy} onClick=${() => owner.dispatch({ type: "Reconnect" })}>상태 다시 연결<//>`}
     ${server.resultNote && T(server.resultNote, "sec")}
-    ${server.hasSession && server.recordRequested && !isActive(server) && !server.sessionUnavailable && html`
+    ${server.hasSession && server.recordRequested && !isActive(server) && !server.sessionUnavailable && !anon && html`
       ${T("통화 기록", "t-label blue")}
       ${!["done", "deleted"].includes(server.recording) && html`
         <${TextButton} enabled=${server.recording !== "busy"} onClick=${() => owner.dispatch({ type: "DownloadRecording" })}>통화 기록 받기 (받으면 서버 메모리에서 지워요)<//>
@@ -2505,6 +2507,8 @@ function LiveBindings({ state, render: content }) {
   useLayoutEffect(() => { if (foreground && (!finished || v.ui.status.speaking)) activate(); else restore(); });
   return html`${content(v.ui, { route: routing.route, available: routing.available, error: routing.error, select })}${v.dialog}`;
 }
+/** 사용자가 'ARS 소리 끄기'를 누른 세션 id. 서버 상태 확인 실패 뒤 복구 등으로 바인딩이 다시 만들어져도 그 통화 동안은 자동으로 켜지 않음. */
+let arsOffSession = null;
 function useVoiceBinding(state) {
   const latest = useRef(state); latest.current = state;
   const res = useMemo(() => {
@@ -2530,15 +2534,15 @@ function useVoiceBinding(state) {
     sessions.observe((value) => {
       if (sessionRef.current === value) return;
       player.stop(); voice.sessionChanged(value?.sessionId ?? null);
-      autoPlayedSession.current = visible.current ? null : (value?.sessionId ?? null);
+      // 화면이 가려진 동안 생긴 세션도 연결되면 자동 재생. 사용자가 끈 통화는 바인딩이 다시 만들어져도 켜지 않음.
+      autoPlayedSession.current = value != null && arsOffSession === value.sessionId ? value.sessionId : null;
       sessionRef.current = value; setSession(value);
     });
+    // 탭·브라우저가 백그라운드로 가도 ARS 소리는 계속 재생. 음성 입력·음성 안내만 정지.
+    // 다시 보일 때 브라우저가 멈춘 오디오를 재개 (audioCtx 의 resume).
     const onVis = () => {
-      if (document.visibilityState !== "visible") {
-        visible.current = false; autoPlayedSession.current = sessionRef.current?.sessionId ?? autoPlayedSession.current;
-        setConsent(false); activation.cancel(); voice.foreground(false); player.stop();
-      }
-      else { visible.current = true; voice.foreground(true); }
+      if (document.visibilityState !== "visible") { visible.current = false; setConsent(false); activation.cancel(); voice.foreground(false); }
+      else { visible.current = true; voice.foreground(true); if (player.store.value.enabled) audioCtx(); }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => { activation.cancel(); sessions.observe(null); document.removeEventListener("visibilitychange", onVis); player.close(); voice.close(); };
@@ -2548,7 +2552,7 @@ function useVoiceBinding(state) {
     if (!isActive(state) || state.snapshot.status === "connected_to_agent") player.stop();
     // One initial attempt per connected call. Manual mute, errors and foreground return
     // must not restart playback on subsequent server updates.
-    else if (visible.current && session && !["idle", "dialing"].includes(state.snapshot.status) && autoPlayedSession.current !== session.sessionId) {
+    else if (session && !["idle", "dialing"].includes(state.snapshot.status) && autoPlayedSession.current !== session.sessionId) {
       autoPlayedSession.current = session.sessionId;
       player.start(session);
     }
@@ -2570,10 +2574,10 @@ function useVoiceBinding(state) {
     toggleArs: () => {
       const s = sessionRef.current;
       if (audio.enabled) {
-        if (s) autoPlayedSession.current = s.sessionId;
+        if (s) { autoPlayedSession.current = s.sessionId; arsOffSession = s.sessionId; }
         player.stop();
       } else if (s && visible.current && isActive(latest.current) && latest.current.snapshot.status !== "connected_to_agent") {
-        autoPlayedSession.current = s.sessionId;
+        autoPlayedSession.current = s.sessionId; arsOffSession = null;
         player.start(s);
       }
     },
@@ -2707,7 +2711,7 @@ function ModelSetup({ onDone }) {
     </label>
     <label class="row" style=${{ gap: "8px", alignItems: "flex-start", cursor: "pointer" }}>
       <input type="checkbox" data-testid="setup-anon" checked=${anon} onChange=${(e) => setAnon(e.target.checked)} style=${{ marginTop: "3px" }}/>
-      <span class="t-bodym">익명 모드 (시연용)<br/>키패드를 누를 때 눌린 표시가 나타나지 않아, 화면에서 어떤 번호를 눌렀는지 알 수 없어요.</span>
+      <span class="t-bodym">익명 모드 (시연용)<br/>키패드를 누를 때 눌린 표시가 나타나지 않아, 화면에서 어떤 번호를 눌렀는지 알 수 없어요. 통화가 끝난 뒤 통화 기록 받기·서버 기록 지우기도 보이지 않아요.</span>
     </label>
     ${combos && combo && html`
       <div class="field"><label>판단 모델</label>
@@ -2723,7 +2727,7 @@ function ModelSetup({ onDone }) {
         <select data-testid="live-combo-result" value=${combo.result} onChange=${(e) => setCombo({ ...combo, result: e.target.value })}>
           ${combos.result.map((x) => html`<option value=${x.id}>${x.label}</option>`)}
         </select></div>`}
-      <span class="t-bodym sec">STT 는 로컬 Whisper 로 고정이에요. 1단계는 판단할 때 함께 고치고(JEV 쪽은 로컬로 판단한 안내만), 2단계는 판단 뒤 따로 고쳐 화면에만 써요.${combos.result && combo.interp === "hybrid" ? " 결과 안내 판단은 '발송됩니다'처럼 결과를 알리는 말이 든 안내를 누가 판단할지예요. JEV 를 골라도 개인정보가 보이면 로컬이 판단해요." : ""}</span>`}
+      <span class="t-bodym sec">STT 는 로컬 Whisper 로 고정이에요. 판단 중 후보정은 판단할 때 함께 고치고(JEV 쪽은 로컬로 판단한 안내만), 안내 표시 후보정은 판단 뒤 따로 고쳐 화면에만 써요. 후보정으로 판단은 판단 앞에 고쳐 고친 글로 판단해요(판단이 조금 늦어질 수 있어요). JEV v2 는 후보정을 쓰지 않아요.${combos.result && combo.interp === "hybrid" ? " 결과 안내 판단은 '발송됩니다'처럼 결과를 알리는 말이 든 안내를 누가 판단할지예요. JEV 를 골라도 개인정보가 보이면 로컬이 판단해요." : ""}</span>`}
   <//>`;
 }
 function Root() {

@@ -80,6 +80,7 @@ def test_som_combo_values_and_default(monkeypatch):
     base, f = factory(ScriptedJev())
     assert "som" in [x["id"] for x in f.options()["interp"]]
     assert f.normalize("som", "separate") == ("som", "0") and f.normalize_result("som", "local") == "jev"
+    assert f.normalize("som", "judge") == ("som", "0") and f.normalize("som", "1") == ("som", "0")   # som 은 후보정 없음
     a, b = f.build("som", "0"), f.build("som", "0")
     assert isinstance(a, UnifiedJevInterpreter) and a is not b and a.client is b.client is f.som_client
     _, none = factory(None)

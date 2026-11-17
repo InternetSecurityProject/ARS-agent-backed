@@ -792,11 +792,17 @@ def test_combo_jevllm_is_hidden_unless_enabled_and_builds_parts(monkeypatch):
     monkeypatch.setenv("JEVLLM_COMBO", "1")
     assert "jevllm" in ids()
     assert next(x for x in f.options()["interp"] if x["id"] == "jevllm")["label"] == "JEV + 로컬 (규칙 자리 로컬)"
-    assert f.normalize("jevllm", "separate") == ("jevllm", "0") and f.normalize_result("jevllm", "local") == "jev"
+    assert f.normalize("jevllm", "0") == ("jevllm", "0") and f.normalize_result("jevllm", "local") == "jev"
+    assert f.normalize("jevllm", "separate") == ("jevllm", "separate") and f.normalize("jevllm", "1") == ("jevllm", "separate")
     it = f.build("jevllm", "0")
     assert isinstance(it, JevLlmInterpreter) and isinstance(it.jev, JevLlmJev) and it.base.client is f.local_client
-    assert it.jev.client is f.jev_client and it._ex_slow is f._ex_slow and it.rule_free
-    assert f.normalize("llm", "separate") == ("llm", "0") and f.normalize_result("llm", "jev") == "local"
+    assert it.jev.client is f.jev_client and it._ex_slow is f._ex_slow and it.rule_free and it.fix_mode == "0"
+    fx = f.build("jevllm", "separate")
+    assert fx.fix_mode == "separate" and fx.fix_prompt == fx.base.fix_prompt and fx.base.fix_mode == "separate"
+    assert f.normalize("jevllm", "judge") == ("jevllm", "judge")                  # 후보정으로 판단
+    fj = f.build("jevllm", "judge")
+    assert fj.fix_mode == "judge" and fj.fix_prompt == fj.base.fix_prompt and fj.base.fix_mode == "judge"
+    assert f.normalize("llm", "separate") == ("llm", "separate") and f.normalize_result("llm", "jev") == "local"
     assert type(f.build("llm", "0")) is llm_mode.LlmInterpreter                  # llm 조합은 그대로
     no_jev = ComboFactory(base.local.client, None, "local", "0")
     assert "jevllm" not in [x["id"] for x in no_jev.options()["interp"]]
@@ -902,6 +908,49 @@ def test_jevllm_call_runs_on_sim_backend(monkeypatch, switch):
     route, source, certain = seen[0]
     assert certain                                                              # 첫 메뉴는 정규식이 확실하다고 하는 안내
     assert route == "jev" and source == ("regex" if switch == "1" else "local")
+
+
+@pytest.mark.parametrize("interp", ["jevllm", "llm"])
+def test_display_fix_on_jevllm_and_llm_call_fixes_caption_only(monkeypatch, interp):
+    """llm·jevllm 에 받아쓰기 고침(separate)을 고르면: 조합 기록이 separate, 판단 뒤 자막만 고친 글로 나가고 분류 입력은 원문."""
+    from app import build_deps
+    from session import Deps, SessionManager
+    from test_combo import end_all
+    from test_flows import ev, make_settings, wait_for
+    monkeypatch.setenv("JEVLLM_COMBO", "1")
+    monkeypatch.setenv("LLM_COMBO", "1")
+    classified: list[str] = []
+    cls = JevLlmInterpreter if interp == "jevllm" else llm_mode.LlmInterpreter
+    orig = cls.classify
+
+    async def recording(self, text):
+        classified.append(text)
+        return await orig(self, text)
+    monkeypatch.setattr(cls, "classify", recording)
+    asked: list[str] = []
+
+    async def go():
+        base, f = _factory()
+        d = build_deps(make_settings(sim_lines=1))
+        d.backend.tree["timeout_s"] = 300
+        await d.backend.start()
+        m = SessionManager(Deps(d.settings, d.backend, d.recognizer, base, Navigator(base), f))
+        s = m.sessions[(await m.create("15889999", "통장 잔액 알고 싶어", interp=interp, fix="1"))["session_id"]]
+
+        async def fix_prompt(text, options=None, kind="info"):
+            asked.append(text)
+            return {"source": "model", "applied": [("조회", "조회§")]}            # 화면에서만 보이는 표시용 고침
+
+        s.d.interp.fix_prompt = fix_prompt
+        try:
+            await wait_for(s, lambda s: bool(asked) and any("§" in c["text"] for c in ev(s, "caption")), timeout=10)
+            return s
+        finally:
+            await end_all(m)
+
+    s = run(go())
+    assert s.combo["fix"] == "separate" and s.d.interp.fix_mode == "separate"    # '1' 을 골라도 판단 뒤 화면 고침
+    assert asked and classified and not any("§" in t for t in classified)      # 판단(분류) 입력은 원문
 
 
 def test_bench_reset_and_decide_timeout_setter():
@@ -1389,7 +1438,7 @@ def test_unknown_extract_error_is_format_error_not_slow():
 
 
 # 12. 2단 구조: 정규식이 확실하면 정규식, 애매하면 로컬 모델 -------------------------------------------
-REGEX_SHA256 = "1295cec0711b4cc1767700343dbf2dc19689cbdb65f5230a55161cf0031fcaa4"   # jevllm_regex.py 고정본 해시 (줄바꿈 LF 기준)
+REGEX_SHA256 = "36ab2076fc25bd172ed064f287af92ffc69fa5796aa998c2842b563009415271"   # jevllm_regex.py 고정본 해시 (줄바꿈 LF 기준)
 RX_MENU = "조회는 1번, 변경은 2번, 상담원 연결은 0번을 눌러 주세요."           # 정규식이 확실하다고 하는 메뉴
 RX_PLAIN = "조회는 1번, 변경은 2번을 눌러 주세요."                             # 상담원 낱말 없는 확실한 메뉴
 RX_INPUT = "비밀번호 네 자리를 입력하신 후 우물정자를 눌러 주세요."             # 확실한 입력 요청 (끝맺음 키 #)
@@ -1431,6 +1480,52 @@ def test_regex_module_is_the_frozen_copy():
     # 줄바꿈(CRLF·LF)은 체크아웃 설정(core.autocrlf·core.eol)에 따라 달라지므로 LF 로 맞춘 뒤 비교
     data = pathlib.Path(__file__).with_name("jevllm_regex.py").read_bytes().replace(b"\r\n", b"\n")
     assert hashlib.sha256(data).hexdigest() == REGEX_SHA256
+
+
+# 확실 범위: 인정하는 꼴은 확실하고 답이 맞으며, 같은 꼴의 위험한 문장은 확실하지 않음
+WIDEN_CERTAIN = [
+    # 받아쓰기가 나열 중간에 마침표를 찍은 꼴
+    ("조회는 1번, 변경은 2번, 해지는 3번. 이체는 4번, 상담원 연결은 0번을 눌러 주세요.",
+     {"1": "choice", "2": "choice", "3": "choice", "4": "choice", "0": "agent"}),
+    # 맨 앞 특별 항목 + 오름차순 본 나열, 기호 키 업무 선택지, 떨어진 8번
+    ("분실 신고는 별표, 청년 미래 적금 안내는 8번, 잔액 조회는 3번, 거래 내역 조회는 4번, 카드 서비스는 5번을 눌러 주세요.",
+     {"*": "choice", "8": "choice", "3": "choice", "4": "choice", "5": "choice"}),
+    # '<주제> 메뉴' 는 업무 이름
+    ("카드 메뉴는 1번, 대출 메뉴는 2번, 예금 메뉴는 3번을 눌러 주세요.", {"1": "choice", "2": "choice", "3": "choice"}),
+    # 다시 듣기 안내의 첫머리가 잘림 (꼬리에 키 말 없음)
+    ("조회는 1번, 변경은 2번을 눌러 주십시오. 우편 조회, 우", None),
+    # 이동 키만 있는 안내
+    ("신청 기간이 마감되었습니다. 다시 들으시려면 별표, 처음으로 가시려면 9번을 눌러 주세요.", {"*": "repeat", "9": "home"}),
+]
+WIDEN_UNCERTAIN = [
+    "이용하실 창구는 5번. 예약 확인은 1번, 예약 취소는 2번을 눌러 주세요.",       # 문장에 키 하나뿐인 번호 (공지 속 번호)
+    "배정된 좌석은 7번. 다시 들으시려면 별표, 처음으로 가시려면 9번을 눌러 주세요.",
+    "이용하실 버스는 7번, 조회는 1번, 변경은 2번, 해지는 3번을 눌러 주세요.",      # 맨 앞 항목 이름이 관형 꼴
+    "해지는 3번, 조회는 1번, 변경은 2번을 눌러 주세요.",                           # 본 나열 순서 어긋남
+    "조회는 1번, 변경은 2번, 쳐음 매뉴는 9번을 눌러 주세요.",                     # 짧은 이름의 9번
+    "분실 신고는 별표, 적금 안내는 8번, 잔액 조회는 3번, 거래 내역 조회는 4번을 눌러 주세요.",  # 짧은 이름의 떨어진 8번
+    "조회는 1번, 변경은 2번, 고객센터는 9번을 눌러 주세요.",
+    "조회는 1번, 변경은 2번을 눌러 주십시오. 상담원 연결은",                       # 잘린 꼬리가 다음 선택지 첫머리
+    "조회는 1번, 변경은 2번을 눌러 주십시오. 해지는 3",                            # 잘린 꼬리에 키 말
+    "이용하실 버스는 5번 다시 들으시려면 별표를 눌러 주세요.",                      # 쉼표 빠진 꼴의 공지 속 번호
+    "상담원과 연결을 원하시면 잠시만 기다려 주십시오. 다시 들으시려면 별표를 눌러 주세요.",
+    "취소는 별표를 눌러 주세요.",
+]
+
+
+@pytest.mark.parametrize("text,keys", WIDEN_CERTAIN)
+def test_regex_widened_certain_forms(text, keys):
+    rx = jevllm_regex.extract(text)
+    assert rx["certain"] is True, rx["uncertain_reasons"]
+    if keys is None:
+        keys = {"1": "choice", "2": "choice"}
+    assert {k["key"]: k["role"] for k in rx["keys"]} == keys
+
+
+@pytest.mark.parametrize("text", WIDEN_UNCERTAIN)
+def test_regex_widened_risky_forms_stay_uncertain(text):
+    for t in (text, re.sub(r"[.?](?=\s|$)", "", text)):   # 문장 끝 표시가 빠진 받아쓰기 꼴도
+        assert jevllm_regex.extract(t)["certain"] is False
 
 
 def test_regex_first_is_on_by_default(monkeypatch):

@@ -437,9 +437,13 @@ def test_combo_llm_is_hidden_unless_enabled_and_builds_llm_parts(monkeypatch):
     assert "llm" not in [x["id"] for x in f.options()["interp"]]
     monkeypatch.setenv("LLM_COMBO", "1")
     assert "llm" in [x["id"] for x in f.options()["interp"]]
-    assert f.normalize("llm", "separate") == ("llm", "0") and f.normalize_result("llm", "jev") == "local"
+    assert f.normalize("llm", "0") == ("llm", "0") and f.normalize_result("llm", "jev") == "local"
+    assert f.normalize("llm", "separate") == ("llm", "separate") and f.normalize("llm", "1") == ("llm", "separate")
     it = f.build("llm", "0")
-    assert isinstance(it, LlmInterpreter) and it.base.client is f.local_client
+    assert isinstance(it, LlmInterpreter) and it.base.client is f.local_client and it.fix_mode == "0"
+    fx = f.build("llm", "separate")
+    assert fx.fix_mode == "separate" and fx.fix_prompt == fx.base.fix_prompt and fx.base.fix_mode == "separate"
+    assert f.normalize("llm", "judge") == ("llm", "judge") and f.build("llm", "judge").fix_mode == "judge"
 
     async def go():
         from navigator import Navigator

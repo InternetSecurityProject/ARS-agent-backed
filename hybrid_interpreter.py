@@ -314,7 +314,7 @@ class HybridJevInterpreter:
         last_route 가 바뀌어도 결과 동일, 그 사이 입력 요청을 들었으면 고치지 않는 쪽으로만 변경."""
         reason = private_reason(text) if (text or "").strip() else None
         reason = reason or ("민감정보 입력 요청 뒤" if self.input_heard else None)
-        if reason and self.local.fix_mode == "separate":
+        if reason and self.local.fix_mode in ("separate", "judge"):
             log.info("받아쓰기 고침 생략 (%s)", reason)
             return {"source": "private", "ms": 0, "proposed": [], "applied": [], "rejected": [], "shown": None}
         return await self.local.fix_prompt(text, options, kind)

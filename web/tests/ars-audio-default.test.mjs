@@ -138,16 +138,31 @@ test('재생 오류가 나도 자동 재시도하지 않고 사용자가 다시 
   } finally { await context.close(); }
 });
 
-test('백그라운드·상태 확인 불가 시 소리를 멈추고 화면 복귀만으로 재생하지 않는다', async () => {
+// 백그라운드에서도 ARS 소리 유지.
+test('백그라운드에서도 소리를 유지하고, 상태 확인 불가 시 멈추며 사용자가 끈 통화는 복구 뒤에도 켜지 않는다', async () => {
   const { page, context, sockets, calls, errors } = await open();
   try {
     await update(page, 'listening'); await on(page).waitFor({ timeout: 2500 });
-    await page.evaluate(() => audioVisibility('hidden')); await off(page).waitFor();
+    await page.evaluate(() => audioVisibility('hidden')); await settle(page);
+    await on(page).waitFor(); assert.equal(sockets.length, 1, '백그라운드로 가도 끊지 않는다');
     await update(page, 'selecting'); await settle(page); assert.equal(sockets.length, 1);
     await page.evaluate(() => audioVisibility('visible')); await settle(page);
-    await off(page).waitFor(); assert.equal(sockets.length, 1);
-    await off(page).click(); await on(page).waitFor();
+    await on(page).waitFor(); assert.equal(sockets.length, 1, '화면 복귀 때 다시 연결하지 않는다');
+    await on(page).click(); await off(page).waitFor();
+    await update(page, 'listening', { sessionUnavailable: true }); await settle(page);
+    await update(page, 'listening', { sessionUnavailable: false }); await settle(page);
+    await off(page).waitFor(); assert.equal(sockets.length, 1, '사용자가 끈 통화는 복구 뒤에도 자동으로 켜지 않는다');
+    assert.deepEqual(calls, []); assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test('상태 확인 불가 시 소리를 멈추고, 끄지 않은 통화는 복구되면 다시 자동 재생한다', async () => {
+  const { page, context, sockets, calls, errors } = await open();
+  try {
+    await update(page, 'listening'); await on(page).waitFor({ timeout: 2500 });
     await update(page, 'listening', { sessionUnavailable: true }); await off(page).waitFor();
+    await update(page, 'listening', { sessionUnavailable: false }); await on(page).waitFor({ timeout: 2500 });
+    assert.equal(sockets.length, 2);
     assert.deepEqual(calls, []); assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });
@@ -159,17 +174,17 @@ test('데모도 연결 후 기본 켜짐이며 수동 끄기와 종료 상태를
   } finally { await context.close(); }
 });
 
-test('발신 중 화면을 떠난 경우 뒤늦은 연결로 자동 재생하지 않는다', async () => {
+// 화면이 가려진 동안 연결돼도 자동 재생.
+test('발신 중 화면을 떠나도 연결되면 자동 재생한다', async () => {
   const { page, context, sockets, calls, errors } = await open();
   try {
     await page.evaluate(() => audioVisibility('hidden'));
     // A session credential can also arrive while the page is already hidden.
     await page.evaluate(() => audioSession('ses_two'));
     await update(page, 'listening'); await settle(page);
-    assert.equal(sockets.length, 0);
+    await on(page).waitFor({ timeout: 2500 }); assert.equal(sockets.length, 1);
     await page.evaluate(() => audioVisibility('visible')); await settle(page);
-    await off(page).waitFor({ timeout: 1500 }); assert.equal(sockets.length, 0);
-    await off(page).click(); await on(page).waitFor(); assert.equal(sockets.length, 1);
+    await on(page).waitFor(); assert.equal(sockets.length, 1);
     assert.deepEqual(calls, []); assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });

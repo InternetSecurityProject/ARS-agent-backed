@@ -664,6 +664,28 @@ class Session:
         if not self._outbox_busy():
             self._drainer = self.spawn(self._drain())
 
+    async def _fix_before_judgment(self, interp, text: str) -> str:
+        """받아쓰기 고침 judge: 판단 앞에 고침을 따로 묻고 적용한 글을 돌려줌. 고침 호출은 대기 상한(LLM_FIX_TIMEOUT_S)이 있고
+        어떤 오류가 나도 원문을 돌려줌. 통화 기록에는 숫자를 가린 고침 목록만 남김."""
+        t0 = time.monotonic()
+        rec: dict = {}
+        try:
+            rec = await interp.fix_prompt(text, None, "info")
+        except Exception:
+            log.exception("받아쓰기 고침(판단 앞) 처리 오류. 원문으로 판단한다")
+            rec = {"source": "error"}
+        applied = list(rec.get("applied") or [])
+        fixed = fix_words(text, applied) if applied else text
+        if applied:
+            log.info("받아쓰기 고침을 판단 앞에 적용 (%d개, %.0fms)", len(applied), (time.monotonic() - t0) * 1000)
+        if self.recorder is not None:
+            m = lambda s: re.sub(r"\d", "#", str(s))  # noqa: E731  기록에는 숫자를 남기지 않음
+            self.recorder.note("fixes", stage="judge", source=rec.get("source"), ms=rec.get("ms"),
+                               proposed=[f"{m(a)}→{m(b)}" for a, b in rec.get("proposed") or []],
+                               applied=[f"{m(a)}→{m(b)}" for a, b in applied],
+                               rejected=[f"{m(a)}→{m(b)} ({why})" for a, b, why in rec.get("rejected") or []])
+        return fixed
+
     async def _drain(self) -> None:
         while self._outbox:
             item = self._outbox.pop(0)
@@ -1235,6 +1257,9 @@ class Session:
         else:
             closing_secure = False
 
+        if pre is None and not closing_secure and getattr(interp, "fix_mode", "0") == "judge" and not self.closed:
+            # 받아쓰기 고침 judge: 판단 앞에 고침을 묻고 고친 글로 분류·판단 (자막도 고친 글). 늦거나 실패하면 원문
+            text = await self._fix_before_judgment(interp, text)
         if pre is None:
             p = await self._ai("classify", self._classify_text(interp, text), Prompt(kind="info", text=text))
             if self.recorder is not None:

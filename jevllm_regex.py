@@ -599,6 +599,7 @@ def extract(text: str) -> dict:
 _MARK = re.compile(r"[\[\]()（）]|…|\.{3}|[○●◯]")
 # 강한 갈래 (그 밖의 갈래는 쉼표가 빠진 나열·서술격 꼬리·조사 없는 나열을 되찾는 보조 규칙이라 약함)
 _STRONG_KEY = {"after_ok", "key_first", "term_seq"}
+_LIST_KEY = {"particle_list", "sym_particle"}   # 쉼표가 빠진 나열·조사 뒤 기호 (확실함 판정에서 인정하는 보조 갈래)
 _STRONG_DROP = {"before_value"}            # 키 앞 '번호·코드·오류·제·약·총·매' (번호 값)
 # 키 표현 찾기에 걸리지 않은 키 같은 말 (정규화 뒤 글에서 찾음)
 _RES_NUMKEY = re.compile(r"(?<!\d)\d{1,3}\s*번")
@@ -638,9 +639,11 @@ _MENU_INTRO = re.compile(r"(?:원하시는|원하는|해당)\s?(?:[가-힣]+\s?)
 # 이동·상담원 낱말 (선택지로 판정된 이름에 이 말이 있으면 역할이 애매함)
 # 상담원 쪽: 사람 낱말(상담원·상담사·직원·담당자), 연결, 주제 없는 '상담' ('상담', '전화 상담', '상담 신청').
 # 주제 명사가 앞에 붙은 '<주제> 상담' 은 업무 분류라 낱말로 치지 않음
-# 이동 쪽: 처음·초기·메인·이전·단계·상위·메뉴·돌아가다·이동·다시·반복·듣기·종료·외국어 전환, '…(으)로 가'
+# 이동 쪽: 처음·초기·메인·상위·돌아가다·이동·다시·반복·듣기·종료·외국어 전환, '…(으)로 가', '이전·전·앞·첫·다른 + 메뉴·단계',
+# '메뉴·단계로'. 주제 명사가 붙은 '<주제> 메뉴'·'<주제> 이전'·'단계별' 은 업무 이름이라 낱말로 치지 않음
 _NAV_HINT = re.compile(r"상담\s?(?:원|사|직원|관)|직원|담당자|연결|^(?:전화|직접|유선|일반)?\s?상담(?:\s?(?:요청|신청|접수|하기))?$"
-                       r"|처음|초기|메인|이전|단계|상위|메뉴|돌아|이동|다시|반복|듣|들으|청취|종료|외국어|영어"
+                       r"|처음|초기|메인|상위|이전\s?(?:메뉴|단계|화면|으로|로)|^이전$|(?:(?<![가-힣])전|앞|첫|다른)\s?(?:메뉴|단계)"
+                       r"|(?<![가-힣])주\s?메뉴|(?:단계|메뉴)\s?(?:으로|로)|^(?:단계|메뉴)$|돌아|이동|다시|반복|듣|들으|청취|종료|외국어|영어"
                        r"|english|(?:으로|로)\s?가", re.I)
 # 이름 모양이 깨짐: 다른 키 표현·서술어 끝맺음이 이름 안에 들어옴
 _LABEL_BROKEN = re.compile(r"\d\s*번|[*#]|(?:니다|세요|십시[오요])(?:\s|$)|(?<![가-힣])[공영빵일이삼사오육륙칠팔구]\s?번(?![호째지길])"
@@ -787,7 +790,8 @@ _CONNECT = re.compile(r"연결|통화|상담|문의|대화|요청|바꿔|이야�
 _EN_AGENT_ODD = re.compile(r"\b(?:agents|representatives|operators|counselors)\b|\b(?:are|am|is)\s+(?:an?\s+)?(?:agent|representative|operator|counselor)\b", re.I)
 # 업무 선택지 이름에 있으면 상담원·이동·종료·언어 전환일 수 있는 말 (_NAV_HINT 낱말 밖): 통화·사람·요원·담당·대화 같은 사람과
 # 이야기하는 말, 주제가 붙었든 아니든 '상담', 되풀이·재생·홈·맨 앞·첫·화면 같은 이동 말, 끊다, 언어 이름
-_NAV_HINT2 = re.compile(r"(?:과|와|하고)\s?(?:직접\s?)?(?:통화|대화|이야기)|사람|요원|안내원|선생님|담당|부서|센터|직통"
+# '센터' 는 이름이 고객·상담·콜·안내 센터(연결)로 끝날 때만 ('<주제>센터'·'<센터> 업무 시간' 은 업무 이름)
+_NAV_HINT2 = re.compile(r"(?:과|와|하고)\s?(?:직접\s?)?(?:통화|대화|이야기)|사람|요원|안내원|선생님|담당|부서|(?:고객|상담|콜|안내)\s?센터(?:\s?(?:연결|통화|으로|로))?$|직통"
                         r"|되풀이|재생|(?<![가-힣])홈(?![가-힣])|맨\s?앞|(?<![가-힣])첫(?![째])|화면|끊|언어|[가-힣]{1,4}어\s?(?:안내|서비스|상담)", re.I)
 # '상담' 이 든 업무 선택지 이름: 다른 키가 상담원 역할이거나 '상담' 이름의 선택지가 둘 이상(주제별 상담 나열)일 때만 업무로 봄.
 # 하나뿐이면 상담원 연결인지 업무인지 애매함 ('상담을 받으시려면 0번', '<꾸밈 말> 상담은 0번')
@@ -873,6 +877,69 @@ def _request_spans(t: str) -> list:
     return out
 
 
+def _cut_after_menu(t: str, ev: list) -> bool:
+    """글 끝이 잘렸어도, 키를 고르라는 말이 끝맺은 문장 안에서 끝나고 잘린 꼬리에 키·누르라는 말이 없으면 잘림은 키와 무관
+    ('…7번을 눌러주십시오. <업무 이름>, 우': 다시 듣기 안내의 첫머리가 잘림). 키가 없는 글은 해당 없음."""
+    starts = [s for _k, s, _e, v, _h in ev if v in ("opt", "term")]
+    if not starts:
+        return False
+    ends = [m.end() for m in re.finditer(r"(?:니다|세요|십시[오요]|바랍니다)\s*[.?!]", t)]
+    if not ends:
+        return False
+    cut = ends[-1]
+    tail = t[cut:]
+    if max(starts) >= cut or not _PRESS_VERB.search(t[:cut]):
+        return False
+    #  꼬리가 '<이름>은'·'…시려면' 으로 끝나면 다음 선택지의 첫머리가 잘린 것일 수 있음 ('…눌러주십시오. 상담원 연결은')
+    return not (_RES_NUMKEY.search(tail) or _RES_SYM.search(tail) or _RES_WORD.search(tail) or _ANY_PRESS.search(tail)
+                or _LONE_DIGIT.search(tail) or _RES_SINO.search(tail) or re.search(r"(?:은|는|면|으로|로)\s*[,.]?\s*$", tail))
+
+
+def _press_by_chain(t: str, key: str, s: int, e: int, key_spans: list, biz_starts: list) -> bool:
+    """키 뒤 말 단위에 누르라는 말이 없어도, 그 뒤 누르라는 말까지가 키 항목의 이어진 나열이면 그 말이 이 키에도 적용
+    ('… 4번. <이름>은 5번, <이름>은 6번을 눌러주십시오': 받아쓰기가 나열 중간에 마침표를 찍은 꼴).
+    조건
+    - 키 바로 뒤는 ('버튼' 과) 구두점·공백뿐 ('<값>은 3번입니다. …' 는 키 뒤가 서술어라 해당 없음)
+    - 이 키가 나열 안에 있음 (같은 문장 안에 다른 키가 있음), 또는 기호 키이고 이어지는 키 가운데 업무 선택지가 있음
+      ('이용하실 버스는 5번. 다시 들으시려면 별표, …'·'이용하실 창구는 5번. 조회는 1번, …' 처럼 문장 첫 번호는 공지 속 번호일 수 있음)
+    - 그 뒤 누르라는 말(요청 꼴) 앞까지 쉼표·마침표로 나눈 조각마다 키 표현이 있고 문장 끝맺음이 없음 (쉼표로 이어지는 이름 조각
+      '<이름 앞부분>, <이름 뒷부분>은 10번' 의 앞 조각은 서술어 끝맺음·숫자가 없으면 이름의 일부로 봄)
+    - 누르라는 말이 든 조각의 키가 누르라는 말 바로 앞에 있음 ('<이름>은 7번을 눌러')"""
+    m = re.match(r"\s*(?:버튼)?[\s,.]*", t[e:])
+    if not m or not re.search(r"[,.]", m.group(0)):
+        return False
+    pv = _PRESS_VERB.search(t, e)
+    if not pv:
+        return False
+    starts = [x for x, _y in key_spans if e <= x < pv.start()]
+    if not starts:
+        return False
+    sent_lo, sent_hi = _sentence_span(t, s)
+    if not (any(sent_lo <= x < sent_hi and x != s for x, _y in key_spans) or (key in ("*", "#") and any(e <= x < pv.start() for x in biz_starts))):
+        return False
+    pos = e + m.end()
+    for seg in re.finditer(r"[^,.]+", t[pos:pv.start()]):
+        a, b = pos + seg.start(), pos + seg.end()
+        body = seg.group(0).strip()
+        if not body:
+            continue
+        if _CLAUSE_BREAK.search(seg.group(0)):
+            return False
+        if any(a <= x < b for x in starts):
+            continue
+        if t[b:b + 1] == "," and not re.search(r"\d", body) and not _PRED_END.search(body):
+            continue
+        return False
+    last = max(starts)
+    return not re.search(r"[,.]", t[last:pv.start()])
+
+
+# 관형 꼴 동사로 시작하는 이름 ('이용하실 버스'·'배정된 창구'·'받으실 창구'): 나열 맨 앞 특별 항목으로 인정하지 않음 (공지 속 값일 수 있음)
+_VALUE_HEAD = re.compile(r"\s*[가-힣]*(?:하실|으실|하신|으신|된|되는|하는|있는|없는|던|드릴|드린)\s")
+# 서술어 끝맺음 (쉼표 앞 조각이 이름 조각이 아니라 문장인지)
+_PRED_END = re.compile(r"(?:니다|세요|십시[오요]|[가-힣]요|[가-힣]다|[가-힣]까)$")
+
+
 def _sentence_span(t: str, pos: int) -> tuple:
     starts = [m.end() for m in re.finditer(r"[.!?](?=\s|$)", t[:pos])]
     s = starts[-1] if starts else 0
@@ -895,14 +962,30 @@ def certainty_reasons(text: str, out: dict, tr: dict) -> list:
     if _MARK.search(raw):
         add("편집 표시: 대괄호·괄호·말줄임·가림 표시")
 
-    if t.strip() and not _COMPLETE_END.search(t):
+    if t.strip() and not _COMPLETE_END.search(t) and not _cut_after_menu(t, tr["keys"]):
         add("잘린 글: 문장 끝맺음 없이 끝남")
 
     # (2) 키 표현이 모두 강한 갈래로 설명되는지
     ev = tr["keys"]
     covered = [(x[1], x[2]) for x in ev]
+    #  보조 갈래 가운데 인정하는 것: 이름 뒤 주제·조건 조사 + 키 + 다음 항목 ('<이름>은 1번 <이름>은 2번': 받아쓰기가 쉼표를 뺀 나열),
+    #  주제·조건 조사 뒤 기호 키 (기호는 공지 속 값이 될 수 없음), 서술격 꼬리 키('<이름>은 0번입니다')는 같은 글에 강한 갈래·위 두
+    #  갈래의 선택지 키가 둘 이상 있을 때 (나열의 끝 항목)
+    #  쉼표가 빠진 나열 키가 업무 선택지 역할이면 나열 안에 있어야 함: 같은 문장 앞에 다른 키가 있거나 뒤에 업무 선택지가 이어짐
+    #  ('이용하실 버스는 5번 다시 들으시려면 별표, …': 홀로 선 번호 뒤에 이동 키만 이어지면 공지 속 번호일 수 있음)
+    lab_at = {p2: l2 for _k2, p2, l2, kd in tr["cands"]}
+    all_starts = [x[1] for x in ev if x[3] in ("opt", "term")]
+    biz_at = [p2 for _k2, p2, l2, kd in tr["cands"] if kd == "opt" and role_of(l2) == "choice"]
+
+    def _in_list(s, e):
+        lo = _sentence_span(t, s)[0]
+        return any(lo <= x < s for x in all_starts) or any(x > e for x in biz_at)
+
+    listed = sum(1 for _k, _s, _e, v, h in ev if v == "opt" and (h in _STRONG_KEY or h in _LIST_KEY))
     for key, s, e, verdict, how in ev:
-        if verdict in ("opt", "term") and how not in _STRONG_KEY:
+        ok_weak = (how in _LIST_KEY and (how == "sym_particle" or role_of(lab_at.get(s)) != "choice" or _in_list(s, e))) \
+            or (how == "after_copula" and listed >= 2)
+        if verdict in ("opt", "term") and how not in _STRONG_KEY and not ok_weak:
             add(f"보조 갈래 키: {how}")
         if verdict == "drop" and how not in _STRONG_DROP:
             if how == "three_digit_no_press" and not _PRESS_WORD.search(t):
@@ -935,8 +1018,12 @@ def certainty_reasons(text: str, out: dict, tr: dict) -> list:
         add("설명 안 된 키 표현: 숫자 빠진 번")
     if _RES_NATIVE.search(t):
         add("설명 안 된 키 표현: 고유어 숫자+번")
-    if _RES_WORD.search(t):
+    for m in _RES_WORD.finditer(t):
+        #  키 표현 바로 뒤의 '버튼' ('<이름>은 # 버튼') 은 그 키 표현의 일부
+        if m.group(0) == "버튼" and any(ce <= m.start() <= ce + 1 for _cs, ce in covered):
+            continue
         add("설명 안 된 키 표현: 키 이름 낱말")
+        break
     if _RES_BARE_DIGIT.search(t):
         add("설명 안 된 키 표현: 누르라는 말 앞 숫자")
     for m in _LONE_DIGIT.finditer(t):
@@ -1025,7 +1112,8 @@ def certainty_reasons(text: str, out: dict, tr: dict) -> list:
                 add("선택지 이름 너무 짧음")
             if _NAV_HINT.search(lab):
                 add("선택지 이름에 이동·상담원 낱말")
-            if k["key"] in "*#":
+            #  기호 키 선택지: 이름이 있는 업무 선택지 셋 이상의 메뉴 안이면 인정 ('<업무>는 별표, <업무>는 1번, …')
+            if k["key"] in "*#" and (request or len(biz) < 3):
                 add("기호 키가 선택지")
             if _REINPUT.search(lab):
                 add("다시 입력 역할 바꿈")
@@ -1034,6 +1122,8 @@ def certainty_reasons(text: str, out: dict, tr: dict) -> list:
 
     # (7) 종류 근거
     kt = tr["kind"][0] if tr["kind"] else ""
+    #  이동 키(다시 듣기·이전·처음·기타)만 있는 글: 상담원 키가 있으면 상담원 연결 메뉴일 수 있어 해당 없음
+    nav_only = bool(keys) and all(k["role"] in ("repeat", "back", "home", "other") for k in keys)
     fired = _fired_cues(t)
     groups = {g for g, _e in fired.values()}
     if kt not in _STRONG_KIND:
@@ -1043,7 +1133,7 @@ def certainty_reasons(text: str, out: dict, tr: dict) -> list:
                     add(f"기본 안내 의심 말: {name}")
             if len(re.sub(r"\s", "", t)) < 20:
                 add("기본 안내: 짧은 글")
-        else:
+        elif not (kt == "info_default" and nav_only):
             add(f"약한 종류 갈래: {kt}")
     if kt == "request_sensitive":
         if biz:
@@ -1071,8 +1161,13 @@ def certainty_reasons(text: str, out: dict, tr: dict) -> list:
             add("종류 단서 여러 묶음")
         if any(k["role"] == "other" for k in keys):
             add("기타 이동 키와 안내")
-    if keys and not biz and kt == "info_default":
+    #  이동 키만 있는 기본 안내('<안내>입니다. 다시 들으시려면 별표, …')는 확실함으로 인정 (종류는 JEV 가 다시 정함).
+    #  상담원 키가 있으면 상담원 연결 메뉴일 수 있어 확실하지 않음
+    if keys and not biz and kt == "info_default" and not nav_only:
         add("이동 키만 있는 기본 안내")
+    #  이동 키만 있는 안내에 대기 말과 상담원 말: 번호 없이 들린 '기다리시면 상담원 연결' 갈래가 있을 수 있음
+    if nav_only and kt == "info_default" and re.search(r"기다려|기다리|대기", t) and re.search(r"상담|연결|직원", t):
+        add("이동 키만 있는 안내에 상담원·대기 말")
 
     # (8) 거래 승인. 종류가 확인·메뉴이면 금액만 있어도 걸림 (_DEAL_HINT 가 금액도 받으므로 거래 말은 없어도 됨)
     if out["critical"] or (kind in ("confirm", "menu") and _DEAL_HINT.search(t) and re.search(_AMOUNT, t)):
@@ -1088,6 +1183,8 @@ def certainty_reasons(text: str, out: dict, tr: dict) -> list:
 
     prev_end = 0
     cond_keys = set()
+    key_spans = [(s, e) for _k, s, e, v, _h in ev if v in ("opt", "term")]
+    biz_starts = [p2 for _k2, p2, l2, kd in tr["cands"] if kd == "opt" and role_of(l2) == "choice"]
     for key, s, e, verdict, how in ev:
         if verdict == "term":
             prev_end = e
@@ -1105,7 +1202,8 @@ def certainty_reasons(text: str, out: dict, tr: dict) -> list:
         if role == "choice" and "," in (lab_s or "") and not _PARTICLE_BEFORE.search(t[:s]):
             add("조사 없는 나열의 여러 조각 이름")
         eng = key.isdigit() and re.search(r"\bpress\s+(?:number\s+)?" + key + r"\b", raw, re.I)
-        if not (_PRESS_VERB.search(t, e, b) or eng or (role != "choice" and _PRESS_VERB.search(t, e))):
+        if not (_PRESS_VERB.search(t, e, b) or eng or (role != "choice" and _PRESS_VERB.search(t, e))
+                or _press_by_chain(t, key, s, e, key_spans, biz_starts)):
             add("누르라는 말이 뒤따르지 않는 키")
         #  키 앞 횟수·한도 말
         if key.isdigit() and _COUNT_BEFORE.search(t[a:s]):
@@ -1121,7 +1219,15 @@ def certainty_reasons(text: str, out: dict, tr: dict) -> list:
             cond_keys.add(key)
         prev_end = e
     digits = [int(k["key"]) for k in biz if k["key"].isdigit() and k["key"] != "0"]
-    if any(x >= y for x, y in zip(digits, digits[1:])):
+    lab_of = {k["key"]: k["label"] or "" for k in biz}
+    #  번호 순서: 맨 앞 특별 항목(분실·사기 신고 같은 급한 업무, 3개까지)을 먼저 말하고 본 나열이 오름차순인 꼴은 인정
+    #  ('<급한 업무>는 8번, <업무>는 1번, 2번, …'). 그 밖에 순서가 어긋나면 키와 이름이 밀렸을 수 있음
+    #  맨 앞 항목 이름이 관형 꼴 말로 시작하면 ('이용하실 버스는 7번, 조회는 1번, …') 공지 속 값일 수 있어 인정하지 않음
+    run = 1
+    while run < len(digits) and digits[-run - 1] < digits[-run]:
+        run += 1
+    head = [str(d) for d in digits[:len(digits) - run]]
+    if len(head) > (3 if run >= 3 else 0) or any(_VALUE_HEAD.match(lab_of.get(k, "")) for k in head):
         add("선택지 번호 순서 어긋남")
     for k in biz:
         lab = k["label"] or ""
@@ -1271,14 +1377,27 @@ def certainty_reasons(text: str, out: dict, tr: dict) -> list:
     if any(k["key"] == "0" for k in biz):
         add("0번이 업무 선택지")
     bd = {int(k["key"]) for k in biz if k["key"].isdigit() and len(k["key"]) == 1 and k["key"] != "0"}
-    if any(d in (8, 9) and d - 1 not in bd and len(bd) > 1 for d in bd):
+    #  떨어진 8·9번이 나열 맨 앞 특별 항목이면 인정 (이동 키는 대개 나열 끝에 옴)
+    #  또는 '<긴 이름>은 9번' 처럼 여섯 글자 이상 이름 뒤 주제 조사로 말함 (이동 키는 대개 '<이동>하시려면 9번' 처럼 조건 꼴로 말함)
+    first_biz = biz[0]["key"] if biz else None
+    pos_of = {k2: p2 for k2, p2, _l, kd in tr["cands"] if kd == "opt"}
+
+    def _cond_said(key):
+        #  조건 꼴로 말했거나 이름이 짧음 ('쳐음 매뉴는 9번': 받아쓰기가 이동 이름을 깨뜨린 꼴일 수 있음)
+        p = pos_of.get(key)
+        return p is None or bool(re.search(r"면\s*,?\s*$", t[:p])) or len(re.findall(r"[가-힣A-Za-z]", lab_of.get(key, ""))) < 6             or bool(_VALUE_HEAD.match(lab_of.get(key, "")))
+
+    if any(d in (8, 9) and d - 1 not in bd and len(bd) > 1 and str(d) != first_biz and _cond_said(str(d)) for d in bd):
         add("업무 선택지 8·9번이 앞 번호와 떨어짐")
     for k in biz:
         if _NAV_HINT2.search(k["label"] or ""):
             add("선택지 이름에 상담원·이동 말 (2)")
             break
     sd = [k for k in biz if _SANGDAM.search(k["label"] or "")]
-    if len(sd) == 1 and not any(k["role"] == "agent" for k in keys):
+    #  '상담' 이름 선택지가 하나뿐: 주제 명사가 앞에 붙은 '<주제> 상담' (상담이 이름 맨 앞이 아님, 사람 낱말 없음, 0번 아님)은 업무로 인정
+    if len(sd) == 1 and not any(k["role"] == "agent" for k in keys) and (
+            sd[0]["key"] == "0" or re.match(r"\s*(?:전화|직접|유선|일반)?\s?상담", sd[0]["label"] or "")
+            or re.search(r"상담\s?(?:원|사|직원|관)", sd[0]["label"] or "")):
         add("선택지 하나에만 상담 말")
     #  입력 항목 + 입력 동사가 입력 요청 자리 밖에 있음 ('<항목>을 입력하시거나, …')
     ok_in = list(req_spans)

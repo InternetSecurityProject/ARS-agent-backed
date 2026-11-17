@@ -457,7 +457,7 @@ def test_combo_factory_from_interp_and_options():
     f = hybrid_factory("separate")
     assert (f.default_interp, f.default_fix) == ("hybrid", "separate")
     o = f.options()
-    assert [x["id"] for x in o["interp"]] == ["hybrid", "local"] and [x["id"] for x in o["fix"]] == ["0", "1", "separate"]
+    assert [x["id"] for x in o["interp"]] == ["hybrid", "local"] and [x["id"] for x in o["fix"]] == ["0", "1", "separate", "judge"]
     assert o["default"] == {"interp": "hybrid", "fix": "separate", "result": "jev"}
     assert [x["id"] for x in o["result"]] == ["jev", "local"]           # 결과 안내 판단 (hybrid 를 고를 수 있는 서버만)
     assert ComboFactory.from_interp(MockInterpreter()) is None
@@ -885,5 +885,13 @@ def test_combo_labels_follow_jev_model():
     f = ComboFactory(DownLocal(), types.SimpleNamespace(model="jev-1.14.0"), "hybrid", "separate")
     o = f.options()
     assert [x["label"] for x in o["interp"]] == ["JEV 1.14 + Local STT", "all local"]
-    assert [x["label"] for x in o["fix"]] == ["끔", "1단계", "2단계"]
+    assert [x["label"] for x in o["fix"]] == ["끔", "판단 중 후보정", "안내 표시 후보정", "후보정으로 판단"]
     assert ComboFactory(DownLocal(), types.SimpleNamespace(model="jev-2.0.1"), "hybrid", "0").options()["interp"][0]["label"] == "JEV 2.0 + Local STT"
+
+
+def test_fix_option_judge_per_interp(monkeypatch):
+    """'후보정으로 판단'(judge): hybrid·local 은 그대로, som 은 후보정 없음(0)."""
+    f = hybrid_factory("separate")
+    assert f.normalize("hybrid", "judge") == ("hybrid", "judge") and f.normalize("local", "judge") == ("local", "judge")
+    it = f.build("hybrid", "judge")
+    assert it.fix_mode == "judge" and it.local.fix_mode == "judge" and not it.local.fix_transcript

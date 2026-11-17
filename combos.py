@@ -41,8 +41,9 @@ log = logging.getLogger("ars.combo")
 # som 은 내부 값, 화면 이름은 'JEV v2'
 INTERPS = {"hybrid": "JEV 1.14 + Local STT", "local": "all local", "som": "JEV v2", "llm": "로컬 모델 (규칙 없음)",
            "jevllm": "JEV + 로컬 (규칙 자리 로컬)"}
-# STT 후보정: 1단계 = 분류 요청에 고침을 함께 묻기, 2단계 = 판단 뒤 따로 묻기
-FIXES = {"0": "끔", "1": "1단계", "separate": "2단계"}
+# STT 후보정: 1 = 판단(분류) 호출 안에서 함께 고침(고친 선택지 이름이 뒤 단계 판단에도 쓰임), separate = 판단 뒤 따로 고쳐 화면 안내만 바꿈,
+# judge = 판단 앞에 따로 고치고 고친 글로 판단
+FIXES = {"0": "끔", "1": "판단 중 후보정", "separate": "안내 표시 후보정", "judge": "후보정으로 판단"}
 # 결과 안내 판단 (hybrid 만): 결과 말만 있는 안내를 JEV 가 판단할지, 로컬이 판단할지
 RESULTS = {"jev": "JEV", "local": "로컬"}
 
@@ -159,7 +160,13 @@ class ComboFactory:
             raise ComboError("이 서버에서는 JEV + 로컬(규칙 자리 로컬) 판단을 고를 수 없습니다.")
         if f not in FIXES:
             raise ComboError("fix 는 0, 1, separate 중 하나입니다.")
-        return i, ("0" if i in ("som", "llm", "jevllm") else f)   # som·llm·jevllm 판단에는 받아쓰기 고침 없음
+        if i == "som":
+            return i, "0"   # som 방식(원본 해석기·탐색기 그대로)에는 받아쓰기 고침 없음
+        # llm·jevllm 은 판단을 로컬 분류 호출이 하지 않으므로 '1'(분류 호출 안에서 함께 고침) 없음. 고침을 고르면 판단 뒤
+        # 화면 자막만 따로 고치는 separate 로 적용 (판단 입력은 원문 그대로)
+        if i in ("llm", "jevllm"):
+            return i, ("separate" if f in ("1", "separate") else f)
+        return i, f
 
     def normalize_result(self, interp: str, result) -> str:
         """결과 안내 판단 값 검사 (normalize 를 거친 interp). 비어 있으면 서버 기본값, local·llm 판단 모델이면 늘 local,
@@ -180,28 +187,43 @@ class ComboFactory:
         if interp == "som":
             from som_mode import new_som_interpreter
             return new_som_interpreter(self.som_client)
-        if self._local_cls is None:
-            self._local_cls = _call_local_cls()
-        lo = self._local_cls(self.local_client, self._slow)
-        lo._cache, lo._fix_cache = self._caches.setdefault((interp, fix), ({}, {}))
-        lo.fix_mode, lo.fix_transcript = fix, fix == "1"
+        lo = self._local(interp, fix)
         if interp == "llm":
             from llm_mode import LlmInterpreter
             # 메뉴 판단은 LlmInterpreter 가 정규식 없이, 그 밖의 일(목적 요약·결과 요약 등)은 같은 연결의 로컬 해석기(lo)가 담당
-            return LlmInterpreter(self.local_client, lo, cache=self._caches.setdefault(("llm-judge", "0"), ({}, {}))[0])
+            it = LlmInterpreter(self.local_client, lo, cache=self._caches.setdefault(("llm-judge", "0"), ({}, {}))[0])
+            return self._with_display_fix(it, lo, fix)
         if interp == "jevllm":
             from jevllm_mode import JevLlmInterpreter, JevLlmJev
-            # 메뉴 판단은 JEV, 다른 조합에서 정규식 규칙이 판단하는 자리는 로컬 모델이 담당. 목적 요약·결과 요약 등과 로컬 추출 실패 시
-            # 대체 판단은 같은 연결의 로컬 해석기(lo)가 담당. 캐시는 llm 조합과 별도
-            return JevLlmInterpreter(self.local_client, lo, JevLlmJev(self.jev_client),
-                                     cache=self._caches.setdefault(("jevllm-judge", "0"), ({}, {}))[0],
-                                     ex_cache=self._caches.setdefault(("jevllm-extract", "0"), ({}, {}))[0],
-                                     ex_slow=self._ex_slow)
+            # 메뉴 판단은 JEV, 정규식 규칙이 판단하던 자리는 로컬 모델이 담당. 목적 요약·결과 요약 등과 로컬 추출 실패 때의 대체
+            # 판단은 같은 연결의 로컬 해석기(lo)가 담당. 캐시는 llm 조합과 분리
+            it = JevLlmInterpreter(self.local_client, lo, JevLlmJev(self.jev_client),
+                                   cache=self._caches.setdefault(("jevllm-judge", "0"), ({}, {}))[0],
+                                   ex_cache=self._caches.setdefault(("jevllm-extract", "0"), ({}, {}))[0],
+                                   ex_slow=self._ex_slow)
+            return self._with_display_fix(it, lo, fix)
         if interp == "hybrid":
             # 로컬 분류 캐시는 결과 안내 판단과 무관하게 같은 로컬 모델 답이므로 분리하지 않음 (판단 쪽만 달라짐)
             return HybridJevInterpreter(local=lo, jev=JevInterpreter(self.jev_client),
                                         result_judge=result if result in RESULTS else self.default_result)
         return lo
+
+    def _local(self, interp: str, fix: str):
+        """조합 하나가 쓸 로컬 해석기 (캐시는 판단 모델·고침 값별로 나눔)."""
+        if self._local_cls is None:
+            self._local_cls = _call_local_cls()
+        lo = self._local_cls(self.local_client, self._slow)
+        lo._cache, lo._fix_cache = self._caches.setdefault((interp, fix), ({}, {}))
+        lo.fix_mode, lo.fix_transcript = fix, fix == "1"
+        return lo
+
+    @staticmethod
+    def _with_display_fix(it, lo, fix: str):
+        """llm·jevllm 해석기에 받아쓰기 고침 부착: 세션은 해석기의 fix_mode·fix_prompt 를 보고 separate 면 판단 뒤 자막만,
+        judge 면 판단 앞에 고쳐 고친 글로 판단."""
+        if fix in ("separate", "judge"):
+            it.fix_mode, it.fix_prompt = fix, lo.fix_prompt
+        return it
 
 
 def _jev_client_from_env():

@@ -6168,3 +6168,61 @@ def test_agent_request_answer_keeps_agent_goal_in_interpreter():
         assert s.goal == "카드 발급 상담원 연결" and synced == ["카드 발급 상담원 연결"]
         await s.finish("user_canceled")
     run(go())
+
+
+def test_fix_before_judgment_classifies_the_fixed_text():
+    """받아쓰기 고침 '후보정으로 판단'(judge): 판단 앞에 고침을 묻고 고친 글로 분류·판단, 자막도 고친 글. 따로 고침 대기열은 쓰지 않음."""
+    async def go():
+        s, call = await manual("통장 잔액 알고 싶어", record=True)
+        it = s.d.interp
+        seen, asked = [], []
+        orig = it.classify
+
+        async def classify(text):
+            seen.append(text)
+            return await orig(text)
+
+        async def fix_prompt(text, options=None, kind="info"):
+            asked.append(text)
+            return {"source": "model", "ms": 120, "proposed": [("잔엑", "잔액")], "applied": [("잔엑", "잔액")], "rejected": []}
+
+        it.classify, it.fix_prompt, it.fix_mode = classify, fix_prompt, "judge"
+        await s.on_paragraph("잔엑 조회는 1번, 이체는 2번을 눌러 주세요.")
+        await asyncio.sleep(0.05)
+        assert asked == ["잔엑 조회는 1번, 이체는 2번을 눌러 주세요."]
+        assert seen and seen[0] == "잔액 조회는 1번, 이체는 2번을 눌러 주세요."           # 판단은 고친 글로
+        assert not any("잔엑" in c["text"] for c in s.captions)                        # 자막도 고친 글
+        notes = [e for e in s.recorder.events if e.get("type") == "fixes"] if hasattr(s.recorder, "events") else []
+        assert not notes or notes[-1].get("stage") == "judge"
+    run(go())
+
+
+def test_fix_before_judgment_failure_judges_the_original_text():
+    """'후보정으로 판단'에서 고침 호출이 실패하면 원문으로 판단 (판단을 막지 않음)."""
+    async def go():
+        s, call = await manual("통장 잔액 알고 싶어")
+        it = s.d.interp
+        seen = []
+        orig = it.classify
+
+        async def classify(text):
+            seen.append(text)
+            return await orig(text)
+
+        async def fix_prompt(text, options=None, kind="info"):
+            raise RuntimeError("model down")
+
+        it.classify, it.fix_prompt, it.fix_mode = classify, fix_prompt, "judge"
+        await s.on_paragraph("잔엑 조회는 1번, 이체는 2번을 눌러 주세요.")
+        assert seen and seen[0] == "잔엑 조회는 1번, 이체는 2번을 눌러 주세요."
+    run(go())
+
+
+def test_sound_ratio_counts_liaison_as_the_same_sound():
+    """받아쓰기 고침의 소리 유사도는 연음(받침이 뒤 음절로 넘어감)을 반영: 소리 나는 대로 적힌 말을 고칠 수 있고, 소리가 먼 고침은 그대로 버림."""
+    from gemini_interpreter import _sound_ratio, _FIX_MIN_SOUND, apply_fixes
+    assert _sound_ratio("자녀조사 관내", "잔여좌석 안내") >= _FIX_MIN_SOUND
+    assert _sound_ratio("포위는", "문의는") < _FIX_MIN_SOUND and _sound_ratio("단순무늬", "상담원 연결") < _FIX_MIN_SOUND
+    text = "상영영화 및 자녀조사 관내는 1번을 눌러 주세요."
+    fixed, applied = apply_fixes(text, [{"from": "자녀조사 관내", "to": "잔여좌석 안내"}])
+    assert applied == [("자녀조사 관내", "잔여좌석 안내")] and "잔여좌석 안내는 1번" in fixed

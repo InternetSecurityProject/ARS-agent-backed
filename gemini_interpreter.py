@@ -718,7 +718,13 @@ _FIX_MIN_SOUND = 0.75  # 잘못 적힌 말과 고친 말의 자모 유사도 하
 
 # 고침만 따로 묻는 호출 (LLM_FIX_TRANSCRIPT=separate). 분류와 한 호출에 묶으면 모델이 고침을 거의 내지 않는 문제 대응.
 # 규칙은 FIX_RULES 그대로이며 낱말 목록·예시 없음
-FIX_ALONE = "당신은 전화 자동응답(ARS) 안내를 음성 인식으로 받아 적은 글을 검토합니다.\n" + FIX_RULES
+FIX_SOUND_CONTEXT = """
+- 음성 인식은 소리 나는 대로 적는 일이 많습니다. 받침이 뒤 글자의 첫소리로 넘어가 소리 나는 경우(연음)처럼, 적힌 말을 소리 내어 읽었을 때
+  같거나 거의 같은 소리가 나는 다른 말이 문맥에 맞으면 그 말로 고칩니다. 이때 from 은 소리가 같은 범위 전체(낱말 두세 개까지)로 적습니다.
+- 먼저 같은 안내의 다른 말(다른 선택지 이름, 기관·업무 종류)로 이 안내가 어떤 업무를 다루는지 파악하고, 그 업무에서 쓰지 않을 말이
+  업무에 맞는 말과 소리가 같거나 비슷하면 고칩니다."""
+# 따로 묻는 고침(separate·judge) 지시문: 고침 규칙 + 소리 나는 대로 적힌 말(연음)·안내의 업무 문맥 규칙 (낱말 목록·예시 없음)
+FIX_ALONE = "당신은 전화 자동응답(ARS) 안내를 음성 인식으로 받아 적은 글을 검토합니다.\n" + FIX_RULES + FIX_SOUND_CONTEXT
 SCHEMA_FIXES = {"type": "object", "properties": {"fixes": _FIXES}, "required": ["fixes"]}
 _FIX_MAX_TOKENS = 128  # 고침 응답 출력 상한
 
@@ -820,11 +826,37 @@ def _jamo(s: str) -> str:
     return "".join(out)
 
 
+_JONG_SPLIT = {"ㄳ": ("ㄱ", "ㅅ"), "ㄵ": ("ㄴ", "ㅈ"), "ㄶ": ("ㄴ", ""), "ㄺ": ("ㄹ", "ㄱ"), "ㄻ": ("ㄹ", "ㅁ"), "ㄼ": ("ㄹ", "ㅂ"),
+               "ㄽ": ("ㄹ", "ㅅ"), "ㄾ": ("ㄹ", "ㅌ"), "ㄿ": ("ㄹ", "ㅍ"), "ㅀ": ("ㄹ", ""), "ㅄ": ("ㅂ", "ㅅ")}
+
+
+def _pron_jamo(s: str) -> str:
+    """연음만 반영한 소리 자모열 (공백 무시): 받침 뒤 음절이 'ㅇ' 으로 시작하면 받침(겹받침은 뒤 자음)을 그 음절 첫소리로 옮김.
+    ㅎ 받침은 소리 없음. 'ㅇ' 받침은 그대로."""
+    syl = []
+    for ch in re.sub(r"\s", "", s):
+        c = ord(ch) - 0xAC00
+        if 0 <= c < 11172:
+            syl.append([_CHO[c // 588], _JUNG[c % 588 // 28], _JONG[c % 28].strip()])
+        else:
+            syl.append([ch, "", ""])
+    for i in range(len(syl) - 1):
+        j, nxt = syl[i][2], syl[i + 1]
+        if j and j != "ㅇ" and nxt[0] == "ㅇ" and nxt[1]:
+            keep, move = ("", "") if j == "ㅎ" else _JONG_SPLIT.get(j, ("", j))
+            syl[i][2] = keep
+            if move:
+                nxt[0] = move
+    return "".join("".join(x) for x in syl)
+
+
 def _sound_ratio(a: str, b: str) -> float:
-    """두 말의 소리 유사도 (자모 열의 SequenceMatcher 비율, 0~1)."""
+    """두 말의 소리 유사도 (0~1): 글자 자모열 비율과 연음을 반영한 소리 자모열 비율 중 큰 값.
+    음성 인식은 소리 나는 대로 적는 일이 많아(받침이 뒤 음절로 넘어감) 글자로는 멀어도 소리는 같은 말이 있음."""
     from difflib import SequenceMatcher
 
-    return SequenceMatcher(None, _jamo(a), _jamo(b)).ratio()
+    return max(SequenceMatcher(None, _jamo(a), _jamo(b)).ratio(),
+               SequenceMatcher(None, _pron_jamo(a), _pron_jamo(b)).ratio())
 
 
 _KEY_AFTER = re.compile(r"^\s*(?:번|[을를]?\s*(?:눌러|누르))")
@@ -1123,7 +1155,7 @@ class GeminiInterpreter:
         - 실패해도 모델 다시 올리기 미실행 (rewarm=False). 다시 올리기 요청이 다음 판단과 겹치면 판단 지연 발생.
         - 이미 규칙 판단 중(모델 응답 지연)이면 호출 생략."""
         out = {"source": "off", "ms": 0, "proposed": [], "applied": [], "rejected": [], "shown": None}
-        if self.fix_mode != "separate" or not (text or "").strip():
+        if self.fix_mode not in ("separate", "judge") or not (text or "").strip():
             return out
         norm = normalize_keys(text)
         proposed = self._fix_cache.get(norm)
