@@ -2509,7 +2509,7 @@ function LiveSessionExtras({ server, voice, audio, compactInput }) {
       ${!["done", "deleted"].includes(server.recording) && html`
         <${TextButton} enabled=${server.recording !== "busy"} onClick=${() => owner.dispatch({ type: "DownloadRecording" })}>통화 기록 받기 (받으면 서버 메모리에서 지워요)<//>
         <${TextButton} enabled=${server.recording !== "busy"} onClick=${() => owner.dispatch({ type: "DeleteRecording" })}>서버 기록 지우기<//>`}
-      ${T(server.recordingNote ?? "서버 메모리에는 30분 동안만 보관돼요. 서버 PC의 recordings 폴더에도 저장돼요. 키패드로 돌아가면 이 화면에서 다시 받을 수 없어요.", "bm sec")}`}
+      ${server.recordingNote && T(server.recordingNote, "bm sec")}`}
     ${voice?.status?.error && T(voice.status.error, "red")}
     ${voice?.arsError && T(voice.arsError, "red")}
     ${audio?.error && T(audio.error, "red")}
