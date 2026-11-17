@@ -539,7 +539,7 @@ async def _rt_once(org: str, clock, run_s: float, sends: list[dict], transcripts
     async def on_audio(frame):
         rec["audio"].append(_sha(frame))
 
-    async def on_transcript(text, started_at=None, forced=False):
+    async def on_transcript(text, started_at=None, forced=False, taken=None):
         rec["tr"].append({"wall": time.perf_counter(), "rel": started_at - holder["call"]._t0, "len": len(text),
                           "h": _sha(text.encode("utf-8")), "forced": bool(forced)})
 

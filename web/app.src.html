@@ -85,16 +85,42 @@ textarea,input{font:inherit;color:inherit}
 .agent-controls{max-width:304px;width:100%;min-height:88px;gap:8px;justify-content:center;flex:none}
 /* Reserve a one-line center caption. The left two-line caption uses its own column beside End. */
 .agent-controls.close-to-end{height:96px;min-height:96px;align-items:flex-start}
+.agent-controls.with-handoff{max-width:352px;gap:4px;align-items:flex-start}
+.agent-controls.with-handoff.close-to-end{height:auto;min-height:96px}
+.agent-controls.with-handoff .t-label{overflow-wrap:anywhere}
 /* 키패드 */
 .keypad{width:100%;max-width:280px;display:flex;flex-direction:column}
 .keypad-row{display:flex;justify-content:space-between}
-.key{width:72px;height:72px;border-radius:50%;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.16);display:flex;flex-direction:column;align-items:center;justify-content:center;flex:none}
+.key{position:relative;width:72px;height:72px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.08);display:flex;flex-direction:column;align-items:center;justify-content:center;flex:none}
 .key.compact{background:rgba(255,255,255,.76);box-shadow:none}
+/* A fine glass rim; the key face, label contrast and hit area stay unchanged. */
+.key::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1.5px;pointer-events:none;background:rgba(136,168,183,.2);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask-composite:exclude}
+.key::after{content:"";position:absolute;inset:1.5px;border-radius:inherit;pointer-events:none;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.4)}
 .key:active:not(:disabled){filter:brightness(.9)}
 .app.anon .key:active:not(:disabled){filter:none}
 .app.anon .key:focus-visible{outline:none}
 .key-digit{font-family:system-ui,-apple-system,"Roboto",sans-serif;font-size:32px;line-height:36px}
 .key-letters{font-size:10px;line-height:12px;min-height:12px}
+/* Reference phone dialer: keep these proportions separate from in-call input. */
+.keypad-home{--dial-key-size:clamp(64px,19.4vw,80px)}
+.dialer .keypad{max-width:calc(var(--dial-key-size) * 3 + 48px)}
+.dialer .key{width:var(--dial-key-size);height:var(--dial-key-size);background:#FDFDFD;box-shadow:0 6px 22px rgba(0,0,0,.065)}
+.dialer .key::before{padding:1px;background:rgba(255,255,255,.95)}
+.dialer .key::after{inset:1px}
+.dialer .key-digit{font-size:36px;line-height:40px;font-weight:400}
+.dialer .key-letters{font-family:system-ui,-apple-system,"Roboto",sans-serif;font-size:10px;line-height:12px;font-weight:700;letter-spacing:2px;padding-left:2px}
+.dialer .key[aria-label="키 0"] .key-letters{font-size:16px;letter-spacing:0;padding-left:0}
+.dialer-call-actions .ra{width:116px}
+.dialer-call-actions .round{width:var(--dial-key-size)!important;height:var(--dial-key-size)!important}
+.keypad-home .tabs{margin-top:24px;margin-bottom:8px;box-shadow:0 5px 24px rgba(0,0,0,.065)}
+.keypad-home .tab{justify-content:center}
+.keypad-home .tab.on{background:#EDEDED;color:var(--blue)}
+.keypad-home .tab .t-label{margin-top:2px}
+.keypad-home .tab .icon{width:28px!important;height:28px!important}
+.keypad-home .tab:nth-child(1) svg path:first-child,.keypad-home .tab:nth-child(2) svg path:first-child{fill:currentColor}
+.keypad-home .tab:nth-child(1) svg path:nth-child(2){stroke:#fff}
+.keypad-home .tab:nth-child(2) svg path:not(:first-child){fill:#fff}
+.keypad-home .tab:nth-child(3) svg path{stroke:currentColor;stroke-width:1.5px}
 /* 카드 */
 .card{background:#fff;border-radius:20px;box-shadow:0 1px 3px rgba(0,0,0,.10),0 1px 2px rgba(0,0,0,.06);padding:16px;display:flex;flex-direction:column;gap:8px;font-family:var(--batang);width:100%}
 .card.needs-response{outline:2px solid rgba(0,122,255,.24);outline-offset:-2px}
@@ -479,6 +505,8 @@ class ArsApiClient {
       case "secure_key": rid(a.request_id); requireArg(/^[0-9*#]$/.test(a.key ?? "") || (a.done === true && (a.key == null || a.key === "")), "Invalid secure key"); break;
       case "revise_goal": requireArg(!isBlank(a.text), "A goal is required"); break;
       case "cancel": break;
+      case "request_handoff": break;
+      case "cancel_handoff": rid(a.request_id); break;
       case "client_note": requireArg(/^[a-z_]{1,32}$/.test(a.what ?? "") && /^[a-z_]{1,48}$/.test(a.reason ?? ""), "Invalid note"); break;
       default: throw new InvalidArgument("Unknown action");
     }
@@ -543,6 +571,16 @@ const REJECT_CLEAR_STATUS = new Set(["selecting", "listening_result", "agent_don
 const clearReject = (cur) => (cur.rejectNotice ? { error: null, rejectNotice: false } : {});
 const isActive = (s) => s.hasSession && s.snapshot.status !== "ended";
 const canSendOf = (s) => isActive(s) && s.streamConnected && !s.busy && !s.actionUncertain && !s.sessionUnavailable;
+/** 통화 중 상담원 연결 요청 가능 여부 (서버 request_handoff 의 거절 조건과 같음: 연결 전·상담원 대기/연결 중·민감정보 입력·중요 선택 확인 중이면 불가,
+ *  업무 입력 요청이 이미 열려 있으면 다시 열지 않음). */
+const canHandoffOf = (s) => {
+  if (!canSendOf(s) || ["dialing", "waiting_agent", "connected_to_agent"].includes(s.snapshot.status)) return false;
+  const r = s.snapshot.pendingRequest;
+  return !(r != null && (r.kind === "handoff_goal" || r.kind === "secure_input" || r.reason === "critical_action"));
+};
+const handoffRefusal = (code) => code === "sensitive_input_blocked"
+  ? "개인정보 입력 중에는 상담원 연결로 바꿀 수 없어요. 입력을 마친 뒤 다시 눌러 주세요."
+  : "지금은 상담원 연결을 요청할 수 없어요. 상담원 대기·연결 중이거나 중요한 선택을 확인하는 중이에요.";
 const BACKENDS = ["sim", "clawops"];
 const NO_FREE_LINE = "빈 번호가 없어요. 다른 분들이 시험 중이에요. 잠시 뒤 다시 걸어 주세요.";
 
@@ -557,6 +595,8 @@ class ServerTestController {
       case "Respond": return this.respond(c.requestId, c.value, c.selection === true);
       case "SecureKey": return this.secureKey(c.requestId, c.key ?? null, c.done === true);
       case "Keys": return this.sendKeys(c.keys);
+      case "RequestHandoff": return this.requestHandoff();
+      case "CancelHandoff": return this.cancelHandoff(c.requestId);
       case "ReviseGoal": return this.reviseGoal(c.text);
       case "Cancel": return this.cancel();
       case "Reconnect": return this.reconnect();
@@ -642,6 +682,13 @@ class ServerTestController {
     } else if (request.kind === "secure_input") {
       if (selection || !/^[0-9*#]{1,20}$/.test(value)) { this.error("요청한 번호를 1~20자리로 입력해 주세요."); return; }
       action = { type: "secure_input", request_id: requestId, digits: value }; // 종료 문자(#)는 앱이 아닌 서버가 추가
+    } else if (request.kind === "handoff_goal") {
+      // 통화 중 상담원 연결: 상담받을 업무를 answer 로 전송 (서버가 '<업무> 상담원 연결' 로 탐색)
+      if (selection || isBlank(value)) { this.error("상담받을 업무를 입력해 주세요."); return; }
+      // 업무 입력 기한과 서버의 요청 닫힘 시각이 같아, 기한 직전에 보낸 답은 409 로 거절될 수 있음 (거절은 전달 불확실이 아님)
+      this.send({ type: "answer", request_id: requestId, text: value.trim() }, requestId,
+        () => "업무 입력 시간이 지났거나 요청이 바뀌어 이 업무는 전달되지 않았어요. 화면의 현재 상태를 확인해 주세요.");
+      return;
     } else { this.error("지원하지 않는 입력 요청이에요. 서버 상태를 확인해 주세요."); return; }
     this.send(action, requestId);
   }
@@ -708,7 +755,19 @@ class ServerTestController {
     if (!isActive(s) || s.sessionUnavailable || s.busy || s.starting) return;
     this.send({ type: "cancel" });
   }
-  send(action, answeredRequest = null) {
+  /** 통화 중 상담원 연결 요청 (request_handoff). 서버는 자동 선택을 멈추고 상담받을 업무를 묻는 요청(kind=handoff_goal)을 전송.
+   *  서버 거절(409: 민감정보 입력·중요 선택 확인·상담원 대기/연결 중)은 전달 불확실이 아니므로 이유만 표시. */
+  requestHandoff() {
+    if (!canHandoffOf(this.state)) return;
+    this.send({ type: "request_handoff" }, null, handoffRefusal);
+  }
+  /** 업무 입력 취소 (cancel_handoff): 앞의 목적·탐색으로 복귀. 통화 종료는 cancel. */
+  cancelHandoff(requestId) {
+    const s = this.state, request = s.snapshot.pendingRequest;
+    if (!canSendOf(s) || request?.kind !== "handoff_goal" || request.requestId !== requestId) return;
+    this.send({ type: "cancel_handoff", request_id: requestId }, requestId, () => "업무 입력 요청이 이미 닫혔거나 바뀌었어요. 화면의 현재 상태를 확인해 주세요.");
+  }
+  send(action, answeredRequest = null, refused = null) {
     const client = this.api; if (!client) return;
     const session = this.session; if (!session) return;
     this.mutate((s) => ({ ...s, busy: true, error: null }));
@@ -728,6 +787,7 @@ class ServerTestController {
         });
       } catch (e) {
         if (ep !== this.epoch) return;
+        if (refused != null && e instanceof ApiHttpError && e.status === 409) { this.error(refused(e.code)); return; }
         const uncertain = this.uncertainDelivery(e) || (e instanceof ApiHttpError && (e.status === 401 || e.status === 409));
         this.mutate((s) => ({ ...s, actionUncertain: uncertain }));
         if (uncertain) this.error("요청 처리 상태를 확인할 수 없어요. 자동 재전송하지 않아요. 상태를 다시 연결해 주세요.");
@@ -991,7 +1051,8 @@ class LiveCallOwner {
       if (!this.canRespond(command.requestId)) { this.server.noteIgnored(what, this.whyNot(command.requestId), command.requestId, noteKey); return; }
       const valid = request.kind === "clarification"
         ? (command.selection ? request.options.filter((o) => o.key === command.value).length === 1 : request.reason !== "critical_action" && !isBlank(command.value))
-        : request.kind === "secure_input" ? !command.selection && /^[0-9*#]{1,20}$/.test(command.value) : false;
+        : request.kind === "secure_input" ? !command.selection && /^[0-9*#]{1,20}$/.test(command.value)
+        : request.kind === "handoff_goal" ? !command.selection && !isBlank(command.value) : false;
       if (!valid) { this.server.noteIgnored(what, "invalid_value", command.requestId, noteKey); return; }
       this.replies.add(request.requestId);
       this.server.dispatch(command);
@@ -1006,7 +1067,13 @@ class LiveCallOwner {
       // 끝 표시 영수증은 입력 칸 회차(secureRetry)별: 멈춘 입력이 같은 id 로 다시 열리면 새 회차에서 다시 종료 가능
       if (command.done === true) this.replies.add(`${request.requestId}#${this.server.secureRetry ?? 0}`);
       this.server.dispatch(command);
-    } else if (["Keys", "Cancel", "Reconnect", "FetchResult"].includes(command.type)) this.server.dispatch(command);
+    } else if (command.type === "CancelHandoff") {
+      // 답을 보낸 요청은 취소하지 않음 (답 영수증). 취소 자체는 영수증을 남기지 않음: 전달이 불확실하게 실패해 다시 연결한 뒤에도
+      // 같은 요청에 답하거나 다시 취소할 수 있게 함. 보내는 동안의 중복은 busy 로 차단
+      const request = this.server.state.snapshot.pendingRequest;
+      if (request?.kind !== "handoff_goal" || !this.canRespond(command.requestId)) return;
+      this.server.dispatch(command);
+    } else if (["Keys", "RequestHandoff", "Cancel", "Reconnect", "FetchResult"].includes(command.type)) this.server.dispatch(command);
     else if (command.type === "DownloadRecording") this.server.downloadRecording();
     else if (command.type === "DeleteRecording") this.server.deleteRecording();
     // 발신은 확인 대화상자(confirm)로만 시작
@@ -1110,7 +1177,7 @@ class VoiceCoordinator {
     if (request == null) return false;
     const t = parseInstant(request.expiresAt);
     return reqEq(live.snapshot.pendingRequest, request) && canSendOf(live) && live.snapshot.status === "awaiting_user" &&
-      request.kind === "clarification" && request.reason !== "critical_action" && !isBlank(request.requestId) &&
+      ((request.kind === "clarification" && request.reason !== "critical_action") || request.kind === "handoff_goal") && !isBlank(request.requestId) &&
       !this.submitted.has(request.requestId) && t != null && t > Date.now();
   }
   announce() {
@@ -1370,7 +1437,9 @@ const Tones = {
 /* ------------------------------------------------------------------ UI 데모 상태 */
 const appState0 = () => ({ screen: "Home", tab: "Keypad", number: "", agent: false, phase: "Dialing", goal: "", goalDraft: "", answerDraft: "", secureCount: 0,
   elapsedSeconds: 0, scenario: "Weather", audioOn: false, audioMenu: false, audioRoute: "Phone", muted: false, held: false, keypadOpen: false, manualDigits: "",
-  manualInputRevision: 0, selectedKey: "1" });
+  manualInputRevision: 0, selectedKey: "1", handoffRequest: null, handoffGoal: "" });
+const canRequestDemoHandoff = s => s.screen === "Call" && s.agent && !s.handoffRequest &&
+  ["Listening", "Selecting", "ListeningResult", "Done", "Choice", "Answer"].includes(s.phase);
 const SCENARIOS = [["Weather", "날씨 안내"], ["Choice", "후보 선택"], ["Answer", "추가 답변"], ["Secure", "민감정보 입력"], ["Handoff", "상담원 연결"]];
 const scenarioTitle = (s) => SCENARIOS.find(([k]) => k === s)?.[1] ?? s;
 function reduce(s, a) {
@@ -1386,10 +1455,16 @@ function reduce(s, a) {
     case "StartNormal": return home && PhoneNumber(s.number).canCall ? { ...appState0(), screen: "Call", tab: s.tab, number: s.number, phase: "Listening", scenario: s.scenario } : s;
     case "GoalChanged": return s.screen === "Purpose" ? { ...s, goalDraft: a.text.slice(0, 160) } : s;
     case "CommitGoal": return s.screen === "Purpose" && !isBlank(s.goalDraft)
-      ? { ...s, screen: "Call", phase: "Dialing", goal: s.goalDraft.trim(), goalDraft: "", secureCount: 0, manualDigits: "", audioOn: false, audioMenu: false, keypadOpen: false } : s;
+      ? { ...s, screen: "Call", phase: "Dialing", goal: s.goalDraft.trim(), goalDraft: "", secureCount: 0, manualDigits: "", audioOn: true, audioMenu: false, keypadOpen: false } : s;
     case "AnswerChanged": return s.screen === "Call" && s.phase === "Answer" ? { ...s, answerDraft: a.text.slice(0, 160) } : s;
     case "CommitAnswer": return s.screen === "Call" && s.phase === "Answer" && !isBlank(s.answerDraft) ? { ...s, phase: "Selecting", answerDraft: "" } : s;
     case "Select": return s.screen === "Call" && s.phase === "Choice" && ["1", "3", "5"].includes(a.key) ? { ...s, phase: "Selecting", selectedKey: a.key } : s;
+    case "RequestHandoff": return canRequestDemoHandoff(s)
+      ? { ...s, handoffRequest: { draft: s.handoffGoal || s.goal }, keypadOpen: false, audioMenu: false } : s;
+    case "HandoffGoalChanged": return s.handoffRequest ? { ...s, handoffRequest: { draft: a.text.slice(0, 160) } } : s;
+    case "CancelHandoff": return s.handoffRequest ? { ...s, handoffRequest: null } : s;
+    case "CommitHandoff": return s.handoffRequest && !isBlank(s.handoffRequest.draft)
+      ? { ...s, handoffGoal: s.handoffRequest.draft.trim(), handoffRequest: null, phase: "Selecting", keypadOpen: false, audioMenu: false } : s;
     case "Key":
       if (s.screen !== "Call") return s;
       if (s.phase === "Secure") return /[0-9]/.test(a.digit) && s.secureCount < 6 ? { ...s, secureCount: s.secureCount + 1 } : s;
@@ -1404,19 +1479,20 @@ function reduce(s, a) {
     case "ToggleMute": return s.screen === "Call" && !s.agent ? { ...s, muted: !s.muted } : s;
     case "ToggleHold": return s.screen === "Call" && !s.agent ? { ...s, held: !s.held } : s;
     case "Back":
+      if (s.handoffRequest) return { ...s, handoffRequest: null };
       if (s.audioMenu) return { ...s, audioMenu: false };
       if (s.screen === "Call" && s.keypadOpen) return { ...s, keypadOpen: false };
       if (s.screen === "Call") return s;
       if (s.screen === "Detail") return { ...s, screen: "Home" };
       return { ...s, screen: "Home", tab: "Keypad", goalDraft: "", answerDraft: "", secureCount: 0, audioMenu: false };
-    case "End": return s.screen === "Call" ? { ...s, screen: "Ended", secureCount: 0, goalDraft: "", answerDraft: "", goal: "", manualDigits: "", audioMenu: false, keypadOpen: false, audioOn: false } : s;
+    case "End": return s.screen === "Call" ? { ...s, screen: "Ended", secureCount: 0, goalDraft: "", answerDraft: "", goal: "", manualDigits: "", audioMenu: false, keypadOpen: false, audioOn: false, handoffRequest: null, handoffGoal: "" } : s;
     case "Tick": return s.screen === "Call" && s.phase !== "Dialing" ? { ...s, elapsedSeconds: s.elapsedSeconds + 1 } : s;
     case "DemoAdvance":
-      if (s.screen !== "Call" || !s.agent || s.keypadOpen) return s;
+      if (s.screen !== "Call" || !s.agent || s.keypadOpen || s.handoffRequest) return s;
       switch (s.phase) {
         case "Dialing": return { ...s, phase: "Listening" };
         case "Listening": return { ...s, phase: { Weather: "Selecting", Choice: "Choice", Answer: "Answer", Secure: "Secure", Handoff: "WaitingAgent" }[s.scenario] };
-        case "Selecting": return { ...s, phase: "ListeningResult" };
+        case "Selecting": return { ...s, phase: s.handoffGoal ? "WaitingAgent" : "ListeningResult" };
         case "ListeningResult": return { ...s, phase: "Done" };
         case "Sending": return { ...s, phase: "Selecting" };
         default: return s;
@@ -1430,10 +1506,10 @@ class AppViewModel {
     this.store = new Store(appState0());
     this.dispatch = (a) => this.store.update((s) => reduce(s, a));
     this.watch((s) => (s.screen === "Purpose" && !isBlank(s.goalDraft) ? "g:" + s.goalDraft : null), () => later(1200, () => this.dispatch({ type: "CommitGoal" })));
-    this.watch((s) => (s.screen === "Call" && s.phase === "Answer" && !isBlank(s.answerDraft) ? "a:" + s.answerDraft : null), () => later(1200, () => this.dispatch({ type: "CommitAnswer" })));
-    this.watch((s) => `${s.screen}|${s.phase}|${s.keypadOpen}`, () => {
+    this.watch((s) => (s.screen === "Call" && !s.handoffRequest && s.phase === "Answer" && !isBlank(s.answerDraft) ? "a:" + s.answerDraft : null), () => later(1200, () => this.dispatch({ type: "CommitAnswer" })));
+    this.watch((s) => `${s.screen}|${s.phase}|${s.keypadOpen}|${!!s.handoffRequest}|${s.handoffGoal}`, () => {
       const s = this.store.value;
-      if (s.screen === "Call" && !s.keypadOpen && s.agent && ["Dialing", "Listening", "Selecting", "ListeningResult", "Sending"].includes(s.phase))
+      if (s.screen === "Call" && !s.keypadOpen && !s.handoffRequest && s.agent && ["Dialing", "Listening", "Selecting", "ListeningResult", "Sending"].includes(s.phase))
         return later(s.phase === "Sending" ? 500 : 3000, () => this.dispatch({ type: "DemoAdvance" }));
       return null;
     }, true);
@@ -1637,6 +1713,31 @@ function ServerAnswerContent({ request, input }) {
       if (enabled && expiry != null && expiry > Date.now() && !isBlank(value)) { const answer = { requestId: request.requestId, text: value.trim() }; setValue(""); input.onAnswer(answer); }
     }}>답변 보내기</button>`;
 }
+/** 통화 중 상담원 연결: 상담받을 업무 입력 (서버 요청 kind=handoff_goal). '상담원 연결 요청' 은 answer, '돌아가기' 는 cancel_handoff.
+ *  제목은 서버가 보낸 안내 문장 그대로. 입력 칸·버튼 배치는 UI 데모의 상담원 연결 화면(DemoHandoffPurpose)과 같음. */
+function ServerHandoffContent({ request, input }) {
+  const rk = jsonKey({ ...request, expiresAt: null });
+  const [value, setValue] = useState("");
+  const expiry = parseInstant(request.expiresAt);
+  const [expired, setExpired] = useState(() => !(expiry != null && expiry > Date.now()));
+  useLayoutEffect(() => { setValue(""); }, [rk]);
+  useEffect(() => {
+    const nowExpired = !(expiry != null && expiry > Date.now());
+    setExpired(nowExpired); if (nowExpired) setValue("");
+    const t = later(expiry == null ? 0 : expiry - Date.now(), () => { setExpired(true); setValue(""); });
+    return () => clearTimeout(t);
+  }, [rk, expiry]);
+  useEffect(() => { if (!input?.canSend) setValue(""); }, [input?.canSend]);
+  if (input == null || isBlank(request.requestId)) return html`${T(request.message, "t-title")}${T("입력 화면 연결 전이에요.", "bm sec")}`;
+  const enabled = input.canSend && !expired;
+  return html`${T(request.message, "t-title")}
+    <${VoiceInput} value=${value} placeholder="예: 카드 발급 문의" onValue=${(v) => setValue(v.slice(0, 160))} onExample=${input.onMic}
+      microphoneDescription="말로 답하기" microphoneEnabled=${enabled && input.canUseMic} inputEnabled=${enabled}/>
+    <button class="fbtn wide" data-testid="handoff-submit" disabled=${!(enabled && !isBlank(value))} onClick=${() => {
+      if (enabled && expiry != null && expiry > Date.now() && !isBlank(value)) { const answer = { requestId: request.requestId, text: value.trim() }; setValue(""); input.onAnswer(answer); }
+    }}>상담원 연결 요청</button>
+    <${TextButton} enabled=${input.canSend} onClick=${() => { if (input.canSend) input.onCancelHandoff?.(request.requestId); }}>돌아가기<//>`;
+}
 class SecureInputDraft { // 순간 입력만 보관. 저장·기록 없음
   constructor(request) { this.request = request; this.buffer = []; this.deadline = parseInstant(request.expiresAt); }
   get count() { return this.buffer.length; }
@@ -1769,6 +1870,7 @@ function PathHistoryDisclosure({ path, details }) {
     </details>`;
 }
 function demoProgressPath(state) {
+  if (state.handoffRequest || state.handoffGoal) return [];
   if (state.phase !== "Selecting") return [];
   const label = { 3: "현재 날씨", 5: "중기예보" }[state.selectedKey] ?? "단기예보";
   return ["경기 지역", "수원", `${label} (${state.selectedKey}번)`];
@@ -1793,6 +1895,7 @@ function BServerContent({ data, choiceInput, choiceSubmitted = false, answerInpu
         : T(pending.message, "t-title");
       return html`${stateLine}${choice}${answerInput != null && html`<${ServerAnswerContent} request=${pending} input=${answerInput}/>`}`;
     }
+    if (pending.kind === "handoff_goal") return html`${stateLine}<${ServerHandoffContent} request=${pending} input=${answerInput}/>`;
     return html`${head}${stateLine}${T(pending.message)}${T("입력 화면 연결 전이에요.", "bm sec")}`;
   }
   const hasSummary = !isBlank(data.summary);
@@ -1818,6 +1921,7 @@ function useCallCue(state, data, choiceInput, choiceSubmitted, secureContent, co
     return () => clearTimeout(timer);
   }, [pending?.requestId, deadline]);
   if (!state.agent || state.screen !== "Call" || data?.isEnded || controls?.stateUnavailable) return null;
+  if (data == null && state.handoffRequest) return { mode: "response", key: "demo:handoff-purpose", label: "업무를 알려주세요" };
   const waiting = { mode: "waiting", label: "기다려 주세요" };
   if (data != null) {
     if (pending != null) {
@@ -1831,6 +1935,8 @@ function useCallCue(state, data, choiceInput, choiceSubmitted, secureContent, co
         return current && !choiceSubmitted && (canChoose || canAnswer)
           ? { mode: "response", label: hasChoice ? "선택해 주세요" : "답변해 주세요", key: `question:${pending.requestId}:${choiceInput?.retryVersion ?? 0}` } : waiting;
       }
+      if (pending.kind === "handoff_goal") return current && answerInput?.canSend
+        ? { mode: "response", label: "업무를 알려주세요", key: `handoff:${pending.requestId}` } : waiting;
       return null;
     }
     return ["dialing", "listening", "selecting", "awaiting_user", "waiting_agent"].includes(data.status) ? waiting : null;
@@ -1911,9 +2017,11 @@ function CallScreen({ state, dispatch, serverData = null, choiceInput = null, se
 const Spacer = (px, grow = false) => html`<div style=${grow ? { flex: "1 1 0", minHeight: 0 } : { height: px + "px", flex: "none" }}></div>`;
 function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, readingLayout = false, serverData, choiceInput, choiceSubmitted, secureContent, liveControls, answerInput, purposeContent, cue, details }) {
   const grow = !compact;
+  // Keep all four demo controls above End; only the content scrolls on short screens.
+  const fixedDemoControls = compact && serverData == null && liveControls == null && state.agent && state.screen === "Call" && !keypad;
   const tightHeader = readingLayout && state.screen !== "Ended" && serverData?.isEnded !== true;
   const controlsToEndGap = readingLayout && state.screen === "Call" && !keypad && serverData?.isEnded !== true ? 4 : 16;
-  const historyPath = liveControls?.stateUnavailable ? [] : serverData != null
+  const historyPath = liveControls?.stateUnavailable || state.handoffRequest ? [] : serverData != null
     ? (serverData.pendingRequest == null && isBlank(serverData.summary) ? serverData.path : []) : demoProgressPath(state);
   let body;
   if (secureContent != null) body = html`<${ServerSecureKeypad} content=${secureContent} grow=${grow} scrollable=${!compact} extraContent=${() => liveControls?.extras?.()} cue=${cue}/>`;
@@ -1927,15 +2035,15 @@ function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, readin
     <//>
     ${(!compact || (state.screen === "Call" && serverData?.isEnded !== true)) && html`
       ${Spacer(readingLayout ? 12 : compact ? 16 : 20)}
-      ${!compact && state.screen === "Purpose" ? Spacer(readingLayout ? 0 : 88) : serverData?.isEnded !== true
-        ? html`<${AgentControls} state=${state} dispatch=${dispatch} closeToEnd=${readingLayout && !compact} interactive=${serverData == null || liveControls != null} liveControls=${liveControls}/>` : null}
+      ${!compact && state.screen === "Purpose" ? Spacer(readingLayout ? 0 : 88) : serverData?.isEnded !== true && !fixedDemoControls
+        ? html`<${AgentControls} state=${state} dispatch=${dispatch} closeToEnd=${readingLayout && !compact} interactive=${serverData == null || liveControls != null} liveControls=${liveControls} demoHandoff=${serverData == null && liveControls == null}/>` : null}
       ${!compact && Spacer(controlsToEndGap)}`}`;
   return html`<div class=${"col center grow" + (compact ? " scroll" : "")} style=${{ width: "100%" }}>
     ${Spacer(readingLayout ? 12 : compact ? 32 : topSpace)}
     ${(!compact || serverData != null || readingLayout) && html`<${CallHeader} state=${state} tight=${tightHeader} serverData=${serverData} liveSeconds=${liveControls?.elapsedSeconds ?? null}/>${Spacer(readingLayout ? 12 : compact ? 16 : 24)}`}
     ${body}
-    ${(compact || keypad) && Spacer(controlsToEndGap)}
-  </div>`;
+    ${(compact || keypad) && !fixedDemoControls && Spacer(controlsToEndGap)}
+  </div>${fixedDemoControls && html`${Spacer(12)}<${AgentControls} state=${state} dispatch=${dispatch} demoHandoff=${true}/>${Spacer(4)}`}`;
 }
 function CallHeader({ state, serverData = null, liveSeconds = null, tight = false }) {
   const name = contactName(state.number);
@@ -1958,6 +2066,7 @@ function AgentContent({ state, dispatch, serverData, choiceInput, choiceSubmitte
   if (liveControls?.stateUnavailable === true) return html`${T("통화 상태 확인 불가", "t-title")}${liveControls.extras?.()}`;
   if (serverData != null) return html`<${BServerContent} data=${serverData} choiceInput=${choiceInput} choiceSubmitted=${choiceSubmitted} answerInput=${answerInput}
     listeningConnected=${liveControls?.progressConnected ?? true} details=${details}/>${liveControls?.extras?.()}`;
+  if (state.handoffRequest) return html`<${DemoHandoffPurpose} state=${state} dispatch=${dispatch}/>`;
   if (state.screen === "Purpose") {
     if (purposeContent) return purposeContent();
     return html`${T("어떤 일을 도와드릴까요?", "t-title")}<div style=${{ height: "4px" }}></div>
@@ -1968,7 +2077,9 @@ function AgentContent({ state, dispatch, serverData, choiceInput, choiceSubmitte
   switch (state.phase) {
     case "Dialing": return html`${T(state.goal, "t-title")}${T("연결되면 Agent가 메뉴를 찾아요.", "sec")}`;
     case "Listening": return html`<${ListeningProgressTitle} running=${true}/><${CallProgressDetails} path=${[]} caption=${DEMO_WEATHER_CAPTION} status="listening" details=${details}/>`;
-    case "Selecting": return html`${T("원하는 메뉴를 찾고 있어요", "t-title")}<${CallProgressDetails} path=${demoProgressPath(state)} caption=${DEMO_WEATHER_CAPTION} status="selecting" details=${details}/>`;
+    case "Selecting": return state.handoffGoal
+      ? html`${T("상담원 연결 메뉴를 찾고 있어요", "t-title")}${Eyebrow("상담 업무")}${T(state.handoffGoal, "t-17")}${T("업무에 맞는 메뉴로 이동하며 상담원 연결 메뉴를 우선 선택해요.", "sec")}${T("화면 전환 예시 · 실제 탐색이나 연결은 하지 않아요.", "t-bodym sec")}`
+      : html`${T("원하는 메뉴를 찾고 있어요", "t-title")}<${CallProgressDetails} path=${demoProgressPath(state)} caption=${DEMO_WEATHER_CAPTION} status="selecting" details=${details}/>`;
     case "ListeningResult": return html`${Eyebrow("기관 안내")}${T("“오후에는 구름이 많고 한때 비가 옵니다. 강수확률은 20~60%입니다.”", "t-17")}`;
     case "Done": return html`${T("오늘 오후, 비가 올 수 있어요", "t-title")}${T("수원 · 강수확률 20~60%", "sec")}`;
     case "Choice": return html`${T("어떤 정보를 원하시나요?", "t-title")}
@@ -1978,19 +2089,32 @@ function AgentContent({ state, dispatch, serverData, choiceInput, choiceSubmitte
       <${VoiceInput} value=${state.answerDraft} placeholder="지역을 말씀해 주세요" onValue=${(t) => dispatch({ type: "AnswerChanged", text: t })}
         onExample=${() => dispatch({ type: "AnswerChanged", text: "수원시 날씨가 궁금해요" })}/>
       ${T("답변을 듣고 있어요. 내용이 확인되면 자동으로 진행해요.", "bm sec")}`;
-    case "WaitingAgent": return html`${T("상담원 연결을 기다리고 있어요", "t-title")}${T("상담원과 연결되면 Agent는 종료돼요.")}`;
+    case "WaitingAgent": return html`${T("상담원 연결을 기다리고 있어요", "t-title")}${state.handoffGoal && html`${Eyebrow("상담 업무")}${T(state.handoffGoal, "t-17")}`}${T("상담원과 연결되면 Agent는 종료돼요.")}`;
     default: return null;
   }
 }
-function AgentControls({ state, dispatch, interactive = true, liveControls = null, closeToEnd = false }) {
-  const enabled = interactive && liveControls?.stateUnavailable !== true;
-  return html`<div class=${"row agent-controls" + (closeToEnd ? " close-to-end" : "")}>
+function DemoHandoffPurpose({ state, dispatch }) {
+  return html`${T("상담원 연결을 위해선 원하는 목적을 말씀해주세요", "t-title")}
+    <${VoiceInput} value=${state.handoffRequest.draft} placeholder="예: 카드 발급 문의" onValue=${text => dispatch({ type: "HandoffGoalChanged", text })}
+      onExample=${() => dispatch({ type: "HandoffGoalChanged", text: "카드 발급 문의" })}/>
+    ${T("데모에서는 마이크를 누르면 예시 문장이 입력돼요.", "t-bodym sec")}
+    <button class="fbtn wide" disabled=${isBlank(state.handoffRequest.draft)} onClick=${() => dispatch({ type: "CommitHandoff" })}>상담원 연결 요청</button>
+    <${TextButton} onClick=${() => dispatch({ type: "CancelHandoff" })}>돌아가기<//>`;
+}
+function AgentControls({ state, dispatch, interactive = true, liveControls = null, closeToEnd = false, demoHandoff = false }) {
+  const enabled = interactive && liveControls?.stateUnavailable !== true && !state.handoffRequest;
+  // 실제 통화: 서버 연결(onHandoff)이 있으면 같은 네 번째 버튼으로 통화 중 상담원 연결 요청 (request_handoff)
+  const liveHandoff = typeof liveControls?.onHandoff === "function";
+  const handoff = demoHandoff || liveHandoff;
+  return html`<div class=${"row agent-controls" + (closeToEnd ? " close-to-end" : "") + (handoff ? " with-handoff" : "")}>
     <${RoundAction} label=${state.audioOn ? "ARS 소리 끄기" : "ARS 소리 켜기"} icon="agent_blue" onClick=${() => dispatch({ type: "ToggleAudio" })} weight=${true} shadowElevation=${2}
       enabled=${enabled && (liveControls?.arsAvailable ?? state.phase !== "Dialing")}/>
     <${RoundAction} label="키패드" icon="keypad" onClick=${() => dispatch({ type: "OpenKeypad" })} weight=${true} shadowElevation=${2}
       enabled=${enabled && (liveControls?.keypadAvailable ?? state.phase !== "Dialing")}/>
     <${RoundAction} label="오디오" icon="speaker" onClick=${() => dispatch({ type: "ToggleAudioMenu" })} weight=${true} shadowElevation=${2}
       enabled=${enabled && (liveControls?.availableRoutes ? liveControls.availableRoutes.size > 0 : true)}/>
+    ${handoff && html`<${RoundAction} label="상담원 연결" icon="contacts" onClick=${() => (liveHandoff ? liveControls.onHandoff() : dispatch({ type: "RequestHandoff" }))}
+      weight=${true} shadowElevation=${2} enabled=${enabled && (liveHandoff ? liveControls.handoffAvailable === true : canRequestDemoHandoff(state))}/>`}
   </div>`;
 }
 function NormalControls({ state, dispatch }) {
@@ -2038,7 +2162,8 @@ function ArsApp({ state, onAction, modeLabel, onModeMenu }) {
   </div>`;
 }
 function PhoneHome({ state, dispatch, openScenarios, modeLabel }) {
-  return html`<div class="col grow" style=${{ padding: "0 20px" }}>
+  const dialer = state.screen === "Home" && state.tab === "Keypad";
+  return html`<div class=${"col grow" + (dialer ? " keypad-home" : "")} style=${{ padding: "0 20px" }}>
     <${TextButton} onClick=${openScenarios}><span class="t-label">${modeLabel ?? "UI 데모 · " + scenarioTitle(state.scenario)}</span><//>
     ${state.screen === "Detail" ? html`<${ContactDetail} state=${state} dispatch=${dispatch}/>` : state.tab === "Keypad" ? html`<${Dialer} state=${state} dispatch=${dispatch}/>` : html`<${ContactList} tab=${state.tab} dispatch=${dispatch}/>`}
     ${Spacer(8)}
@@ -2057,7 +2182,7 @@ function Dialer({ state, dispatch }) {
     };
     addEventListener("keydown", f); return () => removeEventListener("keydown", f);
   });
-  return html`<div class="col center grow scroll" style=${{ width: "100%" }}>
+  return html`<div class="col center grow scroll dialer" style=${{ width: "100%" }}>
     ${Spacer(32)}
     <div style=${{ width: "100%", minHeight: "64px", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
       <span style=${{ fontFamily: "system-ui,-apple-system,Roboto,sans-serif", fontSize: "32px", lineHeight: "44px", textAlign: "center" }}>${formatPhone(state.number)}</span></div>
@@ -2065,16 +2190,16 @@ function Dialer({ state, dispatch }) {
       ${state.number && html`<${TextButton} onClick=${() => dispatch({ type: "ClearDial" })}><span class="t-bodym">전체 지우기</span><//><${TextButton} onClick=${() => dispatch({ type: "DeleteDial" })}>⌫<//>`}
     </div>
     ${Spacer(0, true)}
-    <${PhoneKeypad} onKey=${press}/>
-    ${Spacer(16)}
-    <${CallActions} number=${state.number} dispatch=${dispatch}/>
+    <${PhoneKeypad} onKey=${press} rowSpacing=${18}/>
+    ${Spacer(18)}
+    <${CallActions} number=${state.number} dispatch=${dispatch} dialer=${true}/>
   </div>`;
 }
-function CallActions({ number, dispatch }) {
+function CallActions({ number, dispatch, dialer = false }) {
   const phone = PhoneNumber(number);
-  return html`<div class="row" style=${{ width: "100%", minHeight: "104px", gap: "32px", justifyContent: "center", flex: "none" }}>
-    <${RoundAction} label="일반 전화" icon="call_white" onClick=${() => dispatch({ type: "StartNormal" })} size=${72} color=${C.Green} enabled=${phone.canCall}/>
-    ${phone.canUseAgent && html`<${RoundAction} label="ARS Agent 전화" icon="agent_white" onClick=${() => dispatch({ type: "StartAgent" })} size=${72} color=${C.Blue} labelColor=${C.Blue}/>`}
+  return html`<div class=${"row" + (dialer ? " dialer-call-actions" : "")} style=${{ width: "100%", minHeight: "104px", gap: dialer ? "24px" : "32px", justifyContent: "center", flex: "none" }}>
+    <${RoundAction} label="일반 전화" icon="call_white" onClick=${() => dispatch({ type: "StartNormal" })} size=${72} iconSize=${dialer ? 32 : 24} color=${C.Green} enabled=${phone.canCall}/>
+    ${phone.canUseAgent && html`<${RoundAction} label="ARS Agent 전화" icon="agent_white" onClick=${() => dispatch({ type: "StartAgent" })} size=${72} iconSize=${dialer ? 32 : 24} color=${C.Blue} labelColor=${C.Blue}/>`}
   </div>`;
 }
 function BottomTabs({ selected, onTab }) {
@@ -2209,7 +2334,7 @@ function LiveConfirmDialog({ target, confirm, dismiss }) {
   const refused = info?.activeSession != null ? ((info.linesTotal ?? 1) > 1 ? NO_FREE_LINE : "다른 세션이 진행 중이에요. 해당 테스트가 끝난 뒤 다시 확인해 주세요.") : null;
   const valid = !isBlank(key) && asciiPrintable(key);
   // health 미수신(느림·실패) 시 저장된 선택 전송. 발신 때 서버 health 로 재확인 (comboFor)
-  const go = () => { if (!valid) return; const consumed = key; Prefs.appKey = consumed; Prefs.record = record;
+  const go = () => { if (!valid) return; audioCtx(); const consumed = key; Prefs.appKey = consumed; Prefs.record = record;
     const chosen = combos && combo ? combo : info == null ? Prefs.combo : null; if (combos && combo) Prefs.combo = combo; confirm(consumed, record, chosen); };
   useEffect(() => { if (matchMedia(DESKTOP_QUERY).matches) document.querySelector(stored ? '[data-testid="live-dial"]' : '[data-testid="live-key"]')?.focus(); }, []);
   // 저장된 키가 있으면 확인 창 없이 바로 발신 (API 키·판단 모델·통화 기록은 판단 모델 설정 창에서 정함). 키가 없으면 이 창에서 입력받음
@@ -2271,6 +2396,8 @@ function LiveSessionScreen({ entry, server, voice, audio, onReturn }) {
     keypadAvailable: canKey, keypadOpen: keypad, manualKeys: keys,
     audioMenu, audioRoute: audio?.route ?? null, availableRoutes: audio?.available ?? new Set(),
     onToggleArs: () => voice?.toggleArs?.(),
+    handoffAvailable: canHandoffOf(server),
+    onHandoff: () => owner.dispatch({ type: "RequestHandoff" }),
     onKeypad: () => { if (keypad || canKey) { setKeypad(!keypad); setKeys(""); setAudioMenu(false); } },
     onAudioMenu: () => setAudioMenu(!audioMenu),
     onRoute: (r) => { audio?.select?.(r); setAudioMenu(false); },
@@ -2295,7 +2422,8 @@ function LiveSessionScreen({ entry, server, voice, audio, onReturn }) {
         onKey: (rid, k) => { Tones.playSequence(k); owner.dispatch({ type: "SecureKey", requestId: rid, key: k }); },
         broken: (rid) => owner.server.isSecureBroken(rid),
         onDone: (rid) => owner.dispatch({ type: "SecureKey", requestId: rid, done: true }) }}
-      answerInput=${{ canSend: canReply, onAnswer: (a) => owner.dispatch({ type: "Respond", requestId: a.requestId, value: a.text }), onMic: () => voice?.answer?.(), canUseMic: voice?.status?.enabled === true }}
+      answerInput=${{ canSend: canReply, onAnswer: (a) => owner.dispatch({ type: "Respond", requestId: a.requestId, value: a.text }), onMic: () => voice?.answer?.(), canUseMic: voice?.status?.enabled === true,
+        onCancelHandoff: (requestId) => owner.dispatch({ type: "CancelHandoff", requestId }) }}
       controls=${controls}/>
     ${confirmExit && html`<${Dialog} title="통화 상태를 확인해 주세요" onDismiss=${() => setConfirmExit(false)}
       dismiss=${html`<${TextButton} onClick=${() => setConfirmExit(false)}>계속 보기<//>`}
@@ -2333,7 +2461,7 @@ function LiveSessionExtras({ server, voice, audio, compactInput }) {
     ${agentLine ? T("Agent의 음성 답변과 ARS 재생을 멈췄어요. 상담원과의 음성 통화는 지원하지 않아요.", "sec")
       : !compactInput && voice != null && isActive(server) && html`
         ${(voice.status.listening || voice.status.speaking) && html`<${TextButton} onClick=${voice.cancelInput}>음성 입력·안내 멈추기<//>`}
-        ${voice.status.enabled && request?.kind === "clarification" && request.reason !== "critical_action" && owner.canRespond(request.requestId) &&
+        ${voice.status.enabled && ((request?.kind === "clarification" && request.reason !== "critical_action") || request?.kind === "handoff_goal") && owner.canRespond(request.requestId) &&
           html`<${TextButton} onClick=${voice.answer}>말로 답하기<//>`}`}`;
 }
 function BServerCallScreen({ number, snapshot, result = null, onEnd, onBack, choiceInput = null, secureInput = null, controls = null, answerInput = null }) {
@@ -2391,6 +2519,7 @@ function useVoiceBinding(state) {
   const audio = useStore(player.store);
   const [session, setSession] = useState(null);
   const sessionRef = useRef(null);
+  const autoPlayedSession = useRef(null);
   const [consent, setConsent] = useState(false);
   const disclosed = useRef(false);
   const visible = useRef(document.visibilityState === "visible");
@@ -2398,9 +2527,17 @@ function useVoiceBinding(state) {
   // 브라우저는 음성 인식 시작 시 마이크 권한 요청. 사용자 조작 흐름이 끊기지 않도록 즉시 시작
   const enable = () => { if (visible.current) activation.grant(); else activation.cancel(); };
   useEffect(() => {
-    sessions.observe((value) => { if (sessionRef.current !== value) { player.stop(); voice.sessionChanged(value?.sessionId ?? null); sessionRef.current = value; setSession(value); } });
+    sessions.observe((value) => {
+      if (sessionRef.current === value) return;
+      player.stop(); voice.sessionChanged(value?.sessionId ?? null);
+      autoPlayedSession.current = visible.current ? null : (value?.sessionId ?? null);
+      sessionRef.current = value; setSession(value);
+    });
     const onVis = () => {
-      if (document.visibilityState !== "visible") { visible.current = false; setConsent(false); activation.cancel(); voice.foreground(false); player.stop(); }
+      if (document.visibilityState !== "visible") {
+        visible.current = false; autoPlayedSession.current = sessionRef.current?.sessionId ?? autoPlayedSession.current;
+        setConsent(false); activation.cancel(); voice.foreground(false); player.stop();
+      }
       else { visible.current = true; voice.foreground(true); }
     };
     document.addEventListener("visibilitychange", onVis);
@@ -2409,6 +2546,12 @@ function useVoiceBinding(state) {
   useLayoutEffect(() => {
     voice.update(state);
     if (!isActive(state) || state.snapshot.status === "connected_to_agent") player.stop();
+    // One initial attempt per connected call. Manual mute, errors and foreground return
+    // must not restart playback on subsequent server updates.
+    else if (visible.current && session && !["idle", "dialing"].includes(state.snapshot.status) && autoPlayedSession.current !== session.sessionId) {
+      autoPlayedSession.current = session.sessionId;
+      player.start(session);
+    }
   });
   // 긴 음성 안내·인식 중 기한이 지나면 결과만 거르지 않고 입력 자체 중단
   const pend = state.snapshot.pendingRequest;
@@ -2425,8 +2568,14 @@ function useVoiceBinding(state) {
     answer: () => voice.listenAnswer(),
     cancelInput: () => { activation.cancel(); setConsent(false); voice.cancelInput(); },
     toggleArs: () => {
-      if (audio.enabled) player.stop();
-      else if (visible.current && isActive(latest.current) && latest.current.snapshot.status !== "connected_to_agent") { const s = sessionRef.current; if (s) player.start(s); }
+      const s = sessionRef.current;
+      if (audio.enabled) {
+        if (s) autoPlayedSession.current = s.sessionId;
+        player.stop();
+      } else if (s && visible.current && isActive(latest.current) && latest.current.snapshot.status !== "connected_to_agent") {
+        autoPlayedSession.current = s.sessionId;
+        player.start(s);
+      }
     },
   };
   const dialog = consent && html`<${Dialog} title="Agent와 음성으로 대화할까요?" onDismiss=${() => { setConsent(false); activation.cancel(); }}

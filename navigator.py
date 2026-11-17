@@ -309,8 +309,12 @@ class Navigator:
         # 동점이면 업무 선택지를 상담원 연결보다 앞에 배치 (그 밖에는 선택지 목록 순서). 1·2위 차이 기준이 0 보다 크면
         # (config 의 0.10 고정값) 1위 동점은 언제나 차이 재질문이므로 누를 키는 그대로, 재질문 선택지 순서만 변경
         ranked = sorted(((o, scores.get(o.key, 0.0)) for o in opts),
-                        key=lambda x: (x[1], not is_agent_option(x[0])), reverse=True)
+                        key=lambda x: (x[1], not self._rank_is_agent(x[0])), reverse=True)
         return ranked, scores
+
+    def _rank_is_agent(self, o: Option) -> bool:
+        """점수 동점 정렬의 상담원 선택지 판별 훅. 기본은 규칙 함수 그대로 호출 (llm 조합도 동일). jevllm 탐색기만 로컬 범주로 대체."""
+        return is_agent_option(o)
 
     async def _agent_topic_press(self, st: NavState, current: Prompt, opts: list[Option], path: list[str],
                                  ranked: list[tuple[Option, float]], no_agent: bool) -> Decision | None:
@@ -325,9 +329,9 @@ class Navigator:
             return None
         if ranked and ranked[0][1] >= self.threshold and _gap(ranked[0][1], ranked[1][1] if len(ranked) > 1 else 0.0) >= self.margin:
             return None
-        if AGENT_LABEL_RE.search(current.text or ""):
+        if self._text_names_agent(current):
             return None
-        topic = agent_topic(st.goal)
+        topic = await self._agent_task(st.goal)
         if not topic:
             return None
         t_ranked, t_scores = await self._rank(topic, opts, path)
@@ -336,7 +340,7 @@ class Navigator:
         best, s1 = t_ranked[0]
         if _gap(s1, t_ranked[1][1] if len(t_ranked) > 1 else 0.0) < self.margin:
             return None
-        if sibling_choices(topic, best, [o for o, _ in t_ranked[1:]]):
+        if await self._task_twins(topic, best, [o for o, _ in t_ranked[1:]]):
             return None
         st.topic_presses += 1
         st.agent_seek = True
@@ -358,6 +362,24 @@ class Navigator:
 
     def _agent_alt(self, goal: str, best: Option, options: list[Option]) -> Option | None:
         return agent_alternative(goal, best, options)
+
+    # 상담원 목적의 업무 부분 찾기 훅. 기본은 규칙 함수 그대로 호출
+    # (jevllm 조합의 JevLlmNavigator 만 로컬 모델 값으로 대체, jevllm_mode.py)
+    def _text_names_agent(self, prompt: Prompt) -> bool:
+        """메뉴 단락이 상담원 연결을 말하는지 (고를 선택지가 없어도)."""
+        return bool(AGENT_LABEL_RE.search(prompt.text or ""))
+
+    async def _agent_task(self, goal: str) -> str:
+        """상담원 목적의 업무 부분 (없으면 빈 문자열)."""
+        return agent_topic(goal)
+
+    async def _task_twins(self, goal: str, best: Option, rest: list[Option]) -> list[Option]:
+        """업무 부분 기준의 같은 종류 선택지."""
+        return sibling_choices(goal, best, rest)
+
+    def _has_agent_option(self, prompt: Prompt) -> bool:
+        """이 메뉴(이전 계층 포함)에 상담원 연결 선택지가 있는지."""
+        return any(is_agent_option(o) for o in prompt.options)
 
     async def decide(self, st: NavState, current: Prompt, history: list[Layer], arrived: bool = True,
                      revised: bool = False, user_branch: bool | None = None) -> Decision:
@@ -473,8 +495,8 @@ class Navigator:
         alts = [o for o in prev.prompt.options if o.key != prev.key and o.key not in prev_excluded]  # 사용자가 거절한 갈래는 대안에서 제외
         # 상담원을 찾으러 업무 부분으로 들어온 갈래면, 이전 계층의 상담원 없는 메뉴 대안도 같은 업무 부분 기준으로 점수 산정
         alt_goal = st.goal
-        if st.agent_seek and not any(is_agent_option(o) for o in prev.prompt.options):
-            alt_goal = agent_topic(st.goal) or st.goal
+        if st.agent_seek and not self._has_agent_option(prev.prompt):
+            alt_goal = (await self._agent_task(st.goal)) or st.goal
         alt_ranked, _ = await self._rank(alt_goal, alts, path[:-1])
         if not alt_ranked or alt_ranked[0][1] < self.threshold:
             return user_ask("사용자 갈래·이전 계층 모두 일치 선택지 없음") if ub else ask_or_end("현재·이전 계층 모두 일치 선택지 없음")

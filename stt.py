@@ -86,10 +86,12 @@ def split_at_pauses(ulaw8k: bytes, max_s: float, quiet_rms: float = 500) -> list
     return [ulaw8k[:cut]] + split_at_pauses(ulaw8k[cut:], max_s, quiet_rms)
 
 
-def _clean(text: str, piece: bool = False) -> str:
+def _clean(text: str, piece: bool = False, drop: bool = True) -> str:
     """인식 문장 정리. piece=True 는 단락의 일부(미리 인식 조각·긴 음성 조각)로, 단락 단위 판정('감사합니다' 뿐인 단락) 생략.
-    단락 결과는 recognize 끝에서 piece=False 로 다시 정리."""
-    text = _drop_hallucinations(re.sub(r"\s+", " ", text).strip(), piece)
+    단락 결과는 recognize 끝에서 piece=False 로 다시 정리. drop=False 는 지어낸 문장 제거를 이미 마친 글을 이을 때 사용(이어 인식 회차들)."""
+    text = re.sub(r"\s+", " ", text).strip()
+    if drop:
+        text = _drop_hallucinations(text, piece)
     if not text:
         return ""
     for pat, rep in _KEY_NAME_FIXES:
@@ -108,7 +110,8 @@ def _plausible(seg) -> bool:
 
 
 _LOOP_RE = re.compile(r"(\S.{2,29}?)(?:[\s,.]*\1){2,}")  # 같은 말이 세 번 이상 이어짐
-_DIGIT_WORD = set("공영일이삼사오육칠팔구")
+_DIGIT_WORD_CHARS = "공영일이삼사오육칠팔구"
+_DIGIT_WORD = set(_DIGIT_WORD_CHARS)
 
 
 def _compression_ratio(text: str) -> float:
@@ -159,6 +162,81 @@ def _window_texts(segs) -> list[str]:
 # 끝 시각을 3초쯤 이르게 기록하는 경우가 있어 그보다 넉넉한 값 사용
 CUT_SHORT_WARN_S = 6.0
 RETRY_GAIN_S = 3.0  # 재인식 결과는 받아 적은 범위가 이만큼 넘게 늘었을 때만 사용
+
+# 받아 적은 끝 뒤에 남은 말소리 이어 인식. 조각의 첫 인식에서
+#  - 끝 시각 점프: 마지막 구간 끝이 조각 길이보다 FILL_JUMP_MARGIN_S 넘게 늦음 (있을 수 없는 시각. 예: 문장 하나를
+#    [0.00~29.98] 로 적고 뒤 메뉴 선택지를 건너뜀. 늦은 끝 시각 때문에 누락 경고에 걸리지 않음)
+#  - 일찍 끝냄: 말소리 끝 - 받아 적은 끝 > CUT_SHORT_WARN_S 가 같은 설정 다시 인식 뒤에도 남음
+# 이면 받아 적은 끝(점프면 단어 시각의 마지막 단어 끝, 일찍 끝냄이면 구간 끝) 뒤 소리만 앞 문장을 문맥으로 다시 인식해 덧붙임.
+# 신호가 없는 조각은 첫 인식 그대로. STT_FILL_UNCOVERED=0 이면 끔(이하 '이어 인식을 끈 경우')
+FILL_JUMP_MARGIN_S = 1.0
+FILL_MIN_REST_S = 1.0      # 받아 적은 끝 뒤 말소리가 이보다 짧으면 다시 인식하지 않음
+FILL_MIN_PROGRESS_S = 0.3  # 받아 적은 끝이 이보다 앞이면 같은 소리를 다시 넣는 것과 같아 멈춤
+FILL_MAX_PASSES = 3        # 남은 소리에서 다시 멈추면 되풀이하는 최대 횟수
+
+
+def fill_uncovered_enabled() -> bool:
+    return os.environ.get("STT_FILL_UNCOVERED", "1") == "1"
+
+
+FILL_OVERLAP_MIN = 8  # 이어 인식 문장 앞부분이 앞 문장 끝과 이만큼(글자·숫자) 이상 같으면 겹침으로 보고 제거
+
+
+FILL_TOKEN_OVERLAP_MIN = 3  # 일찍 끝냄 뒤 이음매: 낱말 단위로 그대로 겹치면 글자·숫자 이만큼부터 제거 ('5678', '7번')
+FILL_DIGIT_OVERLAP_MIN = 2  # 겹친 낱말이 모두 숫자면 이만큼부터 ('7 8' 처럼 띄어 받아 적은 되읽기 끝자리)
+
+
+def _trim_overlap(before: str, text: str, tokens: bool = False) -> str:
+    """이어 인식 문장의 앞부분이 앞 문장의 끝과 같으면 그 부분을 제거: 글자·숫자만 견주어 FILL_OVERLAP_MIN 자 이상 같거나,
+    tokens=True(일찍 끝냄 뒤 회차)이면 낱말(글자·숫자 묶음) 단위로 그대로 같고 FILL_TOKEN_OVERLAP_MIN 자(모두 숫자면 FILL_DIGIT_OVERLAP_MIN 자)
+    이상인 경우. 일찍 끝냄의 구간 끝은 실제보다 약 3초 이르게 찍혀(CUT_SHORT_WARN_S 설명) 되읽기 번호 끝 몇 자리('5678')가 다시 받아 적힘.
+    숫자도 같이 제거: 되읽기 번호가 두 번 들어가면 자릿수가 틀리고, ARS 가 이음매에서 실제로 같은 번호를 두 번 읽었더라도 한 벌은 남음."""
+    a = "".join(ch for ch in before if ch.isalnum())
+    pos = [i for i, ch in enumerate(text) if ch.isalnum()]
+    b = "".join(text[i] for i in pos)
+    for k in range(min(len(a), len(b)), FILL_OVERLAP_MIN - 1, -1):
+        if a.endswith(b[:k]):
+            log.info("이어 인식 앞부분 %d자가 앞 문장 끝과 같아 뺌", k)
+            return re.sub(r"^[^\w]+", "", text[pos[k - 1] + 1:])
+    if tokens:
+        bt, tt = re.findall(r"\w+", before), list(re.finditer(r"\w+", text))
+        for k in range(min(len(bt), len(tt)), 0, -1):
+            words = [m.group() for m in tt[:k]]
+            need = FILL_DIGIT_OVERLAP_MIN if all(w.isdigit() for w in words) else FILL_TOKEN_OVERLAP_MIN
+            if bt[-k:] == words and sum(len(w) for w in words) >= need:
+                log.info("이어 인식 앞 낱말 %d개가 앞 문장 끝과 같아 뺌", k)
+                return re.sub(r"^[^\w]+", "", text[tt[k - 1].end():])
+    return text
+
+
+def _seg_time(s, name: str) -> float | None:
+    v = getattr(s, name, None)
+    return float(v) if v is not None else None
+
+
+def _drop_beyond_audio(segs: list, dur: float, voiced_end: float) -> list:
+    """들은 소리가 없는 곳에 적은 구간을 제거: 끝이 조각 길이보다 FILL_JUMP_MARGIN_S 넘게 늦고(있을 수 없는 시각), 시작이 말소리 끝
+    뒤이면서 조각 끝 FILL_JUMP_MARGIN_S 안이나 그 뒤인 구간. 이런 구간이 남으면 마침표 없이 이어진 앞 문장까지 지어낸 문장 제거에
+    함께 걸려 실제 안내가 빠질 수 있음. 끝 시각이 있을 수 있는 구간·조각 가운데서 시작한 구간은 제거하지 않음
+    (말소리 끝은 RMS 기준이라 작은 소리의 실제 말이 그 뒤에 있을 수 있음).
+    제거는 창(같은 seek) 전체가 그럴듯한(_plausible) 창에서만 적용. faster-whisper 는 압축률·확신·말소리 확률을 창 전체 문장으로 한 번
+    계산하므로, 그럴듯하지 않은 창은 이어 인식을 끈 경우와 똑같이 둠(구간을 빼면 원래 버려지던 창이 되살아나거나 반복 줄이기를 비켜 갈 수 있음)."""
+    def beyond(s) -> bool:
+        start, end = _seg_time(s, "start"), _seg_time(s, "end")
+        return (end is not None and start is not None and end > dur + FILL_JUMP_MARGIN_S and start >= voiced_end
+                and start >= dur - FILL_JUMP_MARGIN_S)
+    keep, gone = [], 0
+    for _, group in itertools.groupby(segs, key=lambda s: getattr(s, "seek", 0)):
+        g = list(group)
+        whole = SimpleNamespace(text=" ".join(s.text.strip() for s in g), no_speech_prob=g[0].no_speech_prob,
+                                avg_logprob=g[0].avg_logprob, compression_ratio=g[0].compression_ratio)
+        out = [s for s in g if not beyond(s)] if _plausible(whole) else g
+        gone += len(g) - len(out)
+        keep += out
+    if not gone:
+        return segs
+    log.info("소리 밖 구간 %d개 뺌 (조각 %.1f초, 말소리 끝 %.1f초)", gone, dur, voiced_end)
+    return keep
 
 
 def voiced_end_s(ulaw: bytes, threshold: float) -> float:
@@ -232,11 +310,12 @@ class WhisperRecognizer:
         # 말소리가 없는 구간(무음·회선 잡음·딸깍·숨소리·DTMF 잔향)은 음성 감지(Silero VAD)로 잘라내 인식 제외.
         # 잘라내지 않으면 Whisper 가 문맥 문장을 닮은 문장을 지어내 AI 가 메뉴로 오인할 수 있음
         # 시각 정보(timestamp) 토큰 사용. 끄면 숫자를 한 자씩 끊어 읽는 구간(입력값 되읽기)을 통째로 건너뜀
-        def transcribe() -> list:
-            segs, _ = model.transcribe(pcm, language="ko", beam_size=beam or self._beam, vad_filter=self.vad,
+        # (2026-11-04 실통화 되읽기 3건(각 11자리): 끔 0자리 → 켬 10자리. 실통화 15단락 글자 오류율·지연은 같음)
+        def transcribe(audio=pcm, p=prompt, **extra) -> list:
+            segs, _ = model.transcribe(audio, language="ko", beam_size=beam or self._beam, vad_filter=self.vad,
                                        vad_parameters={"min_silence_duration_ms": 500, "speech_pad_ms": 300},
-                                       initial_prompt=prompt, condition_on_previous_text=False,
-                                       temperature=0.0, without_timestamps=False)
+                                       initial_prompt=p, condition_on_previous_text=False,
+                                       temperature=0.0, without_timestamps=False, **extra)
             return list(segs)
 
         segs = transcribe()
@@ -249,7 +328,83 @@ class WhisperRecognizer:
             if end2 - end1 > RETRY_GAIN_S:
                 log.info("받아쓰기 다시 인식: 받아 적은 끝 %.1f초 → %.1f초", end1, end2)
                 segs = again
-        return _clean(" ".join(_window_texts(segs)), piece=True)
+        if not fill_uncovered_enabled():
+            return _clean(" ".join(_window_texts(segs)), piece=True)
+        try:
+            return self._fill_uncovered(segs, pcm, ulaw8k, context, prompt, transcribe)
+        except Exception as e:  # 이어 인식 중 오류(GPU 메모리 부족 등): 이어 인식을 끈 경우와 같은 첫 인식 결과 사용
+            log.warning("받아쓰기 이어 인식 실패(%s): 첫 인식 결과를 쓴다", type(e).__name__)
+            return _clean(" ".join(_window_texts(segs)), piece=True)
+
+    def _fill_uncovered(self, segs: list, pcm, ulaw8k: bytes, context: str, prompt: str | None, transcribe) -> str:
+        """받아 적은 끝 뒤에 말소리가 남은 조각(끝 시각 점프·일찍 끝냄)에서 남은 소리만 앞 문장을 문맥으로 다시 인식해 덧붙임.
+        받아 적은 끝부터 이어 인식하므로 겹치지 않음. 신호가 없으면 첫 인식 결과 그대로(FILL_* 상수 설명)."""
+        voiced_abs = voiced_end_s(ulaw8k, getattr(self, "quiet_rms", 500))
+        texts: list[str] = []
+        offset, audio, p = 0.0, pcm, prompt
+        first, changed = segs, False  # 구간을 빼거나 이어 인식하지 않았으면 이어 인식을 끈 경우와 같은 방식으로 정리 (글자까지 동일)
+        short = False                 # 앞 회차가 일찍 끝냄이었는지 (이번 회차 이음매에서 낱말 단위 겹침도 제거)
+        for n in range(FILL_MAX_PASSES + 1):
+            dur, voiced = len(audio) / 16000, voiced_abs - offset
+            kept = _drop_beyond_audio(segs, dur, voiced)
+            changed = changed or kept is not segs
+            # 회차마다 지어낸 문장을 따로 제거: 모든 회차를 합친 뒤 한 번만 빼면 마침표 없이 끝난 앞 회차 문장이 다음 회차의 지어낸 문장과
+            # 한 문장으로 묶여 함께 빠짐 (예: '잔액조회는 3번' + '시청해 주셔서 감사합니다.'). 한 회차 안에서는 이어 인식을 끈 경우와 같게 창을 이어 제거
+            text = _drop_hallucinations(re.sub(r"\s+", " ", " ".join(_window_texts(kept))).strip(), piece=True)
+            if n > 0:
+                if texts and text:
+                    text = _trim_overlap(" ".join(texts), text, tokens=short)
+                # 이어 인식 글 중 쓸 것이 없는 것: 문장부호뿐, '감사합니다' 뿐(대기 음악 꼬리), 힌트·앞 글을 6자 넘게 그대로 되풀이한 것
+                alnum = "".join(ch for ch in text if ch.isalnum())
+                hint = "".join(ch for ch in (p or "") if ch.isalnum())
+                if not alnum or re.fullmatch(r"(?:감사합니다)+", alnum) or (len(alnum) >= 6 and alnum in hint):
+                    text = ""
+                elif (texts and not re.search(r"[.?!…]$", texts[-1])
+                      and not (re.search(rf"[0-9{_DIGIT_WORD_CHARS}][\s,\-]*$", texts[-1])
+                               and re.match(rf"[\s,\-]*[0-9{_DIGIT_WORD_CHARS}]", text))):
+                    # 회차 사이를 문장으로 끊음: 단락 끝 정리(recognize 의 _clean)가 이음매에 걸친 문장을 지어낸 문장으로 보고 앞 회차 글까지
+                    # 지우지 않게 하기 위함. 번호 가운데(앞 글 끝과 이어 인식 첫 글자가 모두 숫자, 사이의 쉼표·하이픈·공백은 무시)는 끊지 않음(세션의 민감정보 숫자열 가림이 끊기지 않게)
+                    texts[-1] += "."
+            if text:
+                texts.append(text)
+            ends = [e for e in (_seg_time(s, "end") for s in kept) if e is not None]
+            if n == FILL_MAX_PASSES or not ends:
+                break
+            if n == 0 and re.fullmatch(r"(?:감사합니다)+", "".join(ch for ch in text if ch.isalnum())):
+                break  # 첫 인식이 '감사합니다' 뿐: 대기 음악·연결음일 가능성이 커 이어 인식하지 않음 (이어 인식을 끈 경우에도 단락 전체가 빠짐)
+            end = max(ends)
+            jump, short = end > dur + FILL_JUMP_MARGIN_S, voiced - end > CUT_SHORT_WARN_S
+            if jump:
+                # 점프한 끝 시각은 쓸 수 없으므로 단어 시각(같은 소리·같은 설정)의 마지막 단어 끝을 받아 적은 끝으로 간주. 점프 구간이 이
+                # 회차의 첫 구간일 때만 적용: 앞에 다른 구간이 있으면 첫 창 단어 끝부터 다시 인식해 이미 적은 글이 두 번 들어갈 수 있어
+                # 이어 인식을 끈 경우처럼 둠. 단어 시각 디코딩은 마지막 단어 끝으로 창을 옮겨 첫 인식에 없던 뒤 창까지 디코딩할 수
+                # 있으므로 첫 창의 단어만 사용
+                if (_seg_time(kept[0], "end") or 0.0) <= dur + FILL_JUMP_MARGIN_S:
+                    break
+                wsegs = transcribe(audio, p, word_timestamps=True)
+                seek0 = getattr(wsegs[0], "seek", 0) if wsegs else 0
+                w_ends = [float(w.end) for s in wsegs if getattr(s, "seek", 0) == seek0
+                          for w in (getattr(s, "words", None) or []) if getattr(w, "end", None) is not None]
+                if not w_ends:
+                    break
+                covered = min(max(w_ends), dur)
+            elif short:
+                # 일찍 끝냄은 구간 끝을 그대로 사용: 단어 시각 디코딩이 같은 글을 조각 끝 쪽 시각으로 옮겨 찍는 경우가 있음
+                covered = end
+            else:
+                break
+            if voiced - covered <= FILL_MIN_REST_S or covered < FILL_MIN_PROGRESS_S:
+                break
+            log.info("받아쓰기 이어 인식(%s): 받아 적은 끝 %.1f초, 말소리 끝 %.1f초 (조각 %.1f초)",
+                     "끝 시각 점프" if jump else "일찍 끝냄", offset + covered, voiced_abs, len(pcm) / 16000)
+            offset += covered
+            audio = audio[int(covered * 16000):]
+            before = f"{context} {_clean(' '.join(texts), piece=True, drop=False)}".strip()
+            p = f"{ARS_KEY_PROMPT} {before[-120:]}".strip() if before else (ARS_KEY_PROMPT or None)
+            segs, changed = transcribe(audio, p), True
+        if not changed:
+            return _clean(" ".join(_window_texts(first)), piece=True)
+        return _clean(" ".join(texts), piece=True, drop=False)
 
     def _run_long(self, ulaw8k: bytes, context: str = "", beam: int | None = None) -> str:
         """긴 음성은 25초 안의 가장 긴 쉼에서 나눠 차례로 인식, 앞 조각 문장을 다음 조각의 문맥으로 전달.

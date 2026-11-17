@@ -24,7 +24,7 @@ from gemini_interpreter import _NAV_PHRASE, _PRESS_END, _TERMINATED_INPUT, rule_
 from jev_interpreter import extract_prompt, rule_critical
 from interpreter import AGENT_LABEL_RE, Interpreter, Option, Prompt, is_agent_option
 from navigator import (AGENT_UNASKED_ASK, AGENT_UNASKED_ONE_ASK, NO_AGENT_ASK, _GENERIC, Layer, NavState, Navigator, _chunks,
-                       agent_goal, better_sibling, chosen_names_goal, wants_agent)
+                       agent_goal, agent_topic, better_sibling, chosen_names_goal, wants_agent)
 from recording import CallRecorder, folder_name, save_files
 from som_mode import MenuRecoveryBudgets, display_fixes_for, is_som, som_navigator_like
 from stt import Recognizer
@@ -175,6 +175,15 @@ def _readback_digits(text: str) -> int:
     return max(0, n)
 
 
+def _same_prompt(a: Prompt | None, b: Prompt | None) -> bool:
+    """같은 안내인지 여부: 같은 객체이거나, ARS 가 다시 읽은 같은 메뉴(종류·선택지가 같음. 선택지가 없으면 원문이 같음)."""
+    if a is b:
+        return True
+    if a is None or b is None or a.kind != b.kind:
+        return False
+    return a.signature() == b.signature() if (a.options or b.options) else a.text == b.text
+
+
 def _field_name(label: str) -> str:
     """입력 항목명에서 뒤의 자릿수 말을 뗀 이름 ('주민등록번호 앞 6자리' → '주민등록번호')."""
     return re.sub(r"\s*(?:앞|뒤)?\s*(?:[0-9]+|열\s?(?:[한두세네]|다섯|여섯|일곱|여덟|아홉)?|[한두세네]|다섯|여섯|일곱|여덟|아홉)\s*자리\s*$", "",
@@ -251,13 +260,20 @@ def menu_preface(text: str) -> str:
     return " ".join(out).strip()
 
 
-def _same_menu(a: Prompt, b: Prompt) -> bool:
+def _same_menu(a: Prompt, b: Prompt, tolerant: bool = False) -> bool:
     """두 메뉴의 동일 여부 (ARS 의 같은 메뉴 재낭독 여부). 키 구성이 같고, 받아쓰기 차이('분실신고 금융사기' / '분실 신고, 금융 사기',
-    'For' / 'for')를 무시했을 때 이름이 같은 선택지가 70% 이상이면 같은 메뉴로 판정."""
+    'For' / 'for')를 무시했을 때 이름이 같은 선택지가 70% 이상이면 같은 메뉴로 판정.
+    tolerant: 같은 메뉴를 두 번 읽을 때 추출이 키 하나를 놓칠 가능성 있음(예: 앞 안내가 붙은 단락에서 기호 키 누락). 두 키 집합의 차이가
+    키 하나 이하이고 공통 키가 3개 이상이며 공통 키 이름의 70% 이상이 같으면 같은 메뉴로 판정."""
     ka, kb = {o.key: o.label for o in a.options}, {o.key: o.label for o in b.options}
+    norm = lambda s: re.sub(r"[^0-9a-z가-힣]", "", (s or "").lower())  # noqa: E731
+    if tolerant:
+        common = set(ka) & set(kb)
+        if len(common) < 3 or len(set(ka) ^ set(kb)) > 1:
+            return False
+        return sum(norm(ka[k]) == norm(kb[k]) for k in common) >= 0.7 * len(common)
     if not ka or set(ka) != set(kb):
         return False
-    norm = lambda s: re.sub(r"[^0-9a-z가-힣]", "", (s or "").lower())  # noqa: E731
     return sum(norm(ka[k]) == norm(kb[k]) for k in ka) >= 0.7 * len(ka)
 
 
@@ -479,7 +495,10 @@ class Session:
         self.summary: dict | None = None
         self.result_heard = False            # 결과 안내를 들음 (요약을 마치기 전에 끊겨도 completed)
         self.agent_goal_at_caption = 0       # AI 시작 시점의 자막 위치 (결과 요약 범위)
-        self.agent_request = False           # 상담원 연결 버튼으로 건 통화 (create agent=true)
+        self.agent_request = False           # 상담원 연결 버튼으로 건 통화 (create agent=true) 또는 통화 중 상담원 연결 요청 완료
+        self.routing_mode = "task"           # task: 업무 목적으로 탐색, human_agent: 상담원 선택지 우선 (업무는 task_goal)
+        self.task_goal = ""                  # human_agent 탐색의 업무 목적 (상담원 말을 붙이기 전). 스냅샷 goal 로 표시
+        self.handoff_prev: dict | None = None  # 업무 목적 입력 요청을 열 때 닫은 재질문 (입력 취소 시 복원)
         self.hours_note: str | None = None   # 업무시간 외 안내에서 뽑은 상담 가능 시간 문장 (종료 문구에 덧붙임)
         self.hangup_seen = False             # 상대가 끊음. 남은 안내를 처리한 뒤 종료한다
         self.heard_since_press = False       # 마지막 키 전송 뒤 ARS 가 소리를 냈는지
@@ -487,6 +506,8 @@ class Session:
         self.last_key_at: float | None = None  # 마지막 키 전송 시각. 그 전에 시작된 안내는 키 이전 상태의 안내
         self.early_result_wait = False       # 첫 메뉴 전 결과 안내를 확정하려고 기다리는 중 (_early_result_check)
         self.result_upto: int | None = None  # 보류한 결과 단락까지의 자막 수. 확정 때 요약·원문 대체를 여기까지로 (뒤에 온 일반 안내 제외)
+        self.early_end_kind: str | None = None  # 첫 메뉴 전 보류 중인 끝맺음 종료 사유 (해석기 hold_early_end). None 이면 결과 보류
+        self._dead_end_pending: tuple | None = None  # 판단 대기 중인 막다른 안내 후보 (안내, 그때의 last_key_at). 해석기 dead_end_on_timeout
         self.key_cut_speech = False          # 마지막 키를 ARS 발화 도중에 보냈는지 여부 (그 안내의 뒷부분이 새 단락으로 들림)
         self.seg_started_at: float | None = None  # 지금 듣고 있는 단락의 소리 시작 시각
         self.last_send_secure = False        # 마지막으로 보낸 키가 민감정보 입력값인지 여부
@@ -707,7 +728,9 @@ class Session:
         return {
             "status": self.status,
             "message": self.status_message,
-            "goal": self.goal,
+            # human_agent 탐색은 내부 목적('<업무> 상담원 연결') 대신 업무 목적 표시. 업무가 없으면 내부 목적
+            "goal": (self.task_goal or self.goal) if self.routing_mode == "human_agent" else self.goal,
+            "routing_mode": self.routing_mode,
             "goal_summary": self.goal_summary,
             "path": self.path,
             "captions": [c for c in self.captions if id(c) not in self._unsent] if self._unsent else self.captions,
@@ -723,6 +746,8 @@ class Session:
         out = {"session_id": self.id, "session_token": self.token, "phone_number": self.phone}
         self.agent_request = bool(agent)
         self.goal = agent_goal(goal) if self.agent_request else (goal or "").strip()
+        if self.agent_request:
+            self.routing_mode, self.task_goal = "human_agent", agent_topic(self.goal)
         if record or getattr(self.s, "record_always", False):  # RECORD_ALWAYS=1: 앱 요청과 무관하게 기록 (시험용)
             meta = {"session_id": self.id, "phone": self.phone, "goal": self.goal,
                     "backend": self.s.backend, "stt": self.s.stt, "interpreter": self.s.interpreter}
@@ -826,8 +851,9 @@ class Session:
             for text, started, _ in flush():
                 await self._deliver(text, started, False)
         deadline = time.monotonic() + self.s.hangup_flush_s
-        while (self.stt_inflight or self._lock.locked() or self._held_head is not None) and time.monotonic() < deadline:
-            if self._held_head is not None and not self.stt_inflight and not self._lock.locked():
+        while ((self.stt_inflight or self._handed_over() or self._lock.locked() or self._held_head is not None)
+               and time.monotonic() < deadline):
+            if self._held_head is not None and not self.stt_inflight and not self._handed_over() and not self._lock.locked():
                 await self._flush_head(now=True)  # 잘린 앞부분 뒤로 이어 들을 소리 없음
                 continue
             await asyncio.sleep(0.05)
@@ -842,6 +868,14 @@ class Session:
             end = max(deadline, time.monotonic() + 1.0)
             while not t.done() and time.monotonic() < end:
                 await asyncio.sleep(0.05)
+            if self.early_result_wait and self.early_end_kind is not None:
+                # 보류한 것이 끝맺음 안내(업무시간 외 등)인데 확인 미완료: 메뉴가 이어지지 않고 끊겼으므로 그 사유로 종료
+                kind = self.early_end_kind
+                log.warning("끊긴 뒤 첫 메뉴 전 끝맺음 안내의 확인을 마치지 못해 그 사유(%s)로 끝낸다", kind)
+                self.early_result_wait = False
+                self.early_end_kind = None
+                await self.finish(kind, hangup=False)
+                return
             if self.early_result_wait and not self.result_heard:
                 log.warning("끊긴 뒤 첫 메뉴 전 결과 안내의 확인을 마치지 못해 결과로 확정한다 (안내 원문 요약)")
                 self.early_result_wait = False
@@ -933,7 +967,13 @@ class Session:
     def _ars_active(self) -> bool:
         """ARS 안내 진행 중이거나 끝난 안내를 아직 인식·처리 중인지 여부 (가상 ARS 는 call.speaking 으로 통지)."""
         return bool(getattr(self.call, "speaking", False) or self.segmenter.speaking or self.stt_inflight
-                    or self._held_head is not None)
+                    or self._handed_over() or self._held_head is not None)
+
+    def _handed_over(self) -> int:
+        """받아쓰기를 직접 주는 백엔드(가상 ARS 받아쓰기 모드)가 넘겼으나 세션이 아직 잠금 아래로 가져가지 않은 단락 수.
+        소리 인식 경로는 단락이 닫히는 순간 stt_inflight 를 올리므로, 넘김과 가져감 사이도 같은 'ARS 활동' 으로 집계. 실통화는 늘 0."""
+        n = getattr(self.call, "transcripts_inflight", 0) if self.call is not None else 0
+        return n if isinstance(n, int) else 0
 
     def _ars_active_for_recovery(self) -> bool:
         """som 방식 복구용: 지금 판단 중인 단락 자신의 인식은 빼고, 다른 인식 대기나 들어오는 말소리가 있는지 여부."""
@@ -941,7 +981,7 @@ class Session:
         if (active and self._processing_stt_task is not None
                 and self._processing_stt_task is asyncio.current_task()):
             return bool(getattr(self.call, "speaking", False) or self.segmenter.speaking or self.stt_inflight > 1
-                        or self._held_head is not None)
+                        or self._handed_over() or self._held_head is not None)
         return active
 
     @property
@@ -953,6 +993,9 @@ class Session:
         """분류 요청. som 방식 해석기는 지나온 계층과 함께 분류 (classify_history).
         som 해석기가 원문 구절 그대로 뽑은 선택지 이름('…을 원하시면')은 화면용 고침(display_fixes)으로만 다듬음 (판단·JEV 요청은 원래 이름)."""
         historical = getattr(interp, "classify_history", None) if getattr(interp, "system_recovery", False) else None
+        if getattr(interp, "wants_layer_path", False):
+            # 지나온 계층의 범주를 분류 전에 넘김 (해석기가 원하는 경우만, jevllm): 방금 누른 키의 범주를 이번 판단 경로에 포함
+            interp.layer_path = [layer.prompt.category_of(layer.key) for layer in self.layers]
         if historical is None:
             return await interp.classify(text)
         p = await historical(text, self.goal or "", self.layers)
@@ -1042,12 +1085,14 @@ class Session:
             self.recorder.note("stt_retry", digits_before=have, digits_after=got, entered=want, used=use, seconds=round(secs, 2))
         return alt if use else text
 
-    async def _deliver(self, text: str, started_at: float | None, forced: bool = False) -> None:
+    async def _deliver(self, text: str, started_at: float | None, forced: bool = False,
+                       taken: Callable[[], None] | None = None) -> None:
         """인식한 단락을 안내 처리로 전달. 무음이 아닌 최대 길이(Segmenter max_s)에서 끊긴 단락은 발화 도중에 잘린
-        앞부분이므로 바로 판단하지 않고 다음 단락과 이어 붙여 한 단락으로 판단 (긴 안내가 메뉴 중간에서 잘려 앞부분은
-        선택지 없는 일반 안내로, 뒷부분은 뒤쪽 선택지만 있는 메뉴로 오판되는 문제 방지).
+        앞부분이므로 바로 판단하지 않고 다음 단락과 이어 붙여 한 단락으로 판단 (2026-11-07 실통화: 45초가 넘는 하나카드 안내가
+        메뉴 중간에서 잘려, 앞부분은 선택지 없는 일반 안내로, 뒷부분은 뒤쪽 선택지만 있는 메뉴로 판단되었다).
         그 사이에 키를 보냈으면 이어 붙이지 않고 앞부분을 먼저 따로 처리.
-        다음 단락이 오지 않으면(ARS 발화 종료) 앞부분만으로 처리 (_flush_head)."""
+        다음 단락이 오지 않으면(ARS 발화 종료) 앞부분만으로 처리 (_flush_head).
+        taken: 받아쓰기 백엔드의 넘김 표시를 해제하는 함수. 이 단락을 잠금 아래로 가져갈 때 호출 (on_paragraph)."""
         head = self._held_head
         if head is not None:
             self._held_head = None
@@ -1061,7 +1106,7 @@ class Session:
             self._held_head = (text, started_at, self.last_key_at)
             self.timer("held_head", HELD_HEAD_CHECK_S, self._flush_head)
             return
-        await self.on_paragraph(text, started_at)
+        await self.on_paragraph(text, started_at, taken=taken)
 
     async def _flush_head(self, now: bool = False) -> None:
         """잡아 둔 잘린 앞부분 단독 처리. 이어지는 소리를 아직 듣거나 인식 중이면 잠시 더 대기."""
@@ -1069,7 +1114,7 @@ class Session:
             return
         # 받아쓰기를 직접 주는 백엔드(녹음 기반 가상 ARS 받아쓰기 모드)는 Segmenter 를 쓰지 않으므로 통화가 알리는 '단락을 듣는 중'
         # (call.speaking) 으로 이어지는 소리 대기
-        busy = self.segmenter.speaking or self.stt_inflight or (
+        busy = self.segmenter.speaking or self.stt_inflight or self._handed_over() or (
             self.call is not None and self.call.provides_transcripts and bool(getattr(self.call, "speaking", False)))
         if not now and busy and not self.hangup_seen:
             self.timer("held_head", HELD_HEAD_CHECK_S, self._flush_head)
@@ -1085,17 +1130,22 @@ class Session:
             return
         await self.call.send_audio(frame)
 
-    async def _on_transcript(self, text: str, started_at: float | None = None, forced: bool = False) -> None:
+    async def _on_transcript(self, text: str, started_at: float | None = None, forced: bool = False,
+                             taken: Callable[[], None] | None = None) -> None:
         # 소리 인식 경로(_stt_worker)와 같게 _deliver 로 전달: 최대 길이에서 잘린 단락(forced)은 다음 단락과 이어 붙임.
-        # 가상 ARS(sim)는 forced 를 주지 않으므로 바로 on_paragraph 로 진행
-        await self._deliver(text, started_at, forced)
+        # 가상 ARS(sim)는 forced 를 주지 않으므로 바로 on_paragraph 로 진행. taken: 넘김 표시를 해제하는 함수 (가상 ARS 받아쓰기 모드)
+        await self._deliver(text, started_at, forced, taken)
 
     # 안내 처리 ---------------------------------------------------------------
-    async def on_paragraph(self, text: str, started_at: float | None = None) -> None:
-        """ARS 안내 한 단락. started_at 은 그 안내의 소리 시작 시각(monotonic). 모르면 None."""
+    async def on_paragraph(self, text: str, started_at: float | None = None,
+                           taken: Callable[[], None] | None = None) -> None:
+        """ARS 안내 한 단락. started_at 은 그 안내의 소리 시작 시각(monotonic). 모르면 None.
+        taken: 잠금을 얻은 순간 호출하는 함수 (받아쓰기 백엔드의 넘김 표시 해제. 단락 자신의 판단 중에는 넘김으로 세지 않음)."""
         if self.ended or self.status == "connected_to_agent":
             return
         async with self._lock:
+            if taken is not None:
+                taken()
             # 이 단락의 판단(키 전송·재질문 발행 포함) 종료를 받아쓰기 고침 작업에 통지 (고침 호출은 그 뒤에 시작)
             self._para_done = done = asyncio.Event()
             try:
@@ -1108,7 +1158,9 @@ class Session:
         interp = self.d.interp
         self.cancel_timer("no_response")
         self.para_seq += 1
-        self.cancel_timer("dead_end")  # 새 안내 수신: 앞 단락의 막다른 안내 판단 취소 (ARS 가 말을 이어 감)
+        self.cancel_timer("dead_end")  # 새 안내 수신: 앞 단락의 막다른 안내 판단은 취소 (ARS 가 말을 이어 감)
+        pending_dead_end, self._dead_end_pending = self._dead_end_pending, None   # 새 안내가 무입력 안내면 앞 후보 판단 (아래)
+        timeout_notice = False
         if self.early_result_wait:
             # 첫 메뉴 전 결과 안내를 확정하려고 기다리는 중 새 안내 수신: 이 안내를 마친 뒤부터 다시 대기. 이 안내가 메뉴·입력
             # 요청·상담원 대기 등이면 그 상태가 결과 확정을 막음 (_early_result_check). 일반 안내('이용해 주셔서 감사합니다')면 결과 유지
@@ -1232,6 +1284,7 @@ class Session:
             if self.queued_key and not p.options and not stale:
                 self.queued_err = True  # 복귀 대기 키 뒤 따로 온 입력 오류: 다음에 그 메뉴를 다시 읽으면 그 키를 다시 누름
             p.kind = ("confirm" if _CONFIRM_RE.search(text) else "menu") if (p.options and not stale) else "info"
+            timeout_notice = p.kind == "info" and not stale
         if stale and p.kind in ("menu", "confirm"):
             p.kind = "info"
         if p.kind == "menu" and pre is None and not cut_tail:
@@ -1408,8 +1461,8 @@ class Session:
                     if self.queued_key:
                         self.key_queue.insert(0, self.queued_key)  # 이전 계층 복귀 중 거부된 키는 메뉴가 다시 나오면 재전송
                         self.queued_key = None
-                    if self.input_errors >= 2 and self.current:
-                        # 같은 단계 2회 연속 거부: 사용자에게 질문. 이전 계층 복귀 중이었으면 복귀 중단 (답 뒤에 거부된 대기 키를
+                    if self.input_errors >= 2 and self.current and not self._handoff_open():
+                        # 같은 단계 2회 연속 거부: 사용자에게 질문 (업무 목적 입력 중이면 그 요청을 덮지 않음). 이전 계층 복귀 중이었으면 복귀 중단 (답 뒤에 거부된 대기 키를
                         # 또 누르지 않도록)
                         self.key_queue.clear()
                         self.queued_key = None
@@ -1452,6 +1505,13 @@ class Session:
             return  # 업무 완료(agent_done) 뒤의 안내는 자막만 전송
 
         # 이하 AI 탐색 중
+        if self._handoff_open() and p.kind in ("result", "message_sent", "out_of_hours", "rejected", "agent_wait"):
+            # 업무 목적 입력 요청은 메뉴와 관계없이 열림(키를 누른 직후 등). 결과·종료·상담원 대기 안내가 오면 요청을 닫고
+            # 그 안내를 처리 (열어 두면 안내가 버려지고, 상담원 대기 중에 답·만료로 탐색이 다시 시작됨)
+            log.info("업무 목적 입력 중 %s 안내: 입력 요청을 닫고 안내를 처리한다", p.kind)
+            self._close_request()
+            self.handoff_prev = None
+            self.set_status(self.idle_status())
         if self.pending is not None:
             return  # 사용자 응답 대기 중 ARS 가 안내를 다시 읽는 경우. 계속 청취.
         if (self.key_queue or requeue) and p.kind == "menu":
@@ -1470,11 +1530,22 @@ class Session:
                 except ApiError as e:
                     log.warning("이전 계층 복귀 키 전송 실패: %s", e.message)
             return
+        if (timeout_notice and pending_dead_end is not None and getattr(interp, "dead_end_on_timeout", False)
+                and pending_dead_end[1] == self.last_key_at and time.monotonic() >= self.ai_hold_until
+                and self._dead_end_candidate(pending_dead_end[0])):
+            # 막다른 안내 후보의 판단 대기 중에 우리 키 없이 ARS 가 입력 대기 시간 경과·무입력 안내를 함: ARS 가 그 안내에서
+            # 입력을 기다렸다는 뜻 (판단 대기의 목적이 확인됨). 앞 후보를 즉시 판단 (ARS 가 곧바로 시간 초과 안내를 시작하면
+            # 발화 중이라 _dead_end_check 가 판단을 미루다가 이 안내 수신으로 취소되므로 여기서 판단)
+            log.info("막다른 안내 후보 뒤 우리 키 없이 무입력 안내가 옴: 앞 후보를 지금 판단한다")
+            if not await self._dead_end(pending_dead_end[0]):
+                await self._on_result()
+            return
         if self._dead_end_candidate(p) and not (stale or cut or cut_tail):
             # 즉시 판단하지 않음: ARS 가 잠시 쉰 뒤 메뉴·결과를 이어 말할 가능성. 잠시 새 안내가 없으면 판단
             # (사용자가 직접 누른 직후 보류 시간이면 보류가 끝난 뒤)
             wait = max(getattr(self.s, "dead_end_wait_s", DEAD_END_WAIT_S), self.ai_hold_until - time.monotonic() + 0.2)
             seq = self.para_seq
+            self._dead_end_pending = (p, self.last_key_at)
             self.timer("dead_end", wait, lambda: self._dead_end_check(p, seq))
             return
         if p.kind in ("menu", "confirm"):
@@ -1496,6 +1567,7 @@ class Session:
                 # 상담원 대기 중(waiting_agent)에 들은 결과는 바로 확정 (보류를 막는 상태가 이미 있음)
                 log.info("첫 메뉴 전의 결과 안내: ARS 가 이어서 말하는지 보고 확정한다")
                 self.early_result_wait = True
+                self.early_end_kind = None  # 앞서 보류한 끝맺음이 있어도 가장 최근 안내(결과)로 확정
                 self.result_upto = len(self.captions)  # 이 결과 단락의 자막까지 (자막은 판단 앞에서 쌓임)
                 self.timer("early_result", EARLY_RESULT_WAIT_S, self._early_result_check)
             else:
@@ -1503,6 +1575,16 @@ class Session:
         elif p.kind in ("message_sent", "out_of_hours", "rejected"):
             if p.kind == "out_of_hours":
                 self.hours_note = hours_sentence(text)
+            if (getattr(interp, "hold_early_end", False) and self.current is None and not self.layers and not self.path
+                    and self.last_key_at is None and self.status in ("listening", "selecting") and not self.hangup_seen):
+                # 첫 메뉴 전·키 전송 전의 끝맺음 판단: 첫 메뉴 전 결과 보류와 같은 방식으로 잠시 대기. 인사말의 혼잡·연결 지연
+                # 안내를 업무시간 외로 오판할 가능성 있음. ARS 가 이어서 메뉴 등을 말하면 그 안내로 판단하고, 메뉴 없이 조용하거나
+                # 끊으면 이 사유로 종료 (_early_result_check, _after_hangup). 끊긴 뒤에 인식한 끝맺음은 기다릴 것이 없어 바로 종료
+                log.info("첫 메뉴 전의 끝맺음 안내(%s): ARS 가 이어서 말하는지 보고 확정한다", p.kind)
+                self.early_result_wait = True
+                self.early_end_kind = {"rejected": "ars_rejected"}.get(p.kind, p.kind)
+                self.timer("early_result", EARLY_RESULT_WAIT_S, self._early_result_check)
+                return
             await self.finish({"rejected": "ars_rejected"}.get(p.kind, p.kind), hangup=not self.hangup_seen)
         elif p.kind == "agent_wait":
             self.set_status("waiting_agent")
@@ -1666,7 +1748,8 @@ class Session:
         if not (self.agent_active and self.pending is None and self.layers and self.last_key_actor == "ai"
                 and not self.after_backtrack and not self.redo_same_menu and not self.key_queue and not self.hangup_seen):
             return p
-        if not any(_same_menu(p, layer.prompt) for layer in self.layers):
+        tolerant = bool(getattr(self.d.interp, "tolerant_menu_match", False))
+        if not any(_same_menu(p, layer.prompt, tolerant) for layer in self.layers):
             return p
         notice = menu_preface(text)
         fn = getattr(self.d.interp, "answers_goal", None)
@@ -1703,12 +1786,18 @@ class Session:
                     or self.last_key_at is not None or self.result_heard or self.status not in ("listening", "selecting")):
                 self.early_result_wait = False
                 self.result_upto = None
+                self.early_end_kind = None
                 return
-            busy = (self.stt_inflight or self._held_head is not None) if self.hangup_seen else self._ars_active()
+            busy = ((self.stt_inflight or self._handed_over() or self._held_head is not None) if self.hangup_seen
+                    else self._ars_active())
             if busy and not force:
                 self.timer("early_result", EARLY_RESULT_WAIT_S, self._early_result_check)
                 return
             self.early_result_wait = False
+            if self.early_end_kind is not None:
+                kind, self.early_end_kind = self.early_end_kind, None
+                await self.finish(kind, hangup=not self.hangup_seen)
+                return
             await self._on_result(held=True)
 
     async def _agent_seek_result_check(self, p: Prompt, seq: int) -> None:
@@ -1732,6 +1821,7 @@ class Session:
                 wait = max(getattr(self.s, "dead_end_wait_s", DEAD_END_WAIT_S), self.ai_hold_until - time.monotonic() + 0.2)
                 self.timer("dead_end", wait, lambda: self._dead_end_check(p, seq))
                 return
+            self._dead_end_pending = None
             if not await self._dead_end(p):
                 await self._on_result()
 
@@ -1814,6 +1904,7 @@ class Session:
         요약을 마치기 전에 ARS 가 끊어도 completed 이며, 요약을 마친 뒤 summary → ended 순서로 전송 (_after_hangup)"""
         self.result_heard = True
         self.early_result_wait = False
+        self.early_end_kind = None
         if not held:
             # 첫 메뉴 전 결과 보류에서 온 확정이 아니면(상담원 대기 중에 들은 다른 결과 등) 보류한 단락으로 요약 범위를 자르지 않음
             self.result_upto = None
@@ -2012,6 +2103,7 @@ class Session:
         if self.early_result_wait:
             self.early_result_wait = False
             self.result_upto = None
+            self.early_end_kind = None
         self.cancel_timer("early_result")
         if secure:
             # 민감정보를 실제로 보내는 순간 되읽기 구간을 (다시) 엶. ARS 안내 종료를 기다렸다 보내는 동안 다른 안내
@@ -2310,7 +2402,13 @@ class Session:
                 return {"accepted": True}
             if self.hangup_seen:
                 raise ApiError(409, "invalid_state", "상대가 통화를 끊었습니다.")
+            if t == "request_handoff":
+                return await self._act_request_handoff()
+            if t == "cancel_handoff":
+                return await self._act_cancel_handoff(body)
             if t == "answer":
+                if self.pending and self.pending["kind"] == "handoff_goal":
+                    return await self._act_handoff_answer(body)
                 return await self._act_answer(body)
             if t == "select":
                 req = self._check_request(body, "clarification")
@@ -2400,6 +2498,7 @@ class Session:
             self.goal = f"{(self.goal or '').strip()} 상담원 연결".strip()
         if self.agent_request:
             self.goal = agent_goal(self.goal)  # 상담원 연결 버튼 통화: 답을 합쳐도 상담원 연결 목적을 유지 (_act_revise_goal 과 같음)
+            self.task_goal = agent_topic(self.goal) or self.task_goal  # 업무 말이 없는 답('네')이면 앞 업무 목적 유지
         sync = getattr(self.d.interp, "set_goal", None)
         if sync is not None and self.goal != merged:
             sync(self.goal)  # 해석기(set_goal 이 있는 해석기)가 기억한 목적도 고친 목적으로 맞춤 (상담원 목적 판단에 사용)
@@ -2674,6 +2773,8 @@ class Session:
             raise ApiError(409, "invalid_state",
                            "목적은 첫 번호를 누르기 전까지만 바꿀 수 있습니다. 이후에는 재질문에 답하거나 직접 선택하십시오.")
         # 상담원 연결 버튼으로 건 통화는 다시 말한 업무로도 상담원을 찾음 (업무만 말해도 상담원 연결 요청을 잃지 않도록)
+        if self.agent_request:
+            self.task_goal = agent_topic(text)
         text = agent_goal(text) if self.agent_request else text
         self.goal = text
         self.goal_summary = await self._ai("summarize_goal", self.d.interp.summarize_goal(text),
@@ -2683,11 +2784,125 @@ class Session:
         # 앞 목적으로 기다리던 첫 메뉴 전 결과 보류 종료 (새 목적으로는 아직 들은 안내 없음. 타이머가 울려 잠금을 기다리는 확인도 표시로 차단)
         self.early_result_wait = False
         self.result_upto = None
+        self.early_end_kind = None
         self.cancel_timer("early_result")
         self._close_request(keep_secure=True)
         self.key_queue.clear()
         await self._activate_agent()
         return {"accepted": True, "status": self.status, "goal_summary": self.goal_summary}
+
+    # 통화 중 상담원 연결 (request_handoff → answer 또는 cancel_handoff) ------------------------
+    async def _act_request_handoff(self) -> dict:
+        """통화 중 상담원 연결 요청: 자동 선택을 멈추고 상담받을 업무 목적을 질문 (request 이벤트 kind=handoff_goal).
+        답(answer)을 받으면 그 업무로 상담원 선택지를 우선해 탐색 (routing_mode=human_agent).
+        같은 요청이 열려 있으면 새로 열지 않고 그 요청 번호를 반환 (중복 요청으로 요청·키 전송이 겹치지 않도록)."""
+        req = self.pending
+        if req and req["kind"] == "handoff_goal":
+            return {"accepted": True, "request_id": req["request_id"], "status": self.status, "duplicate": True}
+        if self.status in ("waiting_agent", "connected_to_agent"):
+            raise ApiError(409, "invalid_state", "상담원 연결 대기·연결 중에는 요청할 수 없습니다.")
+        if (req and req["kind"] == "secure_input") or self.secure_queued or self.secure_buf:
+            raise ApiError(409, "sensitive_input_blocked",
+                           "민감정보 입력 중에는 상담원 연결로 바꿀 수 없습니다. 입력을 마친 뒤 다시 요청하십시오.")
+        if req and req.get("reason") == "critical_action":
+            raise ApiError(409, "invalid_state", "중요 선택 확인 중에는 상담원 연결로 바꿀 수 없습니다. 번호를 직접 고르십시오.")
+        if self.call is None or self.answered_at is None:
+            raise ApiError(409, "invalid_state", "통화가 연결되지 않았습니다.")
+        # 열려 있던 재질문은 닫아 두고, 입력 취소 시 다시 열기. 요청 시점의 메뉴를 함께 남겨 그 사이 새 메뉴를 들었는지 확인
+        self.handoff_prev = {"current": self.current, "req": req,
+                             "question": self.ai_questions.get(req["request_id"]) if req else None,
+                             "dead_prompt": self._dead_end_open()}
+        self._close_request()
+        self.key_queue.clear()  # 이전 계층 복귀 중이었으면 복귀 중단 (다른 사용자 조작과 같음)
+        self.queued_key = None
+        self.after_backtrack = False
+        req = self._new_request("handoff_goal", self.s.clarify_drop_s, options=[],
+                                message="상담원에게 연결해 드릴게요. 어떤 업무로 상담받으실지 말씀해 주세요.")
+        rid = req["request_id"]
+        self.set_status("awaiting_user", req["message"])
+        self.publish("request", req)
+        self.timer("clarify_expire", self.s.clarify_expire_s, lambda: self._handoff_expire(rid))
+        self.timer("clarify_drop", self.s.clarify_drop_s, lambda: self._handoff_drop(rid))
+        return {"accepted": True, "request_id": rid, "status": self.status}
+
+    def _handoff_open(self) -> bool:
+        return bool(self.pending and self.pending["kind"] == "handoff_goal")
+
+    async def _act_handoff_answer(self, body: dict) -> dict:
+        text = str(body.get("text", "")).strip()
+        if not text:
+            raise ApiError(400, "invalid_request", "text 가 비어 있습니다.")
+        self._check_request(body, "handoff_goal")
+        await self._start_handoff(text)
+        return {"accepted": True, "status": self.status, "goal_summary": self.goal_summary,
+                "routing_mode": self.routing_mode}
+
+    async def _act_cancel_handoff(self, body: dict) -> dict:
+        """업무 목적 입력 취소: 요청을 닫고 앞의 목적·탐색으로 복귀 (routing_mode 유지). 통화 종료는 cancel."""
+        self._check_request(body, "handoff_goal")
+        prev, self.handoff_prev = self.handoff_prev, None
+        self._close_request()
+        same = prev is not None and _same_prompt(prev["current"], self.current)  # 같은 메뉴를 다시 읽은 것도 같음
+        if same and prev["req"] is not None:
+            self._reopen_request(prev)  # 요청 사이 새 메뉴를 듣지 않음: 닫아 둔 재질문을 다시 열기
+        elif self.agent_active and self.current is not None and self.current_fresh:
+            if same:
+                await self._decide(self.current, arrived=False)
+            else:
+                await self._decide_heard(self.current)  # 요청 중에 들어 판단하지 않은 메뉴: 새로 들은 메뉴로 판단
+        else:
+            self.set_status(self.idle_status())
+        if self.pending is None and not self.ended and self.status == "awaiting_user":
+            self.set_status(self.idle_status())
+        return {"accepted": True, "status": self.status, "routing_mode": self.routing_mode}
+
+    def _reopen_request(self, prev: dict) -> None:
+        """업무 목적 입력 요청을 열 때 닫은 재질문을 새 요청 번호로 다시 열기 (만료 시각·시간 처리도 새로 설정)."""
+        old = prev["req"]
+        self.req_seq += 1
+        req = {**old, "request_id": f"req_{self.req_seq}", "expires_at": now_iso(self.s.clarify_expire_s)}
+        self.pending = req
+        rid = req["request_id"]
+        self.ai_questions = {rid: prev["question"] if prev["question"] is not None else req["message"]}
+        if prev["dead_prompt"] is not None:
+            self.dead_end_rid, self.dead_end_prompt = rid, prev["dead_prompt"]
+        self.set_status("awaiting_user", req["message"])
+        self.publish("request", req)
+        self.timer("clarify_expire", self.s.clarify_expire_s, lambda: self._clarify_expire(rid))
+        self.timer("clarify_drop", self.s.clarify_drop_s, lambda: self._clarify_drop(rid))
+
+    async def _handoff_expire(self, rid: str) -> None:
+        """업무 목적 입력 30초: 지금 머문 메뉴(마지막 키 뒤에 들은 메뉴)가 있을 때만 다시 듣기 키 전송 (_clarify_expire).
+        이 요청은 메뉴와 관계없이 열리므로, 결과 안내 중이거나 키를 누른 뒤 새 메뉴를 듣지 못했으면 지난 메뉴의 키는 누르지 않음."""
+        if self.agent_active and self.current is not None and self.current_fresh:
+            await self._clarify_expire(rid)
+
+    async def _handoff_drop(self, rid: str) -> None:
+        """업무 목적 입력 만료: 상담원 연결 요청대로, 지금까지의 업무 목적으로 상담원 연결 탐색."""
+        async with self._lock:
+            if not (self.pending and self.pending["request_id"] == rid) or self.ended or self.hangup_seen:
+                return
+            await self._start_handoff(self.task_goal if self.routing_mode == "human_agent" else (self.goal or ""))
+
+    async def _start_handoff(self, text: str) -> None:
+        """업무 목적 text 로 상담원 우선 탐색 시작: 목적 '<업무> 상담원 연결' (세션 생성 agent=true 와 같은 탐색)."""
+        self._close_request()
+        self.handoff_prev = None
+        self.agent_request = True
+        self.routing_mode = "human_agent"
+        self.goal = agent_goal(text)
+        self.task_goal = agent_topic(self.goal)
+        self.goal_summary = await self._ai("summarize_goal", self.d.interp.summarize_goal(self.goal),
+                                           f"'{self.goal}' 업무를 찾아 드릴게요.")
+        self.summary = None
+        self.result_heard = False
+        self.early_result_wait = False  # 앞 목적으로 기다리던 첫 메뉴 전 결과 보류 종료 (_act_revise_goal 과 같음)
+        self.result_upto = None
+        self.early_end_kind = None
+        self.cancel_timer("early_result")
+        self.key_queue.clear()
+        self.queued_key = None
+        await self._activate_agent()
 
     async def _activate_agent(self) -> None:
         """새 목적으로 탐색 (재)시작. 지금 머물러 있는 계층(가장 최근 메뉴)에서 판단."""
@@ -2796,6 +3011,9 @@ class SessionManager:
         it = f.build(i, fx, r)
         if is_som(it):
             nav = som_navigator_like(self.deps.navigator, it)  # som 방식은 som_jev 탐색기 (기준값은 서버 탐색기와 같음)
+        elif getattr(it, "navigator_class", None) is not None:
+            # 해석기가 자기 탐색기를 지정한 경우 (jevllm 조합의 JevLlmNavigator). 지정이 없는 해석기는 아래 규칙 그대로
+            nav = it.navigator_class.like(self.deps.navigator, it)
         elif getattr(it, "rule_free", False):
             from llm_mode import LlmNavigator
             nav = LlmNavigator.like(self.deps.navigator, it)   # llm 조합: 탐색 규칙 판단을 분류 때 받은 모델 판단으로 대체

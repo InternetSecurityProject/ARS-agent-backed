@@ -3489,6 +3489,39 @@ def test_notice_before_bounce_back_to_visited_menu_is_judged():
     assert menu_preface_of("안녕하세요. 잔액조회는 3번입니다.") == "안녕하세요."
 
 
+def test_bounce_back_with_one_key_missing_is_same_menu_only_for_tolerant_interpreters():
+    """되돌아온 메뉴의 추출에서 키 하나가 빠져도(앞 안내가 붙은 단락) 해석기 tolerant_menu_match 면 같은 메뉴로 보고 앞 안내를 판단.
+    속성이 없으면(다른 조합) 키 집합이 같아야 같은 메뉴. 공통 키가 적거나 이름이 다르면 다른 메뉴."""
+    from interpreter import _norm, Option, Prompt
+    from session import _same_menu
+
+    notice = "지금은 상담 업무 시간이 종료되어 상담을 해드릴 수가 없습니다. 상담 가능 시간은 평일 오전 9시부터입니다. "
+
+    async def go(tolerant):
+        s, call = await manual("통장 잔액 알고 싶어", clarify_expire_s=5, clarify_drop_s=10)
+        bounced = notice + ROOT.replace("KB국민은행입니다. ", "")
+        d = dict(s.d.interp.prompts[_norm(ROOT)][1])
+        d["options"] = [o for o in d["options"] if o["key"] != "0"]       # 다시 읽은 메뉴의 추출에서 키 하나 누락
+        s.d.interp.prompts[_norm(bounced)] = (bounced, d)
+        if tolerant:
+            s.d.interp.tolerant_menu_match = True
+        asked = _fake_answers_goal(s, True)
+        await s.on_paragraph(ROOT)
+        await s.on_paragraph(bounced)
+        return s, call, asked
+
+    s, call, asked = run(go(True))
+    assert asked and call.keys == ["3"] and s.summary and s.summary["kind"] == "result"
+    s, call, asked = run(go(False))
+    assert not asked and call.keys == ["3", "3"]
+    a = Prompt(kind="menu", text="", options=[Option("1", "가"), Option("2", "나"), Option("3", "다"), Option("4", "라")])
+    b = Prompt(kind="menu", text="", options=[Option("1", "가"), Option("2", "나"), Option("3", "다")])
+    c = Prompt(kind="menu", text="", options=[Option("1", "마"), Option("2", "바"), Option("3", "사"), Option("4", "아")])
+    assert _same_menu(a, b, tolerant=True) and not _same_menu(a, b)
+    assert not _same_menu(a, c, tolerant=True)
+    assert not _same_menu(Prompt(kind="menu", text="", options=a.options[:2]), Prompt(kind="menu", text="", options=a.options[:1]), tolerant=True)
+
+
 def menu_preface_of(text):
     from session import menu_preface
     return menu_preface(text)
@@ -3571,9 +3604,9 @@ def test_cut_paragraph_is_not_joined_across_a_key_press(monkeypatch):
         delivered = []
         on_paragraph = s.on_paragraph
 
-        async def observe(text, started_at=None):
+        async def observe(text, started_at=None, **kw):
             delivered.append((text, started_at))
-            await on_paragraph(text, started_at)  # 실처리를 생략하지 않고 전달 경계만 기록
+            await on_paragraph(text, started_at, **kw)  # 실처리를 생략하지 않고 전달 경계만 기록 (taken 등 키워드 인자는 그대로 전달)
 
         monkeypatch.setattr(s, "on_paragraph", observe)
         try:
@@ -3953,6 +3986,45 @@ def test_dead_end_judgment_is_dropped_when_ars_keeps_talking():
         await s.on_paragraph(CARD)                  # ARS 가 쉬었다가 하위 메뉴를 이어 말함
         await asyncio.sleep(0.5)
         assert not asked and "*" not in call.keys
+    run(go())
+
+
+NO_INPUT = "입력하지 않으셨습니다."
+
+
+def test_dead_end_is_judged_when_ars_says_no_input_before_the_wait_ends():
+    """해석기 dead_end_on_timeout: 막다른 안내 후보의 판단을 기다리는 중 키 전송 없이 무입력 안내가 오면 앞 후보를 그때 판단
+    (ARS 가 그 안내에서 입력을 기다렸다는 뜻). 속성이 없으면(다른 조합) 판단 폐기. 사이에 키를 눌렀으면 판단하지 않음."""
+    from interpreter import _norm
+
+    async def go():
+        s, call, asked = await _dead_end_session(True, dead_end_wait_s=5.0)
+        s.d.interp.prompts[_norm(NO_INPUT)] = (NO_INPUT, {"kind": "input_error"})
+        s.d.interp.dead_end_on_timeout = True
+        await s.on_paragraph(DEAD)
+        assert not asked
+        await s.on_paragraph(NO_INPUT)
+        await wait_for(s, lambda s: s.status == "agent_done")
+        assert asked and "본인인증" in asked[0][1] and s.summary["kind"] == "result" and call.keys == ["3"]
+        await s.finish("user_canceled")
+
+        s, call, asked = await _dead_end_session(True, dead_end_wait_s=5.0)
+        s.d.interp.prompts[_norm(NO_INPUT)] = (NO_INPUT, {"kind": "input_error"})
+        await s.on_paragraph(DEAD)
+        await s.on_paragraph(NO_INPUT)
+        await asyncio.sleep(0.3)
+        assert not asked and s.status != "agent_done"
+        await s.finish("user_canceled")
+
+        s, call, asked = await _dead_end_session(True, dead_end_wait_s=5.0)
+        s.d.interp.prompts[_norm(NO_INPUT)] = (NO_INPUT, {"kind": "input_error"})
+        s.d.interp.dead_end_on_timeout = True
+        await s.on_paragraph(DEAD)
+        s.last_key_at = (s.last_key_at or 0) + 1.0        # 후보 뒤 키 전송 (무입력 안내가 그 키에 대한 반응일 가능성 있음)
+        await s.on_paragraph(NO_INPUT)
+        await asyncio.sleep(0.3)
+        assert not asked
+        await s.finish("user_canceled")
     run(go())
 
 
@@ -5860,6 +5932,180 @@ def test_out_of_hours_end_message_carries_ars_hours():
         await s.on_paragraph(text)
         assert s.ended and s.end_reason == "out_of_hours"
         assert s.status_message == "상담 가능 시간이 아니어서 통화를 종료했습니다. (ARS 안내: 평일 9시부터 18시까지 이용해 주십시오.)"
+    run(go())
+
+
+# --- 첫 메뉴 전 끝맺음 판단 보류 (해석기 hold_early_end, jevllm 조합. 인사말의 혼잡 안내를 업무시간 외로 오판해 첫 메뉴 전에 통화를 끊는 문제 방지) ----------
+EARLY_END = "지금은 상담 가능 시간이 아닙니다. 평일 9시부터 18시까지 이용해 주십시오."
+
+
+async def _early_end_session(kind="out_of_hours", hold=True, **kw):
+    from interpreter import _norm
+    s, call = await _early_session(**kw)
+    s.d.interp.prompts[_norm(EARLY_END)] = (EARLY_END, {"kind": kind})
+    if hold:
+        s.d.interp.hold_early_end = True
+    return s, call
+
+
+def test_early_end_is_held_and_following_menu_is_decided(monkeypatch):
+    """hold_early_end 해석기: 첫 메뉴 전·키 전 끝맺음 판단(업무시간 외)은 바로 종료하지 않고 보류. 이어서 메뉴가 오면 그 메뉴로 판단."""
+    import session as S
+    monkeypatch.setattr(S, "EARLY_RESULT_WAIT_S", 0.2)
+
+    async def go():
+        s, call = await _early_end_session()
+        await s.on_paragraph(EARLY_END)
+        assert not s.ended and s.early_result_wait and s.early_end_kind == "out_of_hours" and s.hours_note
+        await s.on_paragraph(EARLY_MENU)
+        assert call.keys == ["2"]
+        await asyncio.sleep(0.5)
+        assert not s.ended and not s.early_result_wait and s.early_end_kind is None
+        await s.finish("user_canceled")
+    run(go())
+
+
+def test_early_end_then_silence_ends_with_that_reason(monkeypatch):
+    """보류한 끝맺음 뒤 메뉴 없이 조용하면 그 사유로 종료 (업무시간 외 문구 포함, 거절은 ars_rejected). 감사 인사가 이어져도 같음."""
+    import session as S
+    from interpreter import _norm
+    monkeypatch.setattr(S, "EARLY_RESULT_WAIT_S", 0.1)
+    thanks = "이용해 주셔서 감사합니다."
+
+    async def go():
+        for kind, reason in (("out_of_hours", "out_of_hours"), ("message_sent", "message_sent"), ("rejected", "ars_rejected")):
+            for tail in (None, thanks):
+                s, call = await _early_end_session(kind)
+                s.d.interp.prompts[_norm(thanks)] = (thanks, {"kind": "info"})
+                await s.on_paragraph(EARLY_END)
+                if tail:
+                    await s.on_paragraph(tail)
+                    assert not s.ended
+                await wait_for(s, lambda s: s.ended)
+                assert s.end_reason == reason and call.keys == []
+                if kind == "out_of_hours":
+                    assert s.status_message.endswith("(ARS 안내: 평일 9시부터 18시까지 이용해 주십시오.)")
+    run(go())
+
+
+def test_early_end_hold_waits_for_transcript_handed_over_but_not_taken(monkeypatch):
+    """받아쓰기를 직접 주는 백엔드가 단락을 넘긴 뒤 세션이 그 단락을 잠금 아래로 가져가기 전(넘김 중)에 보류 확인이 돌아도 종료하지
+    않음. 넘김 중인 단락은 ARS 활동으로 취급 (실제 서버의 STT 경로는 단락이 닫힌 순간부터 처리를 마칠 때까지 stt_inflight 로 셈).
+    다른 처리가 잠금을 쥔 동안 확인이 먼저 잠금을 기다리고 넘어온 단락이 그 뒤에 줄을 서도 같음."""
+    import session as S
+    monkeypatch.setattr(S, "EARLY_RESULT_WAIT_S", 5.0)
+
+    def handover(call):
+        call.transcripts_inflight = getattr(call, "transcripts_inflight", 0) + 1
+        done = []
+
+        def taken():
+            if not done:
+                done.append(1)
+                call.transcripts_inflight -= 1
+        return taken
+
+    async def go():
+        # 넘김 작업 실행 전에 보류 확인이 먼저 실행
+        s, call = await _early_end_session()
+        await s.on_paragraph(EARLY_END)
+        assert s.early_result_wait
+        taken = handover(call)
+        pending = s._on_transcript(EARLY_MENU, None, forced=False, taken=taken)
+        await s._early_result_check()
+        assert not s.ended and s.early_result_wait
+        await pending
+        assert call.transcripts_inflight == 0 and call.keys == ["2"] and not s.ended
+        await s.finish("user_canceled")
+
+        # 잠금을 쥔 처리 뒤에 확인이 먼저 대기하고, 넘어온 단락이 그 뒤에 대기
+        s, call = await _early_end_session()
+        await s.on_paragraph(EARLY_END)
+        await s._lock.acquire()
+        check = asyncio.create_task(s._early_result_check())
+        await asyncio.sleep(0)
+        taken = handover(call)
+        para = asyncio.create_task(s._on_transcript(EARLY_MENU, None, forced=False, taken=taken))
+        await asyncio.sleep(0)
+        s._lock.release()
+        await check
+        assert not s.ended
+        await para
+        assert call.transcripts_inflight == 0 and call.keys == ["2"] and not s.ended
+        await s.finish("user_canceled")
+    run(go())
+
+
+def test_transcript_handover_is_released_when_session_takes_paragraph(monkeypatch):
+    """넘김 중 표시는 세션이 그 단락을 잠금 아래로 가져가는 순간 해제: 단락 자신의 판단 중에는 ARS 활동으로 세지 않음
+    (판단 중의 키 전송·민감정보 전송 대기가 넘김 표시 때문에 바뀌지 않도록). 통화가 끝난 뒤 넘어온 단락은 가져가지 않음."""
+    async def go():
+        s, call = await _early_session()
+        call.transcripts_inflight = 1
+        seen = []
+        orig = s._paragraph
+
+        async def spy(text, started_at=None):
+            seen.append((call.transcripts_inflight, s._ars_active()))
+            await orig(text, started_at)
+        s._paragraph = spy
+        released = []
+
+        def taken():
+            released.append(1)
+            call.transcripts_inflight -= 1
+        await s._on_transcript(EARLY_MENU, None, forced=False, taken=taken)
+        assert released == [1] and seen == [(0, False)] and call.keys == ["2"]
+        await s.finish("user_canceled")
+        late = []
+        await s._on_transcript(EARLY_MENU, None, forced=False, taken=lambda: late.append(1))
+        assert late == []
+    run(go())
+
+
+def test_early_end_then_hangup_ends_with_that_reason(monkeypatch):
+    """보류 중 ARS 가 끊으면 기다리지 않고 그 사유로 종료 (결과 completed 로 바꾸지 않음)."""
+    import session as S
+    monkeypatch.setattr(S, "EARLY_RESULT_WAIT_S", 5.0)
+
+    async def go():
+        s, call = await _early_end_session(hangup_flush_s=1.0)
+        await s.on_paragraph(EARLY_END)
+        await s._on_end("remote_hangup")
+        await wait_for(s, lambda s: s.ended, timeout=3)
+        assert s.end_reason == "out_of_hours" and s.summary is None
+    run(go())
+
+
+def test_early_end_is_immediate_without_attribute_or_after_first_menu(monkeypatch):
+    """속성이 없는 해석기(다른 조합)는 첫 메뉴 전이어도 바로 종료. 속성이 있어도 첫 메뉴를 들은 뒤의 끝맺음은 바로 종료."""
+    import session as S
+    monkeypatch.setattr(S, "EARLY_RESULT_WAIT_S", 5.0)
+
+    async def go():
+        s, call = await _early_end_session(hold=False)
+        await s.on_paragraph(EARLY_END)
+        assert s.ended and s.end_reason == "out_of_hours"
+        s, call = await _early_end_session()
+        await s.on_paragraph(EARLY_MENU)
+        await s.on_paragraph(EARLY_END)
+        assert s.ended and s.end_reason == "out_of_hours" and call.keys == ["2"]
+    run(go())
+
+
+def test_early_end_then_result_is_held_as_result(monkeypatch):
+    """보류한 끝맺음 뒤 첫 메뉴 전 결과 안내가 오면 가장 최근 안내(결과)의 보류로 전환. 조용하면 결과로 확정."""
+    import session as S
+    monkeypatch.setattr(S, "EARLY_RESULT_WAIT_S", 0.1)
+
+    async def go():
+        s, call = await _early_end_session()
+        await s.on_paragraph(EARLY_END)
+        await s.on_paragraph(EARLY_RES)
+        assert s.early_end_kind is None and s.early_result_wait
+        await wait_for(s, lambda s: s.summary is not None)
+        assert s.summary["kind"] == "result" and not s.ended
+        await s.finish("user_canceled")
     run(go())
 
 

@@ -100,6 +100,14 @@ def _env_first(*names: str, default: str) -> str:
     return default
 
 
+class LlmHttpError(RuntimeError):
+    """LLM 서버의 HTTP 오류 응답 (상태 코드 보관). RuntimeError 하위 클래스이므로 RuntimeError 처리에 그대로 포함."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+
+
 class OpenAICompatClient:
     """GeminiClient 와 같은 generate() 계약. 실패 시 예외 발생."""
 
@@ -218,7 +226,7 @@ class OpenAICompatClient:
                     body.pop("think", None)
                     r = await self._http.post(url, json=body, timeout=timeout_s or self.timeout_s)
                 if r.status_code >= 400:
-                    raise RuntimeError(f"LLM 서버 HTTP {r.status_code}: {r.text[:200]}")
+                    raise LlmHttpError(r.status_code, f"LLM 서버 HTTP {r.status_code}: {r.text[:200]}")
                 out = parse_json(self._content(r.json()))
                 ms = (time.perf_counter() - t0) * 1000
                 self.last["ms"] = round(ms)
@@ -231,7 +239,7 @@ class OpenAICompatClient:
                 log.warning("local-llm 실패 (%d회): %s", attempt + 1, (str(e) or type(e).__name__)[:200])
         if rewarm:
             self._rewarm()
-        raise RuntimeError(f"로컬 LLM 호출 실패: {last}")
+        raise RuntimeError(f"로컬 LLM 호출 실패: {last}") from last   # 원래 예외(시간 초과·JSON 오류 등)를 __cause__ 로 남김
 
     def _rewarm(self) -> None:
         """호출 실패 시 긴 대기 시간의 미리 올리기를 백그라운드에서 다시 시작 (30초에 한 번까지).

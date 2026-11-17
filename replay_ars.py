@@ -466,6 +466,8 @@ class ReplayCall:
         self._answer_delay = float(bundle.orgs[org].get("answer_delay_s", 0.5))
         self._t0: float | None = None   # 첫 프레임을 낸 시각 (monotonic). 단락 시작 시각의 기준
         self._dialed = datetime.now(KST)
+        # 넘긴 받아쓰기 중 세션이 아직 잠금 아래로 가져가지 않은 단락 수 (세션이 ARS 활동으로 셈, session._handed_over)
+        self.transcripts_inflight = 0
 
     @property
     def speaking(self) -> bool:
@@ -510,14 +512,35 @@ class ReplayCall:
                 if self.provides_transcripts:
                     for text, start, forced in got:
                         if _meaningful(text):
-                            # 판단이 오래 걸려도 소리는 계속 나가야 하므로 별도 작업으로 실행 (세션 잠금이 순서 보장)
-                            self._spawn(self.h.on_transcript(text, t0 + start, forced=forced))
+                            self._hand_over(text, t0 + start, forced)
             if self.eng.ended:
                 await self._finish()
                 return
             await self.h.on_audio(frame)
             i += 1
             await asyncio.sleep(max(0.0, t0 + i * FRAME_S - time.monotonic()))
+
+    def _hand_over(self, text: str, started_at: float, forced: bool) -> None:
+        """받아쓰기 한 단락을 세션에 넘김. 판단이 오래 걸려도 소리는 계속 나가야 하므로 별도 작업으로 실행 (세션 잠금이 순서 보장).
+        넘기는 순간(동기) 넘김 표시를 올리고, 세션이 그 단락을 잠금 아래로 가져갈 때(taken) 또는 처리를 마칠 때 해제.
+        단락 대기 표시(text_pending)가 꺼진 뒤 세션이 가져가기 전 사이에 세션의 확인(첫 메뉴 전 보류 등)이 돌아도 ARS 활동으로
+        취급되도록 함 (실제 서버의 STT 경로는 단락이 닫히는 순간 stt_inflight 를 올림)."""
+        self.transcripts_inflight += 1
+        done = False
+
+        def taken() -> None:
+            nonlocal done
+            if not done:
+                done = True
+                self.transcripts_inflight -= 1
+
+        async def run() -> None:
+            try:
+                await self.h.on_transcript(text, started_at, forced=forced, taken=taken)
+            finally:
+                taken()
+
+        self._spawn(run())
 
     def flush_transcripts(self) -> list[tuple[str, float, bool]]:
         """ARS 가 끊은 뒤 세션이 호출 (session._after_hangup): 끊긴 순간 듣던 단락. 받아쓰기 모드가 아니면 빈 목록."""

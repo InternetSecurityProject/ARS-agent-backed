@@ -366,6 +366,48 @@ def test_replay_call_streams_frames_and_takes_keys(bundle):
     asyncio.run(go())
 
 
+def test_replay_call_counts_transcript_until_receiver_takes_it(bundle):
+    """받아쓰기 모드: 단락을 넘기는 순간(동기) transcripts_inflight 를 올리고, 받는 쪽이 가져갔다고 알리거나(taken) 처리를 마치면
+    해제. 단락 대기 표시(speaking)가 꺼진 뒤 세션이 그 단락을 가져가기 전 사이도 세션이 ARS 활동으로 취급하도록 함."""
+    import asyncio
+
+    from replay_ars import ReplayCall
+    from telephony import CallHandlers
+
+    async def go():
+        seen = {}
+        gate = asyncio.Event()
+
+        async def nop(*a, **k):
+            pass
+
+        async def on_transcript(text, started_at=None, forced=False, taken=None):
+            seen["before"] = call.transcripts_inflight
+            await gate.wait()
+            taken()
+            taken()  # 두 번 호출해도 한 번만 해제
+            seen["after"] = call.transcripts_inflight
+
+        call = ReplayCall(bundle, "o", CallHandlers(nop, nop, on_transcript, nop), clock=NIGHT, transcripts=True)
+        call._hand_over("안내 문장", 0.0, False)
+        assert call.transcripts_inflight == 1
+        await asyncio.sleep(0)
+        assert seen["before"] == 1
+        gate.set()
+        await asyncio.sleep(0.01)
+        assert seen["after"] == 0 and call.transcripts_inflight == 0
+
+        async def ignore(text, started_at=None, forced=False, taken=None):
+            pass
+        call.h = CallHandlers(nop, nop, ignore, nop)
+        call._hand_over("안내 문장", 0.0, False)
+        assert call.transcripts_inflight == 1
+        await asyncio.sleep(0.01)
+        assert call.transcripts_inflight == 0
+
+    asyncio.run(go())
+
+
 def test_replay_call_key_reaches_ars_at_tone_end(bundle):
     """서버 경로(ReplayCall.send_keys): 자리마다 톤(0.15초)이 끝난 때 ARS 가 받음. 검증(replay_check)·spec 지연의 기준점과 같음.
     두 번째 자리는 톤+쉼(0.25초) 뒤. 반환 시각은 마지막 쉼까지 마친 뒤."""

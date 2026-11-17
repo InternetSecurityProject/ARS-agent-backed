@@ -5,7 +5,10 @@
                     local  = 로컬 gemma4 단독
                     som    = som 방식 JEV 단독 (해석기·탐색기는 som_mode.py).
                              받아쓰기 고침·결과 안내 판단은 해당 없음 (fix 는 0, result 는 jev 로 기록)
-                    서버 기본 판단 모델은 COMBO_DEFAULT_INTERP(hybrid|local|som, 선택 가능할 때만)로 변경 가능
+                    llm    = 로컬 모델 판단 (규칙 없음, llm_mode.py). LLM_COMBO=1 인 서버만 선택 가능. fix 는 0, result 는 local
+                    jevllm = JEV 판단 + 규칙 자리만 로컬 모델 (jevllm_mode.py). 로컬·JEV 연결이 있고 JEVLLM_COMBO=1 인 서버만 선택 가능.
+                             fix 는 0, result 는 jev 로 기록
+                    서버 기본 판단 모델은 COMBO_DEFAULT_INTERP(hybrid|local|som|llm|jevllm, 선택 가능할 때만)로 변경 가능
   받아쓰기 고침 fix : 0 = 끔, 1 = 분류에 묶음 (분류 요청에 고침 질문 포함. hybrid 에서는 로컬 판단 안내에만 해당),
                     separate = 따로 묻기 (판단 뒤 로컬 모델에 별도 질문. 고침 결과는 화면 표시에만 적용)
   결과 안내 판단 result : hybrid 에서만. jev = '발송됩니다·접수되었습니다' 같은 결과 말만 있는 안내(민감정보 모양·값이 붙는 결과 말
@@ -36,7 +39,8 @@ log = logging.getLogger("ars.combo")
 
 # 화면 표시 이름. hybrid 의 JEV 버전 번호는 JEV 연결의 모델 이름(JEV_MODEL)에서 추출
 # som 은 내부 값, 화면 이름은 'JEV v2'
-INTERPS = {"hybrid": "JEV 1.14 + Local STT", "local": "all local", "som": "JEV v2", "llm": "로컬 모델 (규칙 없음)"}
+INTERPS = {"hybrid": "JEV 1.14 + Local STT", "local": "all local", "som": "JEV v2", "llm": "로컬 모델 (규칙 없음)",
+           "jevllm": "JEV + 로컬 (규칙 자리 로컬)"}
 # STT 후보정: 1단계 = 분류 요청에 고침을 함께 묻기, 2단계 = 판단 뒤 따로 묻기
 FIXES = {"0": "끔", "1": "1단계", "separate": "2단계"}
 # 결과 안내 판단 (hybrid 만): 결과 말만 있는 안내를 JEV 가 판단할지, 로컬이 판단할지
@@ -96,6 +100,7 @@ class ComboFactory:
             log.warning("COMBO_DEFAULT_INTERP=%s 는 이 서버에서 고를 수 없어 %s 를 기본으로 둔다", env, self.default_interp)
         self._caches: dict[tuple[str, str], tuple[dict, dict]] = {}
         self._slow = _SlowFlag()
+        self._ex_slow = _SlowFlag()                  # jevllm 의 로컬 추출 전용 지연 표시 (공용 지연 표시와 별도)
         self._local_cls = None
 
     @classmethod
@@ -117,6 +122,9 @@ class ComboFactory:
     def _selectable(self, interp: str) -> bool:
         if interp == "llm":   # 로컬 모델 판단(규칙 없음): LLM_COMBO=1 인 서버만 선택 가능 (llm_mode.py)
             return self.local_client is not None and os.environ.get("LLM_COMBO", "0").strip() == "1"
+        if interp == "jevllm":   # JEV 판단 + 규칙 자리만 로컬: 로컬·JEV 연결이 모두 있고 JEVLLM_COMBO=1 인 서버만 선택 가능 (jevllm_mode.py)
+            return (self.local_client is not None and self.jev_client is not None
+                    and os.environ.get("JEVLLM_COMBO", "0").strip() == "1")
         return {"hybrid": self.jev_client is not None, "som": self.som_client is not None}.get(interp, interp in INTERPS)
 
     def options(self) -> dict:
@@ -140,24 +148,29 @@ class ComboFactory:
         i = self.default_interp if interp in (None, "") else str(interp).strip().lower()
         f = self.default_fix if fix in (None, "") else str(fix).strip().lower()
         if i not in INTERPS:
-            raise ComboError("interp 는 hybrid, local, som 중 하나입니다.")
+            raise ComboError("interp 는 hybrid, local, som, llm, jevllm 중 하나입니다.")
         if i == "hybrid" and self.jev_client is None:
             raise ComboError("이 서버에는 JEV 연결 설정이 없어 hybrid 를 고를 수 없습니다.")
         if i == "som" and self.som_client is None:
             raise ComboError("이 서버에는 JEV 연결 설정이 없어 som 을 고를 수 없습니다.")
         if i == "llm" and not self._selectable("llm"):
             raise ComboError("이 서버에서는 로컬 모델(규칙 없음) 판단을 고를 수 없습니다.")
+        if i == "jevllm" and not self._selectable("jevllm"):
+            raise ComboError("이 서버에서는 JEV + 로컬(규칙 자리 로컬) 판단을 고를 수 없습니다.")
         if f not in FIXES:
             raise ComboError("fix 는 0, 1, separate 중 하나입니다.")
-        return i, ("0" if i in ("som", "llm") else f)   # som·llm 판단에는 받아쓰기 고침 없음
+        return i, ("0" if i in ("som", "llm", "jevllm") else f)   # som·llm·jevllm 판단에는 받아쓰기 고침 없음
 
     def normalize_result(self, interp: str, result) -> str:
         """결과 안내 판단 값 검사 (normalize 를 거친 interp). 비어 있으면 서버 기본값, local·llm 판단 모델이면 늘 local,
-        som 이면 늘 jev (모든 안내를 JEV 가 판단). 틀리면 ComboError."""
+        som 이면 늘 jev (모든 안내를 JEV 가 판단), jevllm 이면 늘 jev (결과 말만 있는 안내도 JEV 가 판단, hybrid 의 jev 와 같음).
+        틀리면 ComboError."""
         r = self.default_result if result in (None, "") else str(result).strip().lower()
         if r not in RESULTS:
             raise ComboError("result 는 jev 또는 local 입니다.")
-        return r if interp == "hybrid" else ("jev" if interp == "som" else "local")   # llm 은 모두 로컬
+        if interp == "hybrid":
+            return r
+        return "jev" if interp in ("som", "jevllm") else "local"   # llm 은 모두 로컬
 
     def build(self, interp: str, fix: str, result: str | None = None):
         """통화별 해석기 생성 (normalize·normalize_result 를 거친 값 기준. result 가 없으면 서버 기본값)."""
@@ -176,6 +189,14 @@ class ComboFactory:
             from llm_mode import LlmInterpreter
             # 메뉴 판단은 LlmInterpreter 가 정규식 없이, 그 밖의 일(목적 요약·결과 요약 등)은 같은 연결의 로컬 해석기(lo)가 담당
             return LlmInterpreter(self.local_client, lo, cache=self._caches.setdefault(("llm-judge", "0"), ({}, {}))[0])
+        if interp == "jevllm":
+            from jevllm_mode import JevLlmInterpreter, JevLlmJev
+            # 메뉴 판단은 JEV, 다른 조합에서 정규식 규칙이 판단하는 자리는 로컬 모델이 담당. 목적 요약·결과 요약 등과 로컬 추출 실패 시
+            # 대체 판단은 같은 연결의 로컬 해석기(lo)가 담당. 캐시는 llm 조합과 별도
+            return JevLlmInterpreter(self.local_client, lo, JevLlmJev(self.jev_client),
+                                     cache=self._caches.setdefault(("jevllm-judge", "0"), ({}, {}))[0],
+                                     ex_cache=self._caches.setdefault(("jevllm-extract", "0"), ({}, {}))[0],
+                                     ex_slow=self._ex_slow)
         if interp == "hybrid":
             # 로컬 분류 캐시는 결과 안내 판단과 무관하게 같은 로컬 모델 답이므로 분리하지 않음 (판단 쪽만 달라짐)
             return HybridJevInterpreter(local=lo, jev=JevInterpreter(self.jev_client),
