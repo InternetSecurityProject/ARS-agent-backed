@@ -196,6 +196,35 @@ textarea,input{font:inherit;color:inherit}
 @keyframes dot2{0%,49.99%{color:transparent}50%,100%{color:var(--ink)}}
 @keyframes dot3{0%,74.99%{color:transparent}75%,100%{color:var(--ink)}}
 .mask{font-size:24px;line-height:32px;flex:1;text-align:center;padding:0 8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;letter-spacing:2px}
+/* Keep secure input controls together; only their spacing and size respond to height. */
+.secure-call{--secure-end-height:104px;--secure-bottom:8px;--secure-top:28px;--secure-gap:8px}
+.secure-call .call-frame{gap:var(--secure-gap)}
+.secure-call-body{display:flex;flex-direction:column;align-items:center;gap:var(--secure-gap);width:100%;flex:1;min-height:0;padding-top:var(--secure-top)}
+.secure-header{width:100%;flex:none}
+.secure-input-panel{width:100%;display:flex;flex-direction:column;align-items:center;gap:var(--secure-gap);flex:1;min-height:0}
+.secure-copy{width:100%;flex:0 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;text-align:center;display:flex;flex-direction:column;gap:6px}
+.secure-copy > *{flex:none}
+.secure-description{font-size:var(--font-small);line-height:var(--line-small);overflow-wrap:anywhere}
+.secure-description span{display:block}
+.secure-count{display:flex;align-items:center;min-height:26px;flex:none;width:100%}
+.secure-count .mask{font-size:20px;line-height:26px}
+.secure-input-panel .keypad{gap:8px!important;flex:1;min-height:200px;max-height:312px;margin-block:auto}
+.secure-input-panel .keypad-row{flex:1;min-height:44px;max-height:72px;align-items:center}
+.secure-input-panel .key{width:auto;height:100%;aspect-ratio:1;min-width:44px;min-height:44px;max-width:72px;max-height:72px}
+.secure-input-panel .key-letters{flex:none}
+.secure-call .secure-submit{flex:none}
+.large-text .secure-call{--secure-top:12px}
+.secure-call-short{--secure-end-height:86px;--secure-bottom:2px;--secure-top:20px;--secure-gap:4px}
+.large-text .secure-call-short{--secure-top:0px}
+.secure-call-short .secure-header > div{gap:2px 8px!important}
+.secure-call-short .call-number{font-size:24px;line-height:32px}
+.secure-call-short .secure-copy{gap:4px}
+.secure-call-short .secure-input-panel .keypad{gap:4px!important;min-height:188px}
+.secure-call-short .secure-input-panel .key-digit{font-size:26px;line-height:30px}
+.secure-call-short .secure-input-panel .key-letters{font-size:9px;line-height:10px;min-height:10px}
+.secure-call-short .secure-submit{min-height:44px;padding:8px 16px}
+.secure-call-short .ra{padding:0}
+.secure-call-short .ra .t-label{margin-top:4px}
 </style>
 </head>
 <body>
@@ -1554,6 +1583,21 @@ function RoundAction({ label, icon, onClick, size = 60, color = C.White, labelCo
     <span class="t-label" style=${{ color: labelColor }}>${label}</span></button>`;
 }
 const LETTERS = { 2: "ABC", 3: "DEF", 4: "GHI", 5: "JKL", 6: "MNO", 7: "PQRS", 8: "TUV", 9: "WXYZ", 0: "+" };
+const keyPressAnimations = new WeakMap();
+function animateKeyPress(event) {
+  if (event.type === "keydown" && (event.repeat || !["Enter", " "].includes(event.key))) return;
+  const button = event.target?.closest?.("button");
+  if (!button || button.disabled || !(button.matches(".key") || button.closest(".secure-call")) || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  if (button.matches(".key") && button.closest(".app.anon")) return;
+  keyPressAnimations.get(button)?.cancel();
+  const animation = button.animate?.([
+    { transform: "scale(1)" }, { transform: "scale(.93,1.04)", offset: .25 },
+    { transform: "scale(1.025,.975)", offset: .6 }, { transform: "scale(1)" },
+  ], { duration: 280, easing: "ease-out" });
+  if (animation) keyPressAnimations.set(button, animation);
+}
+addEventListener("pointerdown", animateKeyPress);
+addEventListener("keydown", animateKeyPress);
 function PhoneKeypad({ onKey, compact = false, enabled = true, keyEnabled = () => true, rowSpacing = 24, testId }) {
   return html`<div class="keypad" style=${{ gap: rowSpacing + "px" }} data-testid=${testId}>
     ${["123", "456", "789", "*0#"].map((row) => html`<div class="keypad-row">${[...row].map((d) => {
@@ -1810,28 +1854,28 @@ function useServerSecureForm(request, retryVersion, canSend, streaming = false) 
   }, [form, expiresAt]);
   return form;
 }
-function ServerSecureKeypad({ content, grow, scrollable = true, extraContent, cue }) {
+function SecureInputDescription({ text }) {
+  const lines = String(text ?? "").replace(/직접 눌러 주세요\./g, "직접 눌러주세요.").replace(/\s*(입력하신 번호는)/g, "\n$1").split("\n");
+  return html`<div class="secure-description">${lines.map(line => html`<span>${line}</span>`)}</div>`;
+}
+function ServerSecureKeypad({ content, extraContent }) {
   const { request, form, ready, submitted } = content;
   const prompt = !isBlank(request.message) ? request.message : request.arsPrompt ?? "";
   const note = form.expired ? "입력 시간이 지났어요. 새 안내를 기다려 주세요." : form.stopped ? "입력을 중단했어요."
     : content.broken ? "번호 전달을 확인하지 못해 이 입력을 멈췄어요. ARS가 입력을 다시 요청하면 새로 입력해 주세요."
     : submitted ? "입력을 전달했어요. 응답을 기다려 주세요."
-    : !ready ? "입력 기능 연결 전이거나 연결을 확인하고 있어요."
-    : content.streaming ? `누르는 번호는 바로 ARS로 전달돼요 (보낸 번호는 지울 수 없어요). 다 누르면 입력 완료${!isBlank(request.terminator) ? `(또는 ${request.terminator})` : ""}를 눌러 주세요.` : null;
-  return html`<div class=${"col center" + (grow ? " grow" : "") + (scrollable ? " scroll" : "")} style=${{ width: "100%", gap: "8px" }}>
-    <${CallTaskLabel} cue=${cue} center=${true}/>
-    ${T(!isBlank(request.label) ? request.label : "개인정보 입력", "t-title tc")}
-    ${!isBlank(prompt) && prompt !== request.label && T(prompt, "tc")}
-    ${note != null && T(note, "t-bodym sec tc")}
-    ${extraContent?.()}
-    <div class="row" style=${{ width: "100%", minHeight: "44px", alignItems: "center" }}>
+    : !ready ? "입력 기능 연결 전이거나 연결을 확인하고 있어요." : null;
+  return html`<div class="secure-input-panel">
+    <div class="secure-copy">${T(!isBlank(request.label) ? request.label : "개인정보 입력", "t-title tc")}
+      ${!isBlank(prompt) && prompt !== request.label && html`<${SecureInputDescription} text=${prompt}/>`}
+      ${note != null && T(note, "t-bodym sec tc")}
+      ${extraContent?.()}</div>
+    <div class="secure-count">
       <span class="t-bodym sec">${form.count}/20</span>
       <span class="mask" data-testid="secure-mask" role="img" aria-label=${`개인정보 ${form.count}자리 입력됨`}>${"●".repeat(form.count)}</span>
-      <${TextButton} label="입력 한 자리 지우기" enabled=${ready && form.count > 0 && !content.streaming} onClick=${() => form.delete()}>⌫<//>
     </div>
     <${PhoneKeypad} onKey=${(k) => (content.onKey ? content.onKey(k) : form.append(k))} testId="server-secure-keypad" compact=${true} enabled=${ready}
       keyEnabled=${(k) => (content.streaming && !isBlank(request.terminator) && k === request.terminator ? form.count > 0 : form.count < 20 && form.accepts(k))} rowSpacing=${12}/>
-    <div style=${{ height: "8px", flex: "none" }}></div>
   </div>`;
 }
 let captionDisclosureSequence = 0;
@@ -1982,32 +2026,32 @@ function CallScreen({ state, dispatch, serverData = null, choiceInput = null, se
   const topSpace = h >= 720 ? 80 : 40;
   const secure = state.phase === "Secure" || state.phase === "Sending";
   const keypad = state.screen === "Call" && (secure || state.keypadOpen || secureContent != null);
+  const secureLayout = state.screen === "Call" && (secure || secureContent != null);
   const compact = h < 600;
   const ended = state.screen === "Ended" || serverData?.isEnded === true || liveControls?.stateUnavailable === true;
   const cue = useCallCue(state, serverData, choiceInput, choiceSubmitted, secureContent, liveControls, answerInput);
-  return html`<div ref=${ref} class=${"call-view" + (state.agent ? " agent-call" : "")} style=${{ position: "relative", flex: "1 1 0", minHeight: 0, display: "flex", flexDirection: "column" }}>
+  return html`<div ref=${ref} class=${"call-view" + (state.agent ? " agent-call" : "") + (secureLayout ? " secure-call" + (h < 620 ? " secure-call-short" : "") : "")} style=${{ position: "relative", flex: "1 1 0", minHeight: 0, display: "flex", flexDirection: "column" }}>
     <div class="col center grow call-frame">
       <${ResponsiveCallBody} state=${state} dispatch=${dispatch} keypad=${keypad} compact=${compact} topSpace=${topSpace} readingLayout=${largeText && state.agent} serverData=${serverData} cue=${cue}
         choiceInput=${guardedChoiceInput} choiceSubmitted=${choiceSubmitted} secureContent=${secureContent} liveControls=${liveControls} answerInput=${answerInput} purposeContent=${purposeContent} details=${details}/>
       ${secureContent != null ? html`
-        <button class="fbtn wide" disabled=${!(secureContent.ready && secureContent.form.count > 0)} onClick=${() => {
+        <button class="fbtn wide secure-submit" disabled=${!(secureContent.ready && secureContent.form.count > 0)} onClick=${() => {
           if (secureCanSend && !secureRef.current.includes(secureToken)) {
             if (streaming) { finishStreaming(); return; }
             const action = secureForm?.submit();
             if (action) { secureRef.current = [...secureRef.current, secureToken]; bump(); secureInput?.onSubmit?.(action); }
           }
-        }}>입력 완료</button><div style=${{ height: "12px", flex: "none" }}></div>`
+        }}>입력 완료</button>`
       : secure && state.screen === "Call" && serverData == null ? html`
-        <button class="fbtn wide" disabled=${!(state.phase === "Secure" && state.secureCount === 6)} onClick=${() => dispatch({ type: "CommitSecure" })}>입력 완료</button>
-        <div style=${{ height: "12px", flex: "none" }}></div>` : null}
+        <button class="fbtn wide secure-submit" disabled=${!(state.phase === "Secure" && state.secureCount === 6)} onClick=${() => dispatch({ type: "CommitSecure" })}>입력 완료</button>` : null}
       ${ended ? html`
         <button class="obtn" onClick=${() => dispatch({ type: "Back" })}>${liveControls?.stateUnavailable === true ? "기본 화면으로 돌아가기" : "키패드로 돌아가기"}</button>
         <div style=${{ height: "30px", flex: "none" }}></div>`
-      : html`<div style=${{ minHeight: "104px", display: "flex", justifyContent: "center", alignItems: "flex-start", flex: "none" }}>
+      : html`<div style=${{ minHeight: secureLayout ? "var(--secure-end-height)" : "104px", display: "flex", justifyContent: "center", alignItems: "flex-start", flex: "none" }}>
         ${state.screen === "Purpose" ? html`<${RoundAction} label="취소" icon="close" onClick=${() => dispatch({ type: "Back" })} size=${72}/>`
-          : html`<${RoundAction} label="종료" icon="end_call" onClick=${() => { secureForm?.stop(); dispatch({ type: "End" }); }} size=${72} iconSize=${42} color=${C.Red}
+          : html`<${RoundAction} label="종료" icon="end_call" onClick=${() => { secureForm?.stop(); dispatch({ type: "End" }); }} size=${secureLayout && h < 620 ? 56 : 72} iconSize=${42} color=${C.Red}
             enabled=${liveControls?.endEnabled ?? true}/>`}</div>`}
-      <div style=${{ height: "22px", flex: "none" }}></div>
+      <div style=${{ height: secureLayout ? "var(--secure-bottom)" : "22px", flex: "none" }}></div>
     </div>
     ${(!largeText || !state.agent) && html`<div class="top-label t-bodym sec">${liveControls != null ? "실제 ARS" : serverData != null ? "서버 데이터 · 오디오 미연결" : compact ? `${formatPhone(state.number)} · UI 데모` : "UI 데모 · 실제 통화 아님"}</div>`}
     ${(serverData == null || liveControls != null) && state.audioMenu && state.screen === "Call" &&
@@ -2016,6 +2060,12 @@ function CallScreen({ state, dispatch, serverData = null, choiceInput = null, se
 }
 const Spacer = (px, grow = false) => html`<div style=${grow ? { flex: "1 1 0", minHeight: 0 } : { height: px + "px", flex: "none" }}></div>`;
 function ResponsiveCallBody({ state, dispatch, keypad, compact, topSpace, readingLayout = false, serverData, choiceInput, choiceSubmitted, secureContent, liveControls, answerInput, purposeContent, cue, details }) {
+  const secure = state.screen === "Call" && (secureContent != null || state.phase === "Secure" || state.phase === "Sending");
+  if (secure) return html`<div class="secure-call-body">
+    <div class="secure-header"><${CallHeader} state=${state} tight=${true} serverData=${serverData} liveSeconds=${liveControls?.elapsedSeconds ?? null}/></div>
+    ${secureContent != null ? html`<${ServerSecureKeypad} content=${secureContent} extraContent=${() => liveControls?.extras?.()}/>`
+      : html`<${CardFreeKeypad} state=${state} dispatch=${dispatch} liveControls=${liveControls}/>`}
+  </div>`;
   const grow = !compact;
   // Keep all four demo controls above End; only the content scrolls on short screens.
   const fixedDemoControls = compact && serverData == null && liveControls == null && state.agent && state.screen === "Call" && !keypad;
@@ -2131,19 +2181,24 @@ function NormalControls({ state, dispatch }) {
 }
 function CardFreeKeypad({ state, dispatch, grow, scrollable = true, liveControls = null, cue }) {
   const secure = state.phase === "Secure" || state.phase === "Sending";
+  if (secure) return html`<div class="secure-input-panel">
+    <div class="secure-copy">${T("생년월일 6자리 입력", "t-title tc")}
+      <${SecureInputDescription} text=${"생년월일을 직접 눌러주세요.\n입력하신 번호는 저장되지 않습니다."}/></div>
+    <div class="secure-count"><span class="t-bodym sec">${state.secureCount}/6</span>
+      <span class="mask" role="img" aria-label=${`개인정보 ${state.secureCount}자리 입력됨`}>${"●".repeat(state.secureCount) + "○".repeat(6 - state.secureCount)}</span></div>
+    <${PhoneKeypad} onKey=${digit => dispatch({ type: "Key", digit })} testId="call-keypad" compact=${true} enabled=${state.phase === "Secure"} rowSpacing=${8}/>
+  </div>`;
   return html`<div class=${"col center" + (grow ? " grow" : "") + (scrollable ? " scroll" : "")} style=${{ width: "100%" }}>
-    ${secure && html`<${CallTaskLabel} cue=${cue} center=${true}/>${Spacer(8)}`}
-    ${T(secure ? "생년월일 6자리 입력" : "번호를 직접 눌러 주세요", "t-title tc")}
+    ${T("번호를 직접 눌러 주세요", "t-title tc")}
     ${Spacer(8)}
-    ${T(secure ? "6자리 입력 후 ‘입력 완료’를 눌러 주세요." : liveControls != null ? "누른 번호가 바로 전송돼요." : "누른 번호가 바로 전송돼요. AI는 입력 후 10초간 기다려요.", "t-bodym sec tc")}
+    ${T(liveControls != null ? "누른 번호가 바로 전송돼요." : "누른 번호가 바로 전송돼요. AI는 입력 후 10초간 기다려요.", "t-bodym sec tc")}
     ${Spacer(8)}
     <div style=${{ position: "relative", width: "100%", minHeight: "44px", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
-      <span style=${{ fontSize: "24px", lineHeight: "32px", whiteSpace: "nowrap" }}>${secure ? "●".repeat(state.secureCount) + "○".repeat(6 - state.secureCount) : liveControls?.manualKeys ?? state.manualDigits}</span>
-      ${secure && html`<span style=${{ position: "absolute", right: 0 }}><${TextButton} enabled=${state.phase === "Secure"} onClick=${() => dispatch({ type: "DeleteSecure" })}>⌫<//></span>`}
+      <span style=${{ fontSize: "24px", lineHeight: "32px", whiteSpace: "nowrap" }}>${liveControls?.manualKeys ?? state.manualDigits}</span>
     </div>
     ${liveControls != null && html`<${TextButton} center=${true} onClick=${() => dispatch({ type: "OpenKeypad" })}>키패드 가리기<//>${liveControls.extras?.()}`}
     ${Spacer(16)}
-    <${PhoneKeypad} onKey=${(d) => dispatch({ type: "Key", digit: d })} testId="call-keypad" compact=${true} enabled=${liveControls?.keypadAvailable ?? state.phase !== "Sending"} rowSpacing=${secure ? 12 : 24}/>
+    <${PhoneKeypad} onKey=${(d) => dispatch({ type: "Key", digit: d })} testId="call-keypad" compact=${true} enabled=${liveControls?.keypadAvailable ?? state.phase !== "Sending"} rowSpacing=${24}/>
   </div>`;
 }
 function AudioPopover({ state, dispatch, availableRoutes = null, selectedRoute }) {
