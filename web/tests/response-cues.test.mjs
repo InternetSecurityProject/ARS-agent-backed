@@ -199,7 +199,7 @@ test('개인정보 키패드의 항목 제목·카드 밖 배치·입력값은 �
   try {
     const q = request({ kind: 'secure_input', label: '주민등록번호 앞 6자리', message: '앞 6자리와 샵을 입력해 주세요.', terminator: '#', options: [] });
     await set(page, { status: 'awaiting_user', request: q });
-    await page.getByText('입력해 주세요', { exact: true }).waitFor();
+    assert.equal(await page.getByText('입력해 주세요', { exact: true }).count(), 0);
     await page.locator('.t-title').filter({ hasText: q.label }).waitFor();
     assert.equal(await page.locator('.card').count(), 0);
     for (const digit of '123') await page.getByRole('button', { name: '키 ' + digit, exact: true }).click();
@@ -227,7 +227,8 @@ test('데모의 질문·직접 입력과 진행 상태도 같은 구분을 적�
     await set(page, { phase: 'Answer', large: true }); await highlighted(page).waitFor();
     await page.getByRole('textbox').fill('수원시'); await set(page, { large: false });
     assert.equal(await page.getByRole('textbox').inputValue(), '수원시');
-    await set(page, { phase: 'Secure' }); await page.getByText('입력해 주세요', { exact: true }).waitFor();
+    await set(page, { phase: 'Secure' }); await page.getByText('생년월일 6자리 입력', { exact: true }).waitFor();
+    assert.equal(await page.getByText('입력해 주세요', { exact: true }).count(), 0);
     await set(page, { phase: 'Sending' }); assert.equal(await page.getByText('입력해 주세요', { exact: true }).count(), 0);
   } finally { await context.close(); }
 });
